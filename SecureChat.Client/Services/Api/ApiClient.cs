@@ -24,6 +24,25 @@ namespace SecureChat.Client.Services
             };
         }
 
+        // POST multipart/form-data using the singleton HttpClient (this preserves Authorization header)
+        public async Task<(bool IsSuccess, string ResponseContent, string ErrorMessage)> PostMultipartAsync(string endpoint, MultipartFormDataContent content)
+        {
+            try
+            {
+                var response = await _httpClient.PostAsync(endpoint, content);
+                var responseStr = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode)
+                {
+                    return (true, responseStr, string.Empty);
+                }
+                return (false, responseStr, $"Lỗi server: {responseStr}");
+            }
+            catch (Exception ex)
+            {
+                return (false, string.Empty, $"Không thể kết nối máy chủ: {ex.Message}");
+            }
+        }
+
         public static HttpClient Create(string? baseUrl = null)
         {
             var resolvedBaseUrl = ResolveBaseUrl(baseUrl);

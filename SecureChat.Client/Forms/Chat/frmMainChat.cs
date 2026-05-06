@@ -1176,13 +1176,57 @@ namespace SecureChat.Client
                         long fileSize = root.GetProperty("fileSize").GetInt64();
                         string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
 
-                        // Build message payload in file message format expected by UI: file::url::fileName::fileSize::sha256
-                        // previous implementation used '|' separators which the UI did not recognize and printed raw text.
-                        string payload = $"file::{url}::{fileName}::{fileSize}::{sha}";
+                        // Build attachment and send message creation to server (use ApiClient.Instance to include JWT)
+                        var fileNameInStorage = Path.GetFileName(url);
+                        var encodedFileName = Uri.EscapeDataString(fileName);
+                        var fileType = Path.GetExtension(fileName)?.TrimStart('.').ToLowerInvariant();
+                        if (string.IsNullOrWhiteSpace(fileType)) fileType = "application/octet-stream";
 
-                        // Add to current messages as outgoing
-                        _currentMsgs.Add((Guid.NewGuid().ToString(), payload, true, DateTime.Now.ToString("h:mm tt"), ""));
-                        this.BeginInvoke(new Action(() => BuildMessages()));
+                        // Build canonical payload and include it in Content so server-persisted message has the payload the UI expects
+                        string canonicalPayload = $"file::{url}::{encodedFileName}::{fileSize}::{sha}"; 
+
+                        var sendReq = new
+                        {
+                            Type = MessageType.File,
+                            Content = canonicalPayload,
+                            ContentIV = (string?)null,
+                            ReplyToID = (string?)null,
+                            OriginalSenderID = (string?)null,
+                            Attachments = new[] {
+                                new {
+                                    FileURL = url,
+                                    FileName = encodedFileName,
+                                    FileNameInStorage = fileNameInStorage,
+                                    FileType = fileType,
+                                    FileHash = sha,
+                                    FileSize = fileSize,
+                                    Width = (int?)null,
+                                    Height = (int?)null,
+                                    ThumbnailURL = (string?)null,
+                                    DurationSecs = (int?)null,
+                                    FileIV = (string?)null,
+                                    ThumbnailIV = (string?)null
+                                }
+                            }
+                        };
+
+                        var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<object, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
+                        if (!okMsg || msgRes == null)
+                        {
+                            var errMsg = string.IsNullOrWhiteSpace(msgErr) ? "Failed to create message on server." : msgErr;
+                            this.BeginInvoke(new Action(() => MessageBox.Show(this, errMsg, "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                        }
+                        else
+                        {
+                            // Build UI payload from returned attachment data (server returns encoded filename as we sent it)
+                            var att = msgRes.Attachments != null && msgRes.Attachments.Count > 0 ? msgRes.Attachments[0] : null;
+                            if (att != null)
+                            {
+                                string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
+                                _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                this.BeginInvoke(new Action(() => BuildMessages()));
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -1745,7 +1789,7 @@ namespace SecureChat.Client
                 var payload = text.Substring(filePrefix.Length);
                 var parts = payload.Split(new[] { "::" }, StringSplitOptions.None);
                 string url = parts.Length > 0 ? parts[0] : "";
-                string fileName = parts.Length > 1 ? parts[1] : "";
+                string fileName = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "";
                 string fileSize = parts.Length > 2 ? parts[2] : "";
                 // optional expected sha256 provided by server: url|fileName|fileSize|sha256
                 string expectedSha256 = parts.Length > 3 ? parts[3] : string.Empty;
@@ -1816,7 +1860,31 @@ namespace SecureChat.Client
                                 }
                                 else
                                 {
-                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, "File tải về không khớp hash kiểm tra. File có thể đã bị thay đổi hoặc lỗi truyền tải.", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                    // Integrity check failed - attempt to remove the downloaded file
+                                    try
+                                    {
+                                        if (File.Exists(destination))
+                                        {
+                                            try
+                                            {
+                                                File.Delete(destination);
+                                                this.BeginInvoke(new Action(() => MessageBox.Show(this, "File tải về không khớp hash kiểm tra. File có thể đã bị thay đổi hoặc lỗi truyền tải. File đã được xóa.", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                            }
+                                            catch (Exception delEx)
+                                            {
+                                                this.BeginInvoke(new Action(() => MessageBox.Show(this, $"File tải về không khớp hash kiểm tra. Không thể xóa file: {delEx.Message}", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                            }
+                                        }
+                                        else
+                                        {
+                                            this.BeginInvoke(new Action(() => MessageBox.Show(this, "File tải về không khớp hash kiểm tra. File có thể đã bị thay đổi hoặc lỗi truyền tải.", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        // If anything unexpected happens, show integrity warning and include exception info
+                                        this.BeginInvoke(new Action(() => MessageBox.Show(this, $"File tải về không khớp hash kiểm tra. Lỗi khi xử lý file: {ex.Message}", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                    }
                                 }
                             }
                             catch (Exception ex)
