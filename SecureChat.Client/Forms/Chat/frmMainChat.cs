@@ -38,6 +38,9 @@ namespace SecureChat.Client
 
         //private Panel _pnlMessages; // vùng hiển thị bong bóng tin nhắn
         private ChatPanel _pnlMessages;
+        private readonly VoicePlaybackService _voicePlaybackService = new();
+        private readonly Dictionary<string, (byte[] Key, byte[] Iv)> _voiceKeyCache = new();
+        private readonly object _voiceKeyLock = new();
 
         private Panel _pnlInputBar; // thanh nhập tin nhắn bên dưới
         private TelegramTextBox _tbMessage; // TextBox gõ tin nhắn
@@ -1346,6 +1349,10 @@ namespace SecureChat.Client
                                     var att = msgRes.Attachments != null && msgRes.Attachments.Count > 0 ? msgRes.Attachments[0] : null;
                                     if (att != null)
                                     {
+                                        lock (_voiceKeyLock)
+                                        {
+                                            _voiceKeyCache[msgRes.MessageID] = (key, iv);
+                                        }
                                         string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
                                         _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
                                         this.BeginInvoke(new Action(() => BuildMessages()));
@@ -1910,6 +1917,75 @@ namespace SecureChat.Client
         private Panel BuildBubble(string text, bool isOut, string time,
                            string sender = "", bool isGroup = false, string messageId = "")
         {
+            // voice::url::name::duration::sha256
+            const string voicePrefix = "voice::";
+            if (!string.IsNullOrEmpty(text) && text.StartsWith(voicePrefix, StringComparison.Ordinal))
+            {
+                var payload = text.Substring(voicePrefix.Length);
+                var parts = payload.Split(new[] { "::" }, StringSplitOptions.None);
+                if (parts.Length < 4) return new Panel { BackColor = Color.Transparent };
+
+                string url = parts.Length > 0 ? parts[0] : string.Empty;
+                string fileName = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "Voice message";
+                string duration = parts.Length > 2 ? parts[2] : "0";
+                string expectedSha256 = parts.Length > 3 ? parts[3] : string.Empty;
+
+                var panel = new Panel { BackColor = Color.Transparent };
+                var fileCtrl = new ucFileBubble
+                {
+                    FileName = string.IsNullOrWhiteSpace(fileName) ? "Voice message" : fileName,
+                    FileSize = $"{duration}s",
+                    IsOutgoing = isOut,
+                    Top = 4,
+                };
+
+                fileCtrl.FileClicked += async (s, e) =>
+                {
+                    byte[] key;
+                    byte[] iv;
+                    lock (_voiceKeyLock)
+                    {
+                        if (!_voiceKeyCache.TryGetValue(messageId, out var keyInfo))
+                        {
+                            BeginInvoke(new Action(() => MessageBox.Show(this, "Voice key not available for this message.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                            return;
+                        }
+                        key = keyInfo.Key;
+                        iv = keyInfo.Iv;
+                    }
+
+                    try
+                    {
+                        await _voicePlaybackService.PlayAsync(url, expectedSha256, key, iv);
+                    }
+                    catch (Exception ex)
+                    {
+                        BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                    }
+                };
+
+                fileCtrl.Anchor = isOut ? AnchorStyles.Right : AnchorStyles.Left;
+                fileCtrl.Width = Math.Min(360, Math.Max(220, (int)(_pnlMessages.ClientSize.Width * 0.45f)));
+                panel.Height = fileCtrl.Height + 8;
+                panel.Resize += (s, e) =>
+                {
+                    int leftOffset = (!isOut && isGroup) ? 44 : 10;
+                    if (isOut)
+                    {
+                        fileCtrl.Left = Math.Max(10, panel.ClientSize.Width - fileCtrl.Width - 10);
+                    }
+                    else
+                    {
+                        fileCtrl.Left = leftOffset;
+                    }
+                };
+
+                panel.Controls.Add(fileCtrl);
+
+                panel.PerformLayout();
+                return panel;
+            }
+
             // file::url::name::size
             const string filePrefix = "file::";
             if (!string.IsNullOrEmpty(text) && text.StartsWith(filePrefix, StringComparison.Ordinal))

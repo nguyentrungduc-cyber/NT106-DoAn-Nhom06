@@ -66,5 +66,63 @@ namespace SecureChat.Client.Services
 
             return (encryptedPath, key, iv);
         }
+
+        public static async Task<string> DecryptAsync(string encryptedPath, byte[] key, byte[] iv)
+        {
+            if (string.IsNullOrWhiteSpace(encryptedPath))
+                throw new ArgumentException("Encrypted path is required.", nameof(encryptedPath));
+            if (!File.Exists(encryptedPath))
+                throw new FileNotFoundException("Encrypted file does not exist.", encryptedPath);
+            if (key is null || key.Length != 32)
+                throw new ArgumentException("Invalid AES-256 key length.", nameof(key));
+            if (iv is null || iv.Length != 16)
+                throw new ArgumentException("Invalid AES IV length.", nameof(iv));
+
+            var fileInfo = new FileInfo(encryptedPath);
+            if (fileInfo.Length == 0)
+                throw new InvalidOperationException("Encrypted file is empty.");
+
+            string tempDir = Path.GetTempPath();
+            string decryptedPath = Path.Combine(tempDir, $"voicedec_{Guid.NewGuid():N}.wav");
+
+            FileStream? inputFs = null;
+            FileStream? outputFs = null;
+            CryptoStream? cryptoStream = null;
+            try
+            {
+                inputFs = new FileStream(encryptedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                outputFs = new FileStream(decryptedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                using var aes = Aes.Create();
+                aes.KeySize = 256;
+                aes.Key = key;
+                aes.IV = iv;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                cryptoStream = new CryptoStream(inputFs, aes.CreateDecryptor(), CryptoStreamMode.Read);
+                byte[] buffer = new byte[81920];
+                int read;
+                while ((read = await cryptoStream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+                {
+                    await outputFs.WriteAsync(buffer, 0, read).ConfigureAwait(false);
+                }
+            }
+            catch
+            {
+                try { cryptoStream?.Dispose(); } catch { }
+                try { outputFs?.Dispose(); } catch { }
+                try { inputFs?.Dispose(); } catch { }
+                try { if (File.Exists(decryptedPath)) File.Delete(decryptedPath); } catch { }
+                throw;
+            }
+            finally
+            {
+                try { cryptoStream?.Dispose(); } catch { }
+                try { outputFs?.Dispose(); } catch { }
+                try { inputFs?.Dispose(); } catch { }
+            }
+
+            return decryptedPath;
+        }
     }
 }
