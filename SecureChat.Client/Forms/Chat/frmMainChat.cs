@@ -98,6 +98,9 @@ namespace SecureChat.Client
         // Thêm biến lưu trạng thái trả lời tin nhắn
         private string _replyingToMessageId = null;
 
+        // Local audio recorder service (NAudio)
+        private SecureChat.Client.Services.AudioRecorderService? _audioRecorder;
+
         // Khai báo Dictionary với Tuple 5 tham số (Thêm Id ở đầu)
         private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new()
         {
@@ -1241,6 +1244,29 @@ namespace SecureChat.Client
 
             var btnEmoji = MakeInputBtn("😊");
             var btnMic = MakeInputBtn("🎤");
+            btnMic.Click += (s, e) =>
+            {
+                try
+                {
+                    if (_audioRecorder == null) _audioRecorder = new SecureChat.Client.Services.AudioRecorderService();
+
+                    if (!_audioRecorder.IsRecording)
+                    {
+                        _audioRecorder.StartRecording();
+                        btnMic.Text = "■";
+                    }
+                    else
+                    {
+                        var path = _audioRecorder.StopRecording();
+                        btnMic.Text = "🎤";
+                        this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Recording saved: {path}", "Recorded", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Recording error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                }
+            };
             var btnSend = new TelegramButton { Text = "↑", Height = 36, Width = 36, Font = TG.FontSemiBold(14f), Radius = 18, Visible = false };
             btnSend.Click += (s, e) => SendMessage();
 
