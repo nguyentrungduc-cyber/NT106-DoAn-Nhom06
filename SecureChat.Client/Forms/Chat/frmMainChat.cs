@@ -1244,7 +1244,7 @@ namespace SecureChat.Client
 
             var btnEmoji = MakeInputBtn("😊");
             var btnMic = MakeInputBtn("🎤");
-            btnMic.Click += (s, e) =>
+            btnMic.Click += async (s, e) =>
             {
                 try
                 {
@@ -1257,9 +1257,110 @@ namespace SecureChat.Client
                     }
                     else
                     {
-                        var path = _audioRecorder.StopRecording();
+                        var wavPath = _audioRecorder.StopRecording();
                         btnMic.Text = "🎤";
-                        this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Recording saved: {path}", "Recorded", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                        // Encrypt the wav file before upload
+                        try
+                        {
+                            var (encryptedPath, key, iv) = await SecureChat.Client.Services.VoiceEncryptionService.EncryptAsync(wavPath);
+                            // Compute SHA-256 of encrypted file
+                            string localSha = string.Empty;
+                            try
+                            {
+                                localSha = await FileService.ComputeSha256Async(encryptedPath).ConfigureAwait(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Không thể tính hash file: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                                return;
+                            }
+
+                            // Upload encrypted file using ApiClient.Instance (JWT)
+                            try
+                            {
+                                using var fs = new FileStream(encryptedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                                using var content = new MultipartFormDataContent();
+                                var streamContent = new StreamContent(fs);
+                                streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+                                content.Add(streamContent, "file", Path.GetFileName(encryptedPath));
+
+                                var (okUpload, respStr, uploadErr) = await ApiClient.Instance.PostMultipartAsync("api/files/upload", content);
+                                if (!okUpload)
+                                {
+                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Upload failed: {uploadErr}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                                    return;
+                                }
+
+                                // Parse response JSON
+                                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                                var doc = System.Text.Json.JsonDocument.Parse(respStr);
+                                var root = doc.RootElement;
+                                string url = root.GetProperty("url").GetString() ?? string.Empty;
+                                string fileName = root.GetProperty("fileName").GetString() ?? Path.GetFileName(encryptedPath);
+                                long fileSize = root.GetProperty("fileSize").GetInt64();
+                                string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
+
+                                // Duration is not computed here; set to 0 for now (can be improved later)
+                                string duration = "0";
+                                var fileNameInStorage = Path.GetFileName(url);
+                                var encodedFileName = Uri.EscapeDataString(fileName);
+                                var fileType = Path.GetExtension(fileName)?.TrimStart('.').ToLowerInvariant();
+                                if (string.IsNullOrWhiteSpace(fileType)) fileType = "application/octet-stream";
+
+                                // Build canonical voice payload
+                                string canonicalPayload = $"voice::{url}::{encodedFileName}::{duration}::{sha}";
+
+                                var sendReq = new
+                                {
+                                    Type = MessageType.File, // Or MessageType.Audio if available
+                                    Content = canonicalPayload,
+                                    ContentIV = (string?)null,
+                                    ReplyToID = (string?)null,
+                                    OriginalSenderID = (string?)null,
+                                    Attachments = new[] {
+                                        new {
+                                            FileURL = url,
+                                            FileName = encodedFileName,
+                                            FileNameInStorage = fileNameInStorage,
+                                            FileType = fileType,
+                                            FileHash = sha,
+                                            FileSize = fileSize,
+                                            Width = (int?)null,
+                                            Height = (int?)null,
+                                            ThumbnailURL = (string?)null,
+                                            DurationSecs = 0,
+                                            FileIV = (string?)null,
+                                            ThumbnailIV = (string?)null
+                                        }
+                                    }
+                                };
+
+                                var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<object, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
+                                if (!okMsg || msgRes == null)
+                                {
+                                    var errMsg = string.IsNullOrWhiteSpace(msgErr) ? "Failed to create message on server." : msgErr;
+                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, errMsg, "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                }
+                                else
+                                {
+                                    var att = msgRes.Attachments != null && msgRes.Attachments.Count > 0 ? msgRes.Attachments[0] : null;
+                                    if (att != null)
+                                    {
+                                        string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
+                                        _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                        this.BeginInvoke(new Action(() => BuildMessages()));
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Upload error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Voice encryption error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -1558,7 +1659,9 @@ namespace SecureChat.Client
             pnl.Controls.AddRange(new Control[] { lblEmoji, lblLabel });
             lblEmoji.Click += (s, e) => OnSettingsMenuClick(label);
             pnl.Paint += (s, e) =>
+            {
                 e.Graphics.DrawLine(new Pen(TG.DividerLight), 56, 47, pnl.Width, 47);
+            };
             pnl.Resize += (s, e) =>
             {
                 // clamp width to avoid negative values when panel is very narrow
@@ -1573,9 +1676,8 @@ namespace SecureChat.Client
                 {
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     var r = new Rectangle(0, 2, 40, 20);
-                    using var path = RoundedPanel.GetRoundedPath(r, 10);
                     using var brush = new SolidBrush(on ? TG.Blue : Color.FromArgb(0xCC, 0xCC, 0xCC));
-                    e.Graphics.FillPath(brush, path);
+                    e.Graphics.FillPath(brush, RoundedPanel.GetRoundedPath(r, 10));
                     int cx = on ? 22 : 2;
                     using var white = new SolidBrush(Color.White);
                     e.Graphics.FillEllipse(white, cx, 4, 16, 16);
