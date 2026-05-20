@@ -245,8 +245,13 @@ namespace SecureChat.Client
             };
             AdjustLayout();
 
-            LoadConversation(_activeConvId); // tải cuộc trò chuyện đầu tiên (sẽ bị thay thế sau khi SyncConversationsAsync hoàn tất)
-                                   // inside InitUI(), after LoadConversation("1");
+            // Load mock data trước để UI có nội dung đẹp ngay khi mở form.
+            // Sau khi SyncConversationsAsync (trong FrmMainChat_Load) chạy xong:
+            //  - Nếu server có conversation thật -> mock bị replace.
+            //  - Nếu server trả rỗng / lỗi -> UI vẫn giữ mock (mark là 'đã sync')
+            //    để không gọi API per-conv (sẽ 401/404).
+            SeedMockConversations();
+            LoadConversation(_activeConvId);
             SetupWallpaperWatcher(); // 1. Bắt đầu theo dõi thư mục ảnh
 
             // 2. Nạp hình nền lần đầu tiên
@@ -1971,10 +1976,16 @@ namespace SecureChat.Client
 
             _chatAvatar.SetName(conv.Name);
             _lblChatName.Text = conv.Name;
-            _lblChatStatus.Text = conv.IsGroup ? "members" : "last seen recently";
+            _lblChatStatus.Text = conv.IsGroup
+                ? (conv.Unread > 0 ? $"{conv.Unread} new messages" : "5 members, 2 online")
+                : "last seen recently";
 
             // Đảm bảo có list (rỗng nếu chưa sync) trước khi vẽ.
             BuildMessages();
+
+            // Mock conversation -> không gọi API (id không tồn tại trên server).
+            if (convId.StartsWith("mock_", StringComparison.Ordinal))
+                return;
 
             // Sync tin nhắn từ MariaDB (chỉ làm 1 lần / conv) rồi join SignalR group
             // để nhận realtime cho các tin sau đó.
@@ -1983,26 +1994,92 @@ namespace SecureChat.Client
         }
 
         /// <summary>
+        /// Nạp dữ liệu mock cho UI demo: 4 conversation với tin nhắn đa dạng
+        /// (text, file, voice, reply, group). Conversation id được prefix bằng
+        /// "mock_" để các flow sync / SignalR bỏ qua.
+        /// </summary>
+        private void SeedMockConversations()
+        {
+            _convs.Clear();
+            _convs.AddRange(new (string, string, string, string, int, bool)[]
+            {
+                ("mock_1", "Hằng Hiếu",       "tui vừa làm với ô đó",          "8:30 AM",  2,  false),
+                ("mock_2", "NT106 Nhóm 06",   "Tuấn Thành: ừ nhanh lên nha",   "8:33 AM", 12,  true),
+                ("mock_3", "Tuấn Thành",      "Sure",                          "10 Mar",   0,  false),
+                ("mock_4", "SecureChat Bot",  "Chào mừng bạn đến với SecureChat ✨", "Yesterday", 0, false),
+            });
+
+            _allMsgs.Clear();
+            _allMsgs["mock_1"] = new List<(string, string, bool, string, string)>
+            {
+                ("mm_1_1",  "Hello hello hello!",                       false, "12:51 PM", "Hằng Hiếu"),
+                ("mm_1_2",  "Ê mấy ông ơi nộp bài chưa",                false, "8:28 AM",  "Hằng Hiếu"),
+                ("mm_1_3",  "Chưa ông ơi, tui đang debug 😅",           true,  "8:29 AM",  ""),
+                ("mm_1_4",  "Add new contact á",                        false, "8:29 AM",  "Hằng Hiếu"),
+                ("mm_1_5",  "Tui vừa làm với ô đó, deadline gần rồi",   false, "8:30 AM",  "Hằng Hiếu"),
+                ("mm_1_6",  "Nó tự chấp nhận kết bạn luôn mà",          true,  "8:30 AM",  ""),
+                ("mm_1_7",  "OK chút nữa tui push lên",                 true,  "8:32 AM",  ""),
+            };
+
+            _allMsgs["mock_2"] = new List<(string, string, bool, string, string)>
+            {
+                ("mm_2_1",  "Hôm nay deadline báo cáo nhóm nhé mọi người",   false, "7:45 AM",  "Hằng Hiếu"),
+                ("mm_2_2",  "Phần SignalR mình làm xong rồi",                false, "7:50 AM",  "Tuấn Thành"),
+                ("mm_2_3",  "Hybrid encryption test thử thấy ổn",            true,  "7:55 AM",  ""),
+                ("mm_2_4",  "reply::Hằng Hiếu::Hôm nay deadline báo cáo nhóm nhé mọi người::Tối nay mình tổng hợp lại slide nha", true,  "8:00 AM", ""),
+                ("mm_2_5",  "Cho mình xin link Figma với",                   false, "8:05 AM",  "Quack Cyber"),
+                ("mm_2_6",  "Đây nha 👇",                                    false, "8:06 AM",  "Hằng Hiếu"),
+                ("mm_2_7",  "file::https://example.com/securechat-design.fig::SecureChat-Design.fig::3.2 MB::demohash", false, "8:06 AM", "Hằng Hiếu"),
+                ("mm_2_8",  "Tuyệt vời 🔥",                                  true,  "8:08 AM",  ""),
+                ("mm_2_9",  "Ê nhanh lên nha còn test E2EE",                 false, "8:33 AM",  "Tuấn Thành"),
+            };
+
+            _allMsgs["mock_3"] = new List<(string, string, bool, string, string)>
+            {
+                ("mm_3_1",  "Hey, lâu rồi không gặp!",                       false, "10 Mar",   "Tuấn Thành"),
+                ("mm_3_2",  "Ừ, dạo này bận đồ án quá",                       true,  "10 Mar",   ""),
+                ("mm_3_3",  "Cuối tuần đi cafe không?",                      false, "10 Mar",   "Tuấn Thành"),
+                ("mm_3_4",  "Sure 👍",                                       true,  "10 Mar",   ""),
+            };
+
+            _allMsgs["mock_4"] = new List<(string, string, bool, string, string)>
+            {
+                ("mm_4_1", "Chào mừng bạn đến với SecureChat ✨",            false, "Yesterday", "SecureChat Bot"),
+                ("mm_4_2", "Tin nhắn của bạn được mã hóa đầu cuối bằng AES-256 và RSA-2048.", false, "Yesterday", "SecureChat Bot"),
+                ("mm_4_3", "Hãy tạo cuộc trò chuyện đầu tiên bằng cách thêm bạn bè ở mục Contacts.", false, "Yesterday", "SecureChat Bot"),
+            };
+
+            // Đánh dấu các conv mock đã 'synced' để LoadConversation không gọi server.
+            _syncedConversations.Add("mock_1");
+            _syncedConversations.Add("mock_2");
+            _syncedConversations.Add("mock_3");
+            _syncedConversations.Add("mock_4");
+
+            _activeConvId = _convs[0].Id;
+            BuildConvList();
+        }
+
+        /// <summary>
         /// GET /api/conversations và build sidebar từ dữ liệu thật.
-        /// Nếu thành công và đang còn ID active default ("1") không tồn tại,
-        /// chọn conversation đầu tiên.
+        /// Khi server trả về danh sách rỗng hoặc lỗi, giữ lại mock data đang
+        /// hiển thị thay vì xoá trắng UI.
         /// </summary>
         private async Task SyncConversationsAsync()
         {
-            var (ok, list, err) = await _messageService.GetMyConversationsAsync();
-            if (!ok || list is null)
-            {
-                BeginInvoke(new Action(() =>
-                {
-                    if (!string.IsNullOrWhiteSpace(err))
-                        MessageBox.Show(this, err, "Sync conversations", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }));
+            var (ok, list, _) = await _messageService.GetMyConversationsAsync();
+
+            // Lỗi mạng / 401 / response rỗng -> giữ nguyên mock UI cho đẹp.
+            if (!ok || list is null || list.Count == 0)
                 return;
-            }
 
             BeginInvoke(new Action(() =>
             {
+                // Có data thật -> drop mock và replace.
                 _convs.Clear();
+                _allMsgs.Clear();
+                _syncedConversations.Clear();
+                _myMemberIdByConv.Clear();
+
                 foreach (var c in list)
                 {
                     string display = !string.IsNullOrWhiteSpace(c.Name)
@@ -2015,22 +2092,9 @@ namespace SecureChat.Client
 
                 BuildConvList();
 
-                // Reset _activeConvId nếu đang là id giả từ mock.
-                if (_convs.Count > 0)
-                {
-                    if (!_convs.Exists(x => x.Id == _activeConvId))
-                    {
-                        _activeConvId = _convs[0].Id;
-                        BuildConvList();
-                    }
-                    LoadConversation(_activeConvId);
-                }
-                else
-                {
-                    _activeConvId = string.Empty;
-                    _allMsgs.Clear();
-                    BuildMessages();
-                }
+                _activeConvId = _convs[0].Id;
+                BuildConvList();
+                LoadConversation(_activeConvId);
             }));
         }
 
