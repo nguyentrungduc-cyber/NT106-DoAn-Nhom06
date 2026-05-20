@@ -87,7 +87,8 @@ namespace SecureChat.Client
             loginForm.Shown += (_, __) => Log("[CLIENT] Login form shown");
             loginForm.FormClosed += (_, __) => Log("[CLIENT] Login form closed");
 
-            Application.Run(loginForm);
+            Application.Run(new frmLoginRegister());
+            // Application.Run(new frmMainChat());
         }
 
         private static void UIThreadException(object sender, ThreadExceptionEventArgs e)
