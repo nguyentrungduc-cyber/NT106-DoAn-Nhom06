@@ -107,6 +107,15 @@ namespace SecureChat.Models
 		[Column("thumbnail_iv")]
 		public string? ThumbnailIv { get; set; }
 
+		[Column("encrypted_aes_key"), MaxLength(1024)]
+		public string? EncryptedAesKey { get; set; }
+
+		[Column("encrypted_aes_iv"), MaxLength(1024)]
+		public string? EncryptedAesIv { get; set; }
+
+		[Column("receiver_id"), MaxLength(8)]
+		public string? ReceiverId { get; set; }
+
 		[Column("uploaded_at")]
 		public DateTime UploadedAt { get; set; }
 
