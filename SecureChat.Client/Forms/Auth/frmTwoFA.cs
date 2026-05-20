@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.ProgressBar;
 using System.Threading.Tasks;
+using SecureChat.Client.Forms.Shared;
 using SecureChat.Client.Services;
 
 namespace SecureChat.Client
@@ -257,7 +258,11 @@ namespace SecureChat.Client
                         var (ok, _, err) = await ApiClient.Instance.PostAsync<object, System.Text.Json.JsonElement>("api/auth/resend-login-otp", payload);
                         if (!ok)
                         {
-                            this.Invoke(() => { ShowError(err); lnkResend.Enabled = true; });
+                            this.Invoke(() =>
+                            {
+                                lnkResend.Enabled = true;
+                                frmError.ShowApi(this, err, "Không thể gửi lại OTP. Vui lòng thử lại.");
+                            });
                             return;
                         }
 
@@ -268,12 +273,16 @@ namespace SecureChat.Client
                             _lblTimer.Text = $"({_countdown}s)";
                             StartCountdown();
                             HideError();
-                            MessageBox.Show(this, "OTP has been resent to your email.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            frmError.ShowSuccess(this, "Đã gửi lại OTP", "Mã xác nhận mới đã được gửi đến email của bạn.");
                         });
                     }
                     catch (Exception ex)
                     {
-                        this.Invoke(() => { ShowError("Gửi lại thất bại: " + ex.Message); lnkResend.Enabled = true; });
+                        this.Invoke(() =>
+                        {
+                            lnkResend.Enabled = true;
+                            frmError.ShowError(this, "Gửi lại thất bại", ex.Message);
+                        });
                     }
                 });
             };
@@ -335,7 +344,11 @@ namespace SecureChat.Client
                     var (ok, res, err) = await ApiClient.Instance.PostAsync<object, System.Text.Json.JsonElement>("api/auth/verify-login-otp", payload);
                     if (!ok)
                     {
-                        this.Invoke(() => { ShowError(err); _btnConfirm.Enabled = true; });
+                        this.Invoke(() =>
+                        {
+                            _btnConfirm.Enabled = true;
+                            frmError.ShowApi(this, err, "Mã OTP không đúng hoặc đã hết hạn.");
+                        });
                         return;
                     }
 
@@ -351,11 +364,19 @@ namespace SecureChat.Client
                         }
                     }
 
-                    this.Invoke(() => { ShowError("Xác thực thất bại."); _btnConfirm.Enabled = true; });
+                    this.Invoke(() =>
+                    {
+                        _btnConfirm.Enabled = true;
+                        frmError.ShowError(this, "Xác thực thất bại", "Phản hồi từ máy chủ không hợp lệ.");
+                    });
                 }
                 catch (Exception ex)
                 {
-                    this.Invoke(() => { ShowError("Lỗi: " + ex.Message); _btnConfirm.Enabled = true; });
+                    this.Invoke(() =>
+                    {
+                        _btnConfirm.Enabled = true;
+                        frmError.ShowError(this, "Lỗi kết nối", ex.Message);
+                    });
                 }
             });
         }
