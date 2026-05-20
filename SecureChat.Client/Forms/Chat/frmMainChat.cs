@@ -62,6 +62,7 @@ namespace SecureChat.Client
 
         // File transfer helper (moves low-level transfer logic out of UI)
         private readonly FileTransferService _fileTransfer = new();
+        private SecureChat.Client.Services.RealTime.SignalRClient? _signalRClient;
 
         private readonly HashSet<string> _processedMessageIds = new();
         private readonly object _processedMessageIdsLock = new();
@@ -190,6 +191,8 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
             }
+
+            await InitializeSignalRAsync();
         }
 
         protected override void OnResize(EventArgs e)
@@ -1299,6 +1302,18 @@ namespace SecureChat.Client
                                     this.BeginInvoke(new Action(() => BuildMessages()));
                                 }
                             }
+
+                            if (_signalRClient is not null)
+                            {
+                                try
+                                {
+                                    await _signalRClient.SendMessageAsync(_activeConvId, msgRes);
+                                }
+                                catch (Exception ex)
+                                {
+                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                }
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -1445,6 +1460,18 @@ namespace SecureChat.Client
                                             string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
                                             _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
                                             this.BeginInvoke(new Action(() => BuildMessages()));
+                                        }
+                                    }
+
+                                    if (_signalRClient is not null)
+                                    {
+                                        try
+                                        {
+                                            await _signalRClient.SendMessageAsync(_activeConvId, msgRes);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            this.BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
                                         }
                                     }
                                 }
@@ -1954,6 +1981,8 @@ namespace SecureChat.Client
             _lblChatStatus.Text = conv.IsGroup ? "5 members" : "last seen recently";
 
             BuildMessages();
+
+            _ = JoinConversationSignalRAsync(convId);
         }
 
         // --- Modified methods and new helpers: replace the existing BuildMessages and BuildBubble implementations
@@ -2576,6 +2605,96 @@ namespace SecureChat.Client
         private void OnReactMessage(string messageId)
         {
             MessageBox.Show("Tính năng thả cảm xúc (React) đang được phát triển!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private async Task InitializeSignalRAsync()
+        {
+            if (_signalRClient is not null)
+                return;
+
+            _signalRClient = new SecureChat.Client.Services.RealTime.SignalRClient(
+                () => Task.FromResult(SecureChat.Client.Services.ApiClient.Instance.CurrentAccessToken));
+
+            _signalRClient.MessageReceived += HandleSignalRMessageAsync;
+            _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
+            _signalRClient.Reconnected += async _ => await ReRegisterPublicKeyAsync();
+
+            try
+            {
+                await _signalRClient.StartAsync();
+                if (!string.IsNullOrWhiteSpace(_activeConvId))
+                    await _signalRClient.JoinConversationAsync(_activeConvId);
+            }
+            catch (Exception ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+            }
+        }
+
+        private async Task JoinConversationSignalRAsync(string conversationId)
+        {
+            if (_signalRClient is null)
+                return;
+
+            try
+            {
+                await _signalRClient.JoinConversationAsync(conversationId);
+            }
+            catch (Exception ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+            }
+        }
+
+        private async Task HandleSignalRMessageAsync(MessageResponse message)
+        {
+            if (!TryTrackMessageId(message.MessageID))
+                return;
+
+            if (message.Attachments is not null)
+            {
+                foreach (var attachment in message.Attachments)
+                    HandleHybridEncryptedAttachment(message.MessageID, attachment);
+            }
+
+            var content = message.Content ?? string.Empty;
+            bool isOut = !string.IsNullOrWhiteSpace(message.SenderID) && message.SenderID == _currentUserId;
+            var sender = message.SenderUsername ?? string.Empty;
+            var timeText = message.SentAt.ToString("h:mm tt");
+
+            BeginInvoke(new Action(() =>
+            {
+                _currentMsgs.Add((message.MessageID, content, isOut, timeText, sender));
+                BuildMessages();
+            }));
+
+            await Task.CompletedTask;
+        }
+
+        private Task HandleSignalRCallSignalAsync(string callId, string signal)
+        {
+            // Call signaling is handled by call UI components; no direct UI update needed here.
+            return Task.CompletedTask;
+        }
+
+        private async Task ReRegisterPublicKeyAsync()
+        {
+            var (pub, priv) = SecureChat.Shared.Security.KeyManager.GetKeyPair();
+            if (string.IsNullOrWhiteSpace(pub) || string.IsNullOrWhiteSpace(priv))
+            {
+                var (publicKey, privateKey) = SecureChat.Shared.Security.RSAEncryption.GenerateKeyPair();
+                SecureChat.Shared.Security.KeyManager.SetKeyPair(publicKey, privateKey);
+                pub = publicKey;
+            }
+
+            try
+            {
+                await SecureChat.Client.Services.ApiClient.Instance.RegisterPublicKeyAsync(pub);
+            }
+            catch (InvalidOperationException ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+            }
         }
 
         private bool TryTrackMessageId(string messageId)

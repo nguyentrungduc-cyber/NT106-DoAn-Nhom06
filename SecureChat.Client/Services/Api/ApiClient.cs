@@ -12,6 +12,7 @@ namespace SecureChat.Client.Services
         private const string DefaultBaseUrl = "http://localhost:5097/";
         private readonly HttpClient _httpClient;
         private static ApiClient _instance;
+        private string? _accessToken;
 
         // Singleton Pattern: Đảm bảo toàn bộ App chỉ dùng chung 1 instance HttpClient
         public static ApiClient Instance => _instance ??= new ApiClient();
@@ -63,12 +64,19 @@ namespace SecureChat.Client.Services
         public void SetAccessToken(string token)
         {
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            _accessToken = token;
         }
 
         public void ClearToken()
         {
             _httpClient.DefaultRequestHeaders.Authorization = null;
+            _accessToken = null;
         }
+
+        /// <summary>
+        /// Gets the current JWT access token, if set.
+        /// </summary>
+        public string? CurrentAccessToken => _accessToken;
 
         // Hybrid encryption: Register public key to server
         public async Task RegisterPublicKeyAsync(string publicKeyPem)
