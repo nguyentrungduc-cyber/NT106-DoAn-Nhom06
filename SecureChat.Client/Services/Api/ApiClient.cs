@@ -70,6 +70,49 @@ namespace SecureChat.Client.Services
             _httpClient.DefaultRequestHeaders.Authorization = null;
         }
 
+        // Hybrid encryption: Register public key to server
+        public async Task RegisterPublicKeyAsync(string publicKeyPem)
+        {
+            if (string.IsNullOrWhiteSpace(publicKeyPem))
+                throw new ArgumentException("Public key is required.", nameof(publicKeyPem));
+
+            var payload = new { publicKey = publicKeyPem };
+            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            var request = new HttpRequestMessage(HttpMethod.Patch, "api/users/me/public-key")
+            {
+                Content = content
+            };
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                throw new InvalidOperationException($"Không thể đăng ký public key: {error}");
+            }
+        }
+
+        // Hybrid encryption: Fetch receiver public key from server
+        public async Task<string?> GetPublicKeyAsync(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new ArgumentException("UserId is required.", nameof(userId));
+
+            var response = await _httpClient.GetAsync($"api/users/{userId}");
+            if (!response.IsSuccessStatusCode) return null;
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.GetProperty("publicKey").GetString();
+        }
+
+        public async Task<string?> GetCurrentUserIdAsync()
+        {
+            var response = await _httpClient.GetAsync("api/users/me");
+            if (!response.IsSuccessStatusCode) return null;
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.GetProperty("userID").GetString();
+        }
+
         // Attempts to notify server of logout (DELETE /api/auth/logout) and clears the local token.
         // This method never throws; failures are logged internally via return value.
         public async Task<bool> LogoutAsync()

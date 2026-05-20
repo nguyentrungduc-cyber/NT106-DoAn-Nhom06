@@ -77,7 +77,10 @@ namespace SecureChat.Controllers
 						ThumbnailURL = att.ThumbnailURL,
 						DurationSecs = att.DurationSecs,
 						FileIv       = att.FileIV,
-						ThumbnailIv  = att.ThumbnailIV
+                      ThumbnailIv  = att.ThumbnailIV,
+						EncryptedAesKey = att.EncryptedAesKey,
+						EncryptedAesIv  = att.EncryptedAesIv,
+						ReceiverId      = att.ReceiverId
 					});
 
 			if (req.MentionedMemberIDs is not null)
