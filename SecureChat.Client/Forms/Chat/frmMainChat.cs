@@ -39,8 +39,6 @@ namespace SecureChat.Client
         //private Panel _pnlMessages; // vùng hiển thị bong bóng tin nhắn
         private ChatPanel _pnlMessages;
         private readonly VoicePlaybackService _voicePlaybackService = new();
-        private readonly Dictionary<string, (byte[] Key, byte[] Iv)> _voiceKeyCache = new();
-        private readonly object _voiceKeyLock = new();
 
         private Panel _pnlInputBar; // thanh nhập tin nhắn bên dưới
         private TelegramTextBox _tbMessage; // TextBox gõ tin nhắn
@@ -64,6 +62,10 @@ namespace SecureChat.Client
 
         // File transfer helper (moves low-level transfer logic out of UI)
         private readonly FileTransferService _fileTransfer = new();
+        private SecureChat.Client.Services.RealTime.SignalRClient? _signalRClient;
+
+        private readonly HashSet<string> _processedMessageIds = new();
+        private readonly object _processedMessageIdsLock = new();
 
 
         // ── Settings menu controls ─────────────────
@@ -71,6 +73,7 @@ namespace SecureChat.Client
 
         // ── Mock data ──────────────────────────────
         private string _activeConvId = "1"; // // ID cuộc trò chuyện đang mở, mặc định là mở cuộc trò chuyện này
+        private string _currentUserId = string.Empty;
 
         private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new()
         {
@@ -155,6 +158,41 @@ namespace SecureChat.Client
             // _pnlMessages.Scroll += (s, e) => _pnlMessages.Invalidate(false); // false = không xóa nền cũ trước khi vẽ lại
             // _pnlMessages.MouseWheel += (s, e) => _pnlMessages.Invalidate(false);
 
+            // Hybrid encryption: Generate and register RSA keypair at startup
+            this.Load += FrmMainChat_Load;
+        }
+
+        private async void FrmMainChat_Load(object? sender, EventArgs e)
+        {
+            try
+            {
+                var me = await SecureChat.Client.Services.ApiClient.Instance.GetCurrentUserIdAsync();
+                if (!string.IsNullOrWhiteSpace(me))
+                    _currentUserId = me;
+            }
+            catch (Exception ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+            }
+
+            // Only generate and register if not already present
+            var (pub, priv) = SecureChat.Shared.Security.KeyManager.GetKeyPair();
+            if (string.IsNullOrEmpty(pub) || string.IsNullOrEmpty(priv))
+            {
+                var (publicKey, privateKey) = SecureChat.Shared.Security.RSAEncryption.GenerateKeyPair();
+                SecureChat.Shared.Security.KeyManager.SetKeyPair(publicKey, privateKey);
+                pub = publicKey;
+            }
+            try
+            {
+                await SecureChat.Client.Services.ApiClient.Instance.RegisterPublicKeyAsync(pub);
+            }
+            catch (Exception ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+            }
+
+            await InitializeSignalRAsync();
         }
 
         protected override void OnResize(EventArgs e)
@@ -1143,11 +1181,24 @@ namespace SecureChat.Client
                     var path = ofd.FileName;
                     if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
 
+                    string encryptedPath;
+                    byte[] aesKey;
+                    byte[] aesIv;
+                    try
+                    {
+                        (encryptedPath, aesKey, aesIv) = await SecureChat.Client.Services.VoiceEncryptionService.EncryptAsync(path);
+                    }
+                    catch (Exception ex)
+                    {
+                        this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Upload error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                        return;
+                    }
+
                     // Compute local SHA-256 before upload
                     string localSha = string.Empty;
                     try
                     {
-                        localSha = await FileService.ComputeSha256Async(path).ConfigureAwait(false);
+                        localSha = await FileService.ComputeSha256Async(encryptedPath).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -1159,11 +1210,11 @@ namespace SecureChat.Client
                     try
                     {
                         var client = ApiClient.Create();
-                        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        using var fs = new FileStream(encryptedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                         using var content = new MultipartFormDataContent();
                         var streamContent = new StreamContent(fs);
                         streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-                        content.Add(streamContent, "file", Path.GetFileName(path));
+                        content.Add(streamContent, "file", Path.GetFileName(encryptedPath));
 
                         var resp = await client.PostAsync("api/files/upload", content).ConfigureAwait(false);
                         var respStr = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -1178,7 +1229,7 @@ namespace SecureChat.Client
                         var doc = System.Text.Json.JsonDocument.Parse(respStr);
                         var root = doc.RootElement;
                         string url = root.GetProperty("url").GetString() ?? string.Empty;
-                        string fileName = root.GetProperty("fileName").GetString() ?? Path.GetFileName(path);
+                        string fileName = Path.GetFileName(path);
                         long fileSize = root.GetProperty("fileSize").GetInt64();
                         string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
 
@@ -1191,32 +1242,47 @@ namespace SecureChat.Client
                         // Build canonical payload and include it in Content so server-persisted message has the payload the UI expects
                         string canonicalPayload = $"file::{url}::{encodedFileName}::{fileSize}::{sha}"; 
 
-                        var sendReq = new
+                        CreateAttachmentRequest attachment;
+                        try
                         {
-                            Type = MessageType.File,
-                            Content = canonicalPayload,
-                            ContentIV = (string?)null,
-                            ReplyToID = (string?)null,
-                            OriginalSenderID = (string?)null,
-                            Attachments = new[] {
-                                new {
-                                    FileURL = url,
-                                    FileName = encodedFileName,
-                                    FileNameInStorage = fileNameInStorage,
-                                    FileType = fileType,
-                                    FileHash = sha,
-                                    FileSize = fileSize,
-                                    Width = (int?)null,
-                                    Height = (int?)null,
-                                    ThumbnailURL = (string?)null,
-                                    DurationSecs = (int?)null,
-                                    FileIV = (string?)null,
-                                    ThumbnailIV = (string?)null
-                                }
-                            }
-                        };
+                            attachment = await CreateHybridEncryptedAttachmentAsync(
+                                _activeConvId,
+                                url,
+                                encodedFileName,
+                                fileNameInStorage,
+                                fileType,
+                                sha,
+                                fileSize,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                aesKey,
+                                aesIv);
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            this.BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                            return;
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            this.BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                            return;
+                        }
 
-                        var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<object, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
+                        var sendReq = new SendMessageRequest(
+                            Type: MessageType.File,
+                            Content: canonicalPayload,
+                            ContentIV: null,
+                            ReplyToID: null,
+                            OriginalSenderID: null,
+                            Attachments: new List<CreateAttachmentRequest> { attachment },
+                            MentionedMemberIDs: null);
+
+                        var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<SendMessageRequest, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
                         if (!okMsg || msgRes == null)
                         {
                             var errMsg = string.IsNullOrWhiteSpace(msgErr) ? "Failed to create message on server." : msgErr;
@@ -1228,15 +1294,38 @@ namespace SecureChat.Client
                             var att = msgRes.Attachments != null && msgRes.Attachments.Count > 0 ? msgRes.Attachments[0] : null;
                             if (att != null)
                             {
-                                string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
-                                _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
-                                this.BeginInvoke(new Action(() => BuildMessages()));
+                                if (TryTrackMessageId(msgRes.MessageID))
+                                {
+                                    HandleHybridEncryptedAttachment(msgRes.MessageID, att);
+                                    string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
+                                    _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                    this.BeginInvoke(new Action(() => BuildMessages()));
+                                }
+                            }
+
+                            if (_signalRClient is not null)
+                            {
+                                try
+                                {
+                                    await _signalRClient.SendMessageAsync(_activeConvId, msgRes);
+                                }
+                                catch (Exception ex)
+                                {
+                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                }
                             }
                         }
                     }
                     catch (Exception ex)
                     {
                         this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Upload error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                    }
+                    finally
+                    {
+                        if (!string.IsNullOrWhiteSpace(encryptedPath) && File.Exists(encryptedPath))
+                        {
+                            try { File.Delete(encryptedPath); } catch { }
+                        }
                     }
                 }
                 catch { }
@@ -1313,32 +1402,47 @@ namespace SecureChat.Client
                                 // Build canonical voice payload
                                 string canonicalPayload = $"voice::{url}::{encodedFileName}::{duration}::{sha}";
 
-                                var sendReq = new
+                                CreateAttachmentRequest attachment;
+                                try
                                 {
-                                    Type = MessageType.File, // Or MessageType.Audio if available
-                                    Content = canonicalPayload,
-                                    ContentIV = (string?)null,
-                                    ReplyToID = (string?)null,
-                                    OriginalSenderID = (string?)null,
-                                    Attachments = new[] {
-                                        new {
-                                            FileURL = url,
-                                            FileName = encodedFileName,
-                                            FileNameInStorage = fileNameInStorage,
-                                            FileType = fileType,
-                                            FileHash = sha,
-                                            FileSize = fileSize,
-                                            Width = (int?)null,
-                                            Height = (int?)null,
-                                            ThumbnailURL = (string?)null,
-                                            DurationSecs = 0,
-                                            FileIV = (string?)null,
-                                            ThumbnailIV = (string?)null
-                                        }
-                                    }
-                                };
+                                    attachment = await CreateHybridEncryptedAttachmentAsync(
+                                        _activeConvId,
+                                        url,
+                                        encodedFileName,
+                                        fileNameInStorage,
+                                        fileType,
+                                        sha,
+                                        fileSize,
+                                        null,
+                                        null,
+                                        null,
+                                        0,
+                                        null,
+                                        null,
+                                        key,
+                                        iv);
+                                }
+                                catch (InvalidOperationException ex)
+                                {
+                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                    return;
+                                }
+                                catch (ArgumentException ex)
+                                {
+                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                    return;
+                                }
 
-                                var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<object, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
+                                var sendReq = new SendMessageRequest(
+                                    Type: MessageType.File, // Or MessageType.Audio if available
+                                    Content: canonicalPayload,
+                                    ContentIV: null,
+                                    ReplyToID: null,
+                                    OriginalSenderID: null,
+                                    Attachments: new List<CreateAttachmentRequest> { attachment },
+                                    MentionedMemberIDs: null);
+
+                                var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<SendMessageRequest, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
                                 if (!okMsg || msgRes == null)
                                 {
                                     var errMsg = string.IsNullOrWhiteSpace(msgErr) ? "Failed to create message on server." : msgErr;
@@ -1349,19 +1453,39 @@ namespace SecureChat.Client
                                     var att = msgRes.Attachments != null && msgRes.Attachments.Count > 0 ? msgRes.Attachments[0] : null;
                                     if (att != null)
                                     {
-                                        lock (_voiceKeyLock)
+                                        if (TryTrackMessageId(msgRes.MessageID))
                                         {
-                                            _voiceKeyCache[msgRes.MessageID] = (key, iv);
+                                            HandleHybridEncryptedAttachment(msgRes.MessageID, att);
+                                            SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, key, iv);
+                                            string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
+                                            _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                            this.BeginInvoke(new Action(() => BuildMessages()));
                                         }
-                                        string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
-                                        _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
-                                        this.BeginInvoke(new Action(() => BuildMessages()));
+                                    }
+
+                                    if (_signalRClient is not null)
+                                    {
+                                        try
+                                        {
+                                            await _signalRClient.SendMessageAsync(_activeConvId, msgRes);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            this.BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                        }
                                     }
                                 }
                             }
                             catch (Exception ex)
                             {
                                 this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Upload error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                            }
+                            finally
+                            {
+                                if (!string.IsNullOrWhiteSpace(encryptedPath) && File.Exists(encryptedPath))
+                                {
+                                    try { File.Delete(encryptedPath); } catch { }
+                                }
                             }
                         }
                         catch (Exception ex)
@@ -1784,6 +1908,11 @@ namespace SecureChat.Client
                             {
                                 // 1. Xóa Access Token để không gọi API được nữa
                                 ApiClient.Instance.SetAccessToken(null);
+                                SecureChat.Shared.Security.KeyManager.Clear();
+                                lock (_processedMessageIdsLock)
+                                {
+                                    _processedMessageIds.Clear();
+                                }
 
                                 // 2. Mở lại Form Login
                                 var loginForm = new frmLoginRegister(); // Thay bằng tên Form Login của bạn
@@ -1852,6 +1981,8 @@ namespace SecureChat.Client
             _lblChatStatus.Text = conv.IsGroup ? "5 members" : "last seen recently";
 
             BuildMessages();
+
+            _ = JoinConversationSignalRAsync(convId);
         }
 
         // --- Modified methods and new helpers: replace the existing BuildMessages and BuildBubble implementations
@@ -1939,21 +2070,15 @@ namespace SecureChat.Client
                     Top = 4,
                 };
 
+
                 fileCtrl.FileClicked += async (s, e) =>
                 {
-                    byte[] key;
-                    byte[] iv;
-                    lock (_voiceKeyLock)
+                    // Hybrid encryption: Use KeyManager for AES key lookup
+                    if (!SecureChat.Shared.Security.KeyManager.TryGetAesKey(messageId, out var key, out var iv))
                     {
-                        if (!_voiceKeyCache.TryGetValue(messageId, out var keyInfo))
-                        {
-                            BeginInvoke(new Action(() => MessageBox.Show(this, "Voice key not available for this message.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
-                            return;
-                        }
-                        key = keyInfo.Key;
-                        iv = keyInfo.Iv;
+                        BeginInvoke(new Action(() => MessageBox.Show(this, "Voice key not available for this message.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                        return;
                     }
-
                     try
                     {
                         await _voicePlaybackService.PlayAsync(url, expectedSha256, key, iv);
@@ -2482,6 +2607,107 @@ namespace SecureChat.Client
             MessageBox.Show("Tính năng thả cảm xúc (React) đang được phát triển!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
+        private async Task InitializeSignalRAsync()
+        {
+            if (_signalRClient is not null)
+                return;
+
+            _signalRClient = new SecureChat.Client.Services.RealTime.SignalRClient(
+                () => Task.FromResult(SecureChat.Client.Services.ApiClient.Instance.CurrentAccessToken));
+
+            _signalRClient.MessageReceived += HandleSignalRMessageAsync;
+            _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
+            _signalRClient.Reconnected += async _ => await ReRegisterPublicKeyAsync();
+
+            try
+            {
+                await _signalRClient.StartAsync();
+                if (!string.IsNullOrWhiteSpace(_activeConvId))
+                    await _signalRClient.JoinConversationAsync(_activeConvId);
+            }
+            catch (Exception ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+            }
+        }
+
+        private async Task JoinConversationSignalRAsync(string conversationId)
+        {
+            if (_signalRClient is null)
+                return;
+
+            try
+            {
+                await _signalRClient.JoinConversationAsync(conversationId);
+            }
+            catch (Exception ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+            }
+        }
+
+        private async Task HandleSignalRMessageAsync(MessageResponse message)
+        {
+            if (!TryTrackMessageId(message.MessageID))
+                return;
+
+            if (message.Attachments is not null)
+            {
+                foreach (var attachment in message.Attachments)
+                    HandleHybridEncryptedAttachment(message.MessageID, attachment);
+            }
+
+            var content = message.Content ?? string.Empty;
+            bool isOut = !string.IsNullOrWhiteSpace(message.SenderID) && message.SenderID == _currentUserId;
+            var sender = message.SenderUsername ?? string.Empty;
+            var timeText = message.SentAt.ToString("h:mm tt");
+
+            BeginInvoke(new Action(() =>
+            {
+                _currentMsgs.Add((message.MessageID, content, isOut, timeText, sender));
+                BuildMessages();
+            }));
+
+            await Task.CompletedTask;
+        }
+
+        private Task HandleSignalRCallSignalAsync(string callId, string signal)
+        {
+            // Call signaling is handled by call UI components; no direct UI update needed here.
+            return Task.CompletedTask;
+        }
+
+        private async Task ReRegisterPublicKeyAsync()
+        {
+            var (pub, priv) = SecureChat.Shared.Security.KeyManager.GetKeyPair();
+            if (string.IsNullOrWhiteSpace(pub) || string.IsNullOrWhiteSpace(priv))
+            {
+                var (publicKey, privateKey) = SecureChat.Shared.Security.RSAEncryption.GenerateKeyPair();
+                SecureChat.Shared.Security.KeyManager.SetKeyPair(publicKey, privateKey);
+                pub = publicKey;
+            }
+
+            try
+            {
+                await SecureChat.Client.Services.ApiClient.Instance.RegisterPublicKeyAsync(pub);
+            }
+            catch (InvalidOperationException ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+            }
+        }
+
+        private bool TryTrackMessageId(string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(messageId))
+                return false;
+
+            lock (_processedMessageIdsLock)
+            {
+                return _processedMessageIds.Add(messageId);
+            }
+        }
+
         // Simple modal edit dialog (returns true if user clicked OK)
         private bool TryShowEditDialog(string currentText, out string newText)
         {
@@ -2528,6 +2754,92 @@ namespace SecureChat.Client
             return false;
         }
 
+        private async Task<CreateAttachmentRequest> CreateHybridEncryptedAttachmentAsync(
+            string receiverId,
+            string fileUrl,
+            string fileName,
+            string fileNameInStorage,
+            string fileType,
+            string fileHash,
+            long fileSize,
+            int? width,
+            int? height,
+            string? thumbnailUrl,
+            int? durationSecs,
+            string? fileIv,
+            string? thumbnailIv,
+            byte[] aesKey,
+            byte[] aesIv)
+        {
+            if (string.IsNullOrWhiteSpace(receiverId))
+                throw new InvalidOperationException("Receiver id is required.");
+            if (string.IsNullOrWhiteSpace(fileUrl))
+                throw new InvalidOperationException("File URL is required.");
+            if (string.IsNullOrWhiteSpace(fileName))
+                throw new InvalidOperationException("File name is required.");
+            if (string.IsNullOrWhiteSpace(fileType))
+                throw new InvalidOperationException("File type is required.");
+            ArgumentNullException.ThrowIfNull(aesKey);
+            ArgumentNullException.ThrowIfNull(aesIv);
+            if (aesKey.Length == 0)
+                throw new InvalidOperationException("AES key is required.");
+            if (aesIv.Length == 0)
+                throw new InvalidOperationException("AES IV is required.");
+
+            var receiverPublicKey = await ApiClient.Instance.GetPublicKeyAsync(receiverId);
+            if (string.IsNullOrWhiteSpace(receiverPublicKey))
+                throw new InvalidOperationException("Receiver public key not available.");
+
+            byte[] encryptedAesKey = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesKey, receiverPublicKey);
+            byte[] encryptedAesIv = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesIv, receiverPublicKey);
+
+            return new CreateAttachmentRequest(
+                fileUrl,
+                fileName,
+                fileNameInStorage,
+                fileType,
+                fileHash,
+                fileSize,
+                width,
+                height,
+                thumbnailUrl,
+                durationSecs,
+                fileIv,
+                thumbnailIv,
+                Convert.ToBase64String(encryptedAesKey),
+                Convert.ToBase64String(encryptedAesIv),
+                receiverId);
+        }
+
+        private void HandleHybridEncryptedAttachment(string messageId, AttachmentResponse attachment)
+        {
+            if (string.IsNullOrWhiteSpace(messageId) || attachment is null)
+                return;
+            if (!string.IsNullOrWhiteSpace(attachment.ReceiverId) && attachment.ReceiverId != _currentUserId)
+                return;
+            if (string.IsNullOrWhiteSpace(attachment.EncryptedAesKey) || string.IsNullOrWhiteSpace(attachment.EncryptedAesIv))
+                return;
+
+            var (_, privateKey) = SecureChat.Shared.Security.KeyManager.GetKeyPair();
+            if (string.IsNullOrWhiteSpace(privateKey))
+                return;
+
+            try
+            {
+                byte[] aesKey = SecureChat.Shared.Security.RSAEncryption.Decrypt(Convert.FromBase64String(attachment.EncryptedAesKey), privateKey);
+                byte[] aesIv = SecureChat.Shared.Security.RSAEncryption.Decrypt(Convert.FromBase64String(attachment.EncryptedAesIv), privateKey);
+                SecureChat.Shared.Security.KeyManager.CacheAesKey(messageId, aesKey, aesIv);
+            }
+            catch (FormatException ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+            }
+            catch (System.Security.Cryptography.CryptographicException ex)
+            {
+                BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+            }
+        }
+
         // ════════════════════════════════════════════
         //  SEND MESSAGE
         // ════════════════════════════════════════════
@@ -2568,6 +2880,11 @@ namespace SecureChat.Client
             _wallpaperWatcher?.Dispose();
             _wallpaper?.Dispose();
             _chatMoreMenu?.Dispose();
+            SecureChat.Shared.Security.KeyManager.Clear();
+            lock (_processedMessageIdsLock)
+            {
+                _processedMessageIds.Clear();
+            }
             base.OnFormClosed(e);
         }
 

@@ -87,6 +87,21 @@ namespace SecureChat.Repositories
 			await db.SaveChangesAsync();
 		}
 
+		/// <summary>
+		/// Update the user's public key for hybrid encryption.
+		/// </summary>
+		public async Task UpdatePublicKeyAsync(string userID, string publicKey)
+		{
+			if (string.IsNullOrWhiteSpace(publicKey))
+				throw new ArgumentException("Public key is required.", nameof(publicKey));
+
+			var user = await db.Users.FindAsync(userID)
+				?? throw new KeyNotFoundException($"Không tìm thấy người dùng {userID}.");
+			user.PublicKey = publicKey;
+			user.UpdatedAt = DateTime.UtcNow;
+			await db.SaveChangesAsync();
+		}
+
 		public async Task DeleteAsync(string userID)
 		{
 			var user = await db.Users.FindAsync(userID);

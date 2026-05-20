@@ -12,6 +12,7 @@ namespace SecureChat.Client.Services
         private const string DefaultBaseUrl = "http://localhost:5097/";
         private readonly HttpClient _httpClient;
         private static ApiClient _instance;
+        private string? _accessToken;
 
         // Singleton Pattern: Đảm bảo toàn bộ App chỉ dùng chung 1 instance HttpClient
         public static ApiClient Instance => _instance ??= new ApiClient();
@@ -63,11 +64,61 @@ namespace SecureChat.Client.Services
         public void SetAccessToken(string token)
         {
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            _accessToken = token;
         }
 
         public void ClearToken()
         {
             _httpClient.DefaultRequestHeaders.Authorization = null;
+            _accessToken = null;
+        }
+
+        /// <summary>
+        /// Gets the current JWT access token, if set.
+        /// </summary>
+        public string? CurrentAccessToken => _accessToken;
+
+        // Hybrid encryption: Register public key to server
+        public async Task RegisterPublicKeyAsync(string publicKeyPem)
+        {
+            if (string.IsNullOrWhiteSpace(publicKeyPem))
+                throw new ArgumentException("Public key is required.", nameof(publicKeyPem));
+
+            var payload = new { publicKey = publicKeyPem };
+            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            var request = new HttpRequestMessage(HttpMethod.Patch, "api/users/me/public-key")
+            {
+                Content = content
+            };
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                throw new InvalidOperationException($"Không thể đăng ký public key: {error}");
+            }
+        }
+
+        // Hybrid encryption: Fetch receiver public key from server
+        public async Task<string?> GetPublicKeyAsync(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new ArgumentException("UserId is required.", nameof(userId));
+
+            var response = await _httpClient.GetAsync($"api/users/{userId}");
+            if (!response.IsSuccessStatusCode) return null;
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.GetProperty("publicKey").GetString();
+        }
+
+        public async Task<string?> GetCurrentUserIdAsync()
+        {
+            var response = await _httpClient.GetAsync("api/users/me");
+            if (!response.IsSuccessStatusCode) return null;
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.GetProperty("userID").GetString();
         }
 
         // Attempts to notify server of logout (DELETE /api/auth/logout) and clears the local token.

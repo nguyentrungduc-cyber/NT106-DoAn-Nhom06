@@ -75,7 +75,11 @@ namespace SecureChat.Client
             };
             formsTimer.Start();
 
-            Application.ApplicationExit += (_, __) => Log("[CLIENT] Application exiting");
+            Application.ApplicationExit += (_, __) =>
+            {
+                SecureChat.Shared.Security.KeyManager.Clear();
+                Log("[CLIENT] Application exiting");
+            };
 
             // Launch login form (manual flow). Do not automate any actions.
             Log("[CLIENT] Opening login form");

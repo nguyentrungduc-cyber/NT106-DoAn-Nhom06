@@ -84,6 +84,16 @@ namespace SecureChat.Controllers
 			return NoContent();
 		}
 
+		[HttpPatch("me/public-key")]
+		public async Task<IActionResult> UpdatePublicKey([FromBody] UpdatePublicKeyRequest req)
+		{
+			if (req is null || string.IsNullOrWhiteSpace(req.PublicKey))
+				return BadRequest(new { error = "Public key is required." });
+
+			await users.UpdatePublicKeyAsync(Me, req.PublicKey);
+			return NoContent();
+		}
+
 		[HttpDelete("me")]
 		public async Task<IActionResult> DeleteAccount()
 		{

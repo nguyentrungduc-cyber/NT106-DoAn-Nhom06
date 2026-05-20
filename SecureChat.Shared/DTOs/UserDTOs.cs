@@ -20,6 +20,10 @@ namespace SecureChat.DTOs
 		[Required] string AvatarURL
 	);
 
+	public record UpdatePublicKeyRequest(
+		[Required] string PublicKey
+	);
+
 	public record UserResponse(
 		string UserID,
 		string Username,
