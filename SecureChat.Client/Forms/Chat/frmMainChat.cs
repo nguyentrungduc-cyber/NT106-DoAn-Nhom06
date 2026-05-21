@@ -31,6 +31,9 @@ namespace SecureChat.Client
         private Button _btnHamburger; // nút ☰ mở menu
         private TelegramTextBox _tbSearch; // ô tìm kiếm
         private Panel _pnlConvList; // danh sách cuộc trò chuyện
+        private Panel _pnlEmptyState; // trạng thái trống khi chưa có cuộc trò chuyện
+        private Label _lblEmptyState;
+        private Button _btnNewMessage;
 
         // ── Chat area controls ─────────────────────
 
@@ -44,6 +47,8 @@ namespace SecureChat.Client
         private TelegramTextBox _tbMessage; // TextBox gõ tin nhắn
         private Label _lblChatName, _lblChatStatus; // tên và trạng thái người nhận
         private AvatarControl _chatAvatar; //  avatar tròn người nhận
+        private Panel _pnlChatEmpty;
+        private Label _lblChatEmpty;
 
         private ContextMenuStrip _chatMoreMenu;
         private ToolStripMenuItem _mnuMuteNotifications;
@@ -67,27 +72,22 @@ namespace SecureChat.Client
         private readonly HashSet<string> _processedMessageIds = new();
         private readonly object _processedMessageIdsLock = new();
 
+        // Sync tin nhắn từ MariaDB (server) -> Client
+        private readonly SecureChat.Client.Services.Api.MessageService _messageService = new();
+        private readonly SecureChat.Client.Services.MessageDecryptor _decryptor = new();
+        private readonly Dictionary<string, string> _myMemberIdByConv = new();
+        private readonly HashSet<string> _syncedConversations = new();
+        private const int MessageSyncPageSize = 50;
+
 
         // ── Settings menu controls ─────────────────
         private Panel _pnlSettingsHeader;
 
         // ── Mock data ──────────────────────────────
-        private string _activeConvId = "1"; // // ID cuộc trò chuyện đang mở, mặc định là mở cuộc trò chuyện này
+        private string _activeConvId = string.Empty; // ID cuộc trò chuyện đang mở (rỗng cho tới khi sync xong từ MariaDB)
         private string _currentUserId = string.Empty;
 
-        private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new()
-        {
-            /*
-            ("1", "Telegram",    "Quack Cyber added Sim 18a3",     "10:10 PM", 0,  false),
-            ("2", "dk test",     "Quack Cyber: Hello hello hello!", "12:51 PM", 100,  false),
-            ("3", "Tuấn Thành",  "Sure",                           "10 Mar",   0,  false),
-            */
-
-            // Đổi IsGroup từ false → true cho "dk test", và thêm conv nhóm mới
-            ("1", "Telegram",    "Quack Cyber added Sim 18a3",     "10:10 PM", 0,   false),
-            ("2", "NT106 Nhóm 6","Hang Hieu: tui vừa làm với ô đó","8:30 AM",  100,   true),   // ← nhóm
-            ("3", "Tuấn Thành",  "Sure",                           "10 Mar",   0,   false),
-         };
+        private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new();
 
         /*
         private readonly List<(string Text, bool Out, string Time)> _msgs = new()
@@ -108,39 +108,28 @@ namespace SecureChat.Client
         private SecureChat.Client.Services.AudioRecorderService? _audioRecorder;
 
         // Khai báo Dictionary với Tuple 5 tham số (Thêm Id ở đầu)
-        private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new()
-        {
-            ["1"] = new()
-    {
-        ("msg_1", "Hello hello hello!", false, "12:51 PM", "Hang Hieu"),
-        ("msg_2", "Tuấn Thành you've been removed from the group chat", false, "1:01 PM", "Bot"),
-        ("msg_3", "Quack Cyber added Sim 18a3", false, "10:10 PM", "Bot"),
-        ("msg_4", "Tuấn Thành, you've been wonderful friends for so long. I could never imagine you doing this to me.", true, "10:15 PM", ""),
-        ("msg_5", "Search it", true, "10:16 PM", ""),
-        ("msg_6", "file::abcdef::abcdef::14.5 KB", false, "1:57 AM", "Bot")
-    },
-            ["2"] = new()
-    {
-        ("msg_7", "ê mấy ông ơi nộp bài chưa", false, "8:28 AM", "Hang Hieu"),
-        ("msg_8", "chưa ông ơi", false, "8:29 AM", "Tuấn Thành"),
-        ("msg_9", "add new contact á", false, "8:29 AM", "Hang Hieu"),
-        ("msg_10", "tui vừa làm với ô đó", false, "8:30 AM", "Hang Hieu"),
-        ("msg_11", "nó tự chấp nhận kb luôn mà", true, "8:30 AM", ""),
-        ("msg_12", "af af", false, "8:31 AM", "Hang Hieu"),
-        ("msg_13", "oke chút nữa tui push lên", true, "8:32 AM", ""),
-        ("msg_14", "ừ nhanh lên nha còn test", false, "8:33 AM", "Tuấn Thành"),
-    },
-            ["3"] = new()
-    {
-        ("msg_15", "Hey, lâu rồi không gặp!", false, "10 Mar", "Tuấn Thành"),
-        ("msg_16", "Ừ, dạo này bận lắm", true, "10 Mar", ""),
-        ("msg_17", "Sure", false, "10 Mar", "Tuấn Thành"),
-    },
-        };
+        // Sau khi sync từ MariaDB, dictionary này được điền runtime
+        // bằng MessageDecryptor.ProcessAsync (E2EE: server không thấy plaintext).
+        private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new();
 
         // Cập nhật lại _currentMsgs sang Tuple 5 tham số
-        private List<(string Id, string Text, bool Out, string Time, string Sender)> _currentMsgs =>
-            _allMsgs.TryGetValue(_activeConvId, out var list) ? list : new();
+        // Lưu ý: trả về list được lưu trong _allMsgs để các thao tác Add/Update
+        // (gửi tin, nhận realtime) được phản ánh trực tiếp.
+        private List<(string Id, string Text, bool Out, string Time, string Sender)> _currentMsgs
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_activeConvId))
+                    return new List<(string, string, bool, string, string)>();
+
+                if (!_allMsgs.TryGetValue(_activeConvId, out var list))
+                {
+                    list = new List<(string Id, string Text, bool Out, string Time, string Sender)>();
+                    _allMsgs[_activeConvId] = list;
+                }
+                return list;
+            }
+        }
 
         private readonly Dictionary<string, bool> _settingsToggles = new(); // công tắc Night mode
 
@@ -168,7 +157,10 @@ namespace SecureChat.Client
             {
                 var me = await SecureChat.Client.Services.ApiClient.Instance.GetCurrentUserIdAsync();
                 if (!string.IsNullOrWhiteSpace(me))
+                {
                     _currentUserId = me;
+                    _decryptor.CurrentUserId = me;
+                }
             }
             catch (Exception ex)
             {
@@ -191,6 +183,9 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
             }
+
+            // Sync danh sách conversation từ MariaDB.
+            await SyncConversationsAsync();
 
             await InitializeSignalRAsync();
         }
@@ -256,8 +251,12 @@ namespace SecureChat.Client
             };
             AdjustLayout();
 
-            LoadConversation("1"); // tải cuộc trò chuyện đầu tiên
-                                   // inside InitUI(), after LoadConversation("1");
+            // Load mock data trước để UI có nội dung đẹp ngay khi mở form.
+            // Sau khi SyncConversationsAsync (trong FrmMainChat_Load) chạy xong:
+            //  - Nếu server có conversation thật -> mock bị replace.
+            //  - Nếu server trả rỗng / lỗi -> UI vẫn giữ mock (mark là 'đã sync')
+            //    để không gọi API per-conv (sẽ 401/404).
+            LoadConversation(_activeConvId);
             SetupWallpaperWatcher(); // 1. Bắt đầu theo dõi thư mục ảnh
 
             // 2. Nạp hình nền lần đầu tiên
@@ -357,11 +356,50 @@ namespace SecureChat.Client
 
             // ── Conversation list ─────────────────────
             _pnlConvList = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+
+            _pnlEmptyState = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Visible = false };
+            _lblEmptyState = new Label
+            {
+                Text = "You have no conversations yet.",
+                Font = TG.FontSemiBold(10f),
+                ForeColor = TG.TextSecondary,
+                AutoSize = true,
+                BackColor = Color.Transparent
+            };
+            _btnNewMessage = new Button
+            {
+                Text = "New Message",
+                FlatStyle = FlatStyle.Flat,
+                BackColor = TG.Blue,
+                ForeColor = Color.White,
+                Font = TG.FontSemiBold(10f),
+                Size = new Size(220, 38),
+                Cursor = Cursors.Hand
+            };
+            _btnNewMessage.FlatAppearance.BorderSize = 0;
+            _btnNewMessage.Click += async (s, e) =>
+            {
+                try
+                {
+                    await OpenNewMessageAsync();
+                }
+                catch (InvalidOperationException ex)
+                {
+                    MessageBox.Show(this, ex.Message, "New message", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            };
+            _pnlEmptyState.Controls.Add(_lblEmptyState);
+            _pnlEmptyState.Controls.Add(_btnNewMessage);
+            _pnlEmptyState.Resize += (_, __) => LayoutEmptyState();
+
             BuildConvList();
 
+            _pnlSidebar.Controls.Add(_pnlEmptyState);
             _pnlSidebar.Controls.Add(_pnlConvList);
             _pnlSidebar.Controls.Add(pnlSearch);
             _pnlSidebar.Controls.Add(pnlHeader);
+
+            UpdateEmptyStateUI();
         }
 
         private void BuildConvList()
@@ -383,6 +421,41 @@ namespace SecureChat.Client
                 _pnlConvList.Controls.Add(row);
                 y += 68;
             }
+
+            UpdateEmptyStateUI();
+        }
+
+        private void UpdateEmptyStateUI()
+        {
+            bool hasConversations = _convs.Count > 0;
+            _pnlConvList.Visible = hasConversations;
+            _pnlEmptyState.Visible = !hasConversations;
+
+            if (!hasConversations)
+                LayoutEmptyState();
+        }
+
+        private void LayoutEmptyState()
+        {
+            if (_pnlEmptyState.Width == 0 || _pnlEmptyState.Height == 0)
+                return;
+
+            _lblEmptyState.Location = new Point(
+                Math.Max(0, (_pnlEmptyState.Width - _lblEmptyState.Width) / 2),
+                Math.Max(0, (_pnlEmptyState.Height / 2) - _lblEmptyState.Height - 20));
+
+            _btnNewMessage.Location = new Point(
+                Math.Max(0, (_pnlEmptyState.Width - _btnNewMessage.Width) / 2),
+                Math.Max(0, _pnlEmptyState.Height - _btnNewMessage.Height - 20));
+        }
+
+        private async Task OpenNewMessageAsync()
+        {
+            using var dlg = new SecureChat.Client.frmContacts();
+            dlg.StartPosition = FormStartPosition.CenterParent;
+            dlg.ShowDialog(this);
+
+            await SyncConversationsAsync();
         }
 
         private Panel BuildConvRow(string id, string name, string preview, string time, int unread, bool isGroup)
@@ -641,6 +714,24 @@ namespace SecureChat.Client
                 BackColor = Color.FromArgb(0xDB, 0xE8, 0xD5), // Thêm dòng này
             };
 
+            _pnlChatEmpty = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent,
+                Visible = false
+            };
+
+            _lblChatEmpty = new Label
+            {
+                AutoSize = true,
+                BackColor = Color.FromArgb(220, 255, 255, 255),
+                ForeColor = TG.TextSecondary,
+                Font = TG.FontSemiBold(9.5f),
+                Padding = new Padding(12, 6, 12, 6)
+            };
+            _pnlChatEmpty.Controls.Add(_lblChatEmpty);
+            _pnlChatEmpty.Resize += (_, __) => LayoutChatEmptyState();
+
 
             typeof(Panel).InvokeMember("DoubleBuffered",
             System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
@@ -653,11 +744,14 @@ namespace SecureChat.Client
             BuildInputBar();
 
             _pnlChat.Controls.Add(_pnlMessages);
+            _pnlChat.Controls.Add(_pnlChatEmpty);
             _pnlChat.Controls.Add(_pnlInputBar);
             _pnlChat.Controls.Add(_pnlChatHeader);
 
             // _pnlMessages.Resize += (s, e) => _pnlMessages.Invalidate(); // bỏ vì đã có PaintChatBackground tự xử lý.
             _pnlMessages.Resize += (s, e) => UpdateCachedBackground();
+
+            UpdateChatEmptyStateUI();
         }
 
         private void EnsureChatMoreMenu()
@@ -886,26 +980,101 @@ namespace SecureChat.Client
             BuildMessages();
         }
 
-        private void ClearHistory()
+        private async void ClearHistory()
         {
             using var dlg = new SecureChat.Client.Forms.Chat.frmClearHistory(_lblChatName.Text);
             if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.DeleteConfirmed)
                 return;
 
-            _currentMsgs.Clear();
-            BuildMessages();
+            if (!await TryRemoveConversationOnServerAsync(_activeConvId))
+            {
+                var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
+                MessageBox.Show(this,
+                    resources.GetString("ChatDeleteFailed") ?? "Unable to delete the conversation right now.",
+                    resources.GetString("ChatDeleteTitle") ?? "Clear history",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            RemoveConversationLocal(_activeConvId);
         }
 
-        private void DeleteAndLeave()
+        private async void DeleteAndLeave()
         {
             var members = new[] { "Duck Cyber", "Sim 18a3", "Tuấn Thành", "Hoang Hieu" };
             using var dlg = new SecureChat.Client.Forms.Chat.frmLeaveGroup(_lblChatName.Text, "Duck Cyber", members);
             if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
                 return;
 
-            _currentMsgs.Clear();
-            BuildMessages();
-            _lblChatStatus.Text = $"You left this group · New owner: {dlg.AppointedAdminName}";
+            if (!await TryRemoveConversationOnServerAsync(_activeConvId))
+            {
+                var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
+                MessageBox.Show(this,
+                    resources.GetString("ChatLeaveFailed") ?? "Unable to leave the group right now.",
+                    resources.GetString("ChatLeaveTitle") ?? "Leave group",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            RemoveConversationLocal(_activeConvId);
+        }
+
+        private async Task<bool> TryRemoveConversationOnServerAsync(string conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                return false;
+
+            var (deletedOk, deletedErr) = await ApiClient.Instance.DeleteAsync($"api/conversations/{conversationId}");
+            if (deletedOk)
+                return true;
+
+            var (leftOk, _, leftErr) = await ApiClient.Instance.PostAsync<object, object>(
+                $"api/conversations/{conversationId}/leave", new { });
+
+            if (leftOk)
+                return true;
+
+            if (!string.IsNullOrWhiteSpace(leftErr))
+            {
+                var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
+                MessageBox.Show(this,
+                    leftErr,
+                    resources.GetString("ChatLeaveTitle") ?? "Leave conversation",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(deletedErr))
+            {
+                var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
+                MessageBox.Show(this,
+                    deletedErr,
+                    resources.GetString("ChatDeleteTitle") ?? "Delete conversation",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            return false;
+        }
+
+        private void RemoveConversationLocal(string conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                return;
+
+            _convs.RemoveAll(c => c.Id == conversationId);
+            _allMsgs.Remove(conversationId);
+            _syncedConversations.Remove(conversationId);
+            _myMemberIdByConv.Remove(conversationId);
+
+            if (_activeConvId == conversationId)
+                _activeConvId = _convs.Count > 0 ? _convs[0].Id : string.Empty;
+
+            BuildConvList();
+
+            if (!string.IsNullOrWhiteSpace(_activeConvId))
+                LoadConversation(_activeConvId);
+            else
+                UpdateChatEmptyStateUI();
         }
 
         // Cache ảnh nền để không load lại mỗi lần paint
@@ -1971,18 +2140,216 @@ namespace SecureChat.Client
         // ════════════════════════════════════════════
         //  LOAD CONVERSATION
         // ════════════════════════════════════════════
-        private void LoadConversation(string convId)
+        private async void LoadConversation(string convId)
         {
+            if (string.IsNullOrWhiteSpace(convId))
+            {
+                UpdateChatEmptyStateUI();
+                return;
+            }
+
             var conv = _convs.Find(c => c.Id == convId);
-            if (conv == default) return;
+            if (conv == default)
+                return;
+
+            UpdateChatEmptyStateUI();
 
             _chatAvatar.SetName(conv.Name);
             _lblChatName.Text = conv.Name;
-            _lblChatStatus.Text = conv.IsGroup ? "5 members" : "last seen recently";
+            _lblChatStatus.Text = conv.IsGroup
+                ? (conv.Unread > 0 ? $"{conv.Unread} new messages" : "5 members, 2 online")
+                : "last seen recently";
 
+            // Đảm bảo có list (rỗng nếu chưa sync) trước khi vẽ.
             BuildMessages();
 
-            _ = JoinConversationSignalRAsync(convId);
+            // Sync tin nhắn từ MariaDB (chỉ làm 1 lần / conv) rồi join SignalR group
+            // để nhận realtime cho các tin sau đó.
+            await SyncMessagesForActiveConversationAsync(convId);
+            await JoinConversationSignalRAsync(convId);
+        }
+
+        /// <summary>
+        /// GET /api/conversations và build sidebar từ dữ liệu thật.
+        /// </summary>
+        private async Task SyncConversationsAsync()
+        {
+            var (ok, list, _) = await _messageService.GetMyConversationsAsync();
+
+            if (!ok || list is null)
+            {
+                BeginInvoke(new Action(UpdateChatEmptyStateUI));
+                return;
+            }
+
+            BeginInvoke(new Action(() =>
+            {
+                // Có data thật -> drop mock và replace.
+                _convs.Clear();
+                _allMsgs.Clear();
+                _syncedConversations.Clear();
+                _myMemberIdByConv.Clear();
+
+                foreach (var c in list)
+                {
+                    string display = !string.IsNullOrWhiteSpace(c.Name)
+                        ? c.Name!
+                        : (c.Type == ConversationType.Group ? "Group" : "Direct chat");
+                    string time = c.LastActivityAt?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
+                    bool isGroup = c.Type == ConversationType.Group;
+                    _convs.Add((c.ConversationID, display, string.Empty, time, 0, isGroup));
+                }
+
+                BuildConvList();
+
+                if (_convs.Count > 0)
+                {
+                    _activeConvId = _convs[0].Id;
+                    BuildConvList();
+                    LoadConversation(_activeConvId);
+                }
+                else
+                {
+                    _activeConvId = string.Empty;
+                    BuildConvList();
+                    UpdateChatEmptyStateUI();
+                }
+            }));
+        }
+
+        /// <summary>
+        /// Sync messages cho conversation đang active. Idempotent — chỉ pull
+        /// 1 lần / conv (sau đó SignalR sẽ đẩy realtime). Gọi lại không gây
+        /// duplicate nhờ <see cref="TryTrackMessageId"/>.
+        /// </summary>
+        private async Task SyncMessagesForActiveConversationAsync(string convId)
+        {
+            if (string.IsNullOrWhiteSpace(convId))
+                return;
+            if (_syncedConversations.Contains(convId))
+                return;
+
+            // Cần biết MemberID của user hiện tại trong conv này để xác định "isOut".
+            var (memOk, me, _) = await _messageService.GetMyMembershipAsync(convId);
+            string? myMemberId = (memOk && me is not null) ? me.MemberID : null;
+            if (!string.IsNullOrWhiteSpace(myMemberId))
+                _myMemberIdByConv[convId] = myMemberId!;
+
+            if (string.IsNullOrWhiteSpace(myMemberId))
+            {
+                BeginInvoke(new Action(() =>
+                    MessageBox.Show(this, "Không thể xác định thành viên hiện tại trong cuộc trò chuyện.",
+                        "Sync messages", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                return;
+            }
+
+            var (ok, list, err) = await FetchAllMessagesAsync(convId);
+            if (!ok || list is null)
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (!string.IsNullOrWhiteSpace(err))
+                        MessageBox.Show(this, err, "Sync messages", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }));
+                return;
+            }
+
+            var decrypted = new List<SecureChat.Client.Services.DecryptedMessage>();
+            foreach (var msg in list)
+            {
+                if (!TryTrackMessageId(msg.MessageID))
+                    continue;
+
+                var dm = await _decryptor.ProcessAsync(msg, myMemberId);
+                decrypted.Add(dm);
+            }
+
+            decrypted.Sort((a, b) => a.Raw.SentAt.CompareTo(b.Raw.SentAt));
+
+            _syncedConversations.Add(convId);
+
+            BeginInvoke(new Action(() =>
+            {
+                if (!_allMsgs.TryGetValue(convId, out var existing))
+                {
+                    existing = new List<(string Id, string Text, bool Out, string Time, string Sender)>();
+                    _allMsgs[convId] = existing;
+                }
+
+                // Prepend phần đã sync (giữ thứ tự cũ -> mới) lên các tin đã add cục bộ.
+                if (existing.Count == 0)
+                {
+                    foreach (var dm in decrypted)
+                        existing.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
+                }
+                else
+                {
+                    var merged = new List<(string Id, string Text, bool Out, string Time, string Sender)>();
+                    foreach (var dm in decrypted)
+                        merged.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
+                    foreach (var m in existing)
+                        if (!decrypted.Exists(d => d.Id == m.Id))
+                            merged.Add(m);
+                    _allMsgs[convId] = merged;
+                }
+
+                if (decrypted.Count > 0)
+                    UpdateConversationPreview(convId, decrypted[^1]);
+
+                if (convId == _activeConvId)
+                    BuildMessages();
+            }));
+        }
+
+        private async Task<(bool Ok, List<MessageResponse>? Data, string Err)> FetchAllMessagesAsync(string convId)
+        {
+            var all = new List<MessageResponse>();
+            DateTime? before = null;
+            DateTime? lastBefore = null;
+            string lastError = string.Empty;
+
+            while (true)
+            {
+                var (ok, page, err) = await _messageService.GetMessagesAsync(convId, MessageSyncPageSize, before);
+                if (!ok || page is null)
+                {
+                    lastError = err;
+                    return (false, null, lastError);
+                }
+
+                if (page.Count == 0)
+                    break;
+
+                all.AddRange(page);
+
+                var oldest = page[^1];
+                var nextBefore = oldest.SentAt.AddTicks(1);
+                if (lastBefore.HasValue && nextBefore <= lastBefore.Value)
+                    break;
+
+                before = nextBefore;
+                lastBefore = nextBefore;
+
+                if (page.Count < MessageSyncPageSize)
+                    break;
+            }
+
+            return (true, all, string.Empty);
+        }
+
+        private void UpdateConversationPreview(string convId, SecureChat.Client.Services.DecryptedMessage latest)
+        {
+            int idx = _convs.FindIndex(c => c.Id == convId);
+            if (idx < 0)
+                return;
+
+            var c = _convs[idx];
+            string preview = string.IsNullOrEmpty(latest.Sender) || latest.Out
+                ? latest.Text
+                : $"{latest.Sender}: {latest.Text}";
+
+            _convs[idx] = (c.Id, c.Name, preview, latest.Raw.SentAt.ToLocalTime().ToString("h:mm tt"), c.Unread, c.IsGroup);
+            BuildConvList();
         }
 
         // --- Modified methods and new helpers: replace the existing BuildMessages and BuildBubble implementations
@@ -2042,6 +2409,34 @@ namespace SecureChat.Client
 
             if (bubbles.Count > 0)
                 _pnlMessages.ScrollControlIntoView(bubbles[^1]);
+        }
+
+        private void UpdateChatEmptyStateUI()
+        {
+            bool hasActiveConversation = !string.IsNullOrWhiteSpace(_activeConvId)
+                && _convs.Exists(c => c.Id == _activeConvId);
+
+            _pnlChatHeader.Visible = hasActiveConversation;
+            _pnlInputBar.Visible = hasActiveConversation;
+            _pnlChatEmpty.Visible = !hasActiveConversation;
+
+            if (_pnlChatEmpty.Visible)
+            {
+                var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
+                _lblChatEmpty.Text = resources.GetString("ChatEmptySelectMessage")
+                    ?? "Select a chat to start messaging";
+                LayoutChatEmptyState();
+            }
+        }
+
+        private void LayoutChatEmptyState()
+        {
+            if (!_pnlChatEmpty.Visible)
+                return;
+
+            _lblChatEmpty.Location = new Point(
+                Math.Max(0, (_pnlChatEmpty.Width - _lblChatEmpty.Width) / 2),
+                Math.Max(0, (_pnlChatEmpty.Height - _lblChatEmpty.Height) / 2));
         }
 
         // Updated BuildBubble signature: added messageIndex to identify which message the context menu acts on
@@ -2635,7 +3030,6 @@ namespace SecureChat.Client
         {
             if (_signalRClient is null)
                 return;
-
             try
             {
                 await _signalRClient.JoinConversationAsync(conversationId);
@@ -2651,24 +3045,45 @@ namespace SecureChat.Client
             if (!TryTrackMessageId(message.MessageID))
                 return;
 
-            if (message.Attachments is not null)
+            // Resolve memberId của user hiện tại trong conv để xác định "isOut".
+            // Nếu chưa biết (do chưa từng mở conv này) thì fetch /members/me.
+            if (!_myMemberIdByConv.TryGetValue(message.ConversationID, out var myMemberId))
             {
-                foreach (var attachment in message.Attachments)
-                    HandleHybridEncryptedAttachment(message.MessageID, attachment);
+                var (ok, me, _) = await _messageService.GetMyMembershipAsync(message.ConversationID);
+                if (ok && me is not null)
+                {
+                    myMemberId = me.MemberID;
+                    _myMemberIdByConv[message.ConversationID] = myMemberId;
+                }
             }
 
-            var content = message.Content ?? string.Empty;
-            bool isOut = !string.IsNullOrWhiteSpace(message.SenderID) && message.SenderID == _currentUserId;
-            var sender = message.SenderUsername ?? string.Empty;
-            var timeText = message.SentAt.ToString("h:mm tt");
+            var dm = await _decryptor.ProcessAsync(message, myMemberId);
 
             BeginInvoke(new Action(() =>
             {
-                _currentMsgs.Add((message.MessageID, content, isOut, timeText, sender));
-                BuildMessages();
-            }));
+                if (!_allMsgs.TryGetValue(message.ConversationID, out var list))
+                {
+                    list = new List<(string Id, string Text, bool Out, string Time, string Sender)>();
+                    _allMsgs[message.ConversationID] = list;
+                }
+                list.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
 
-            await Task.CompletedTask;
+                // Cập nhật preview ở sidebar (best-effort).
+                int idx = _convs.FindIndex(c => c.Id == message.ConversationID);
+                if (idx >= 0)
+                {
+                    var c = _convs[idx];
+                    string preview = string.IsNullOrEmpty(dm.Sender) || dm.Out
+                        ? dm.Text
+                        : $"{dm.Sender}: {dm.Text}";
+                    int unread = (message.ConversationID == _activeConvId || dm.Out) ? c.Unread : c.Unread + 1;
+                    _convs[idx] = (c.Id, c.Name, preview, dm.Time, unread, c.IsGroup);
+                    BuildConvList();
+                }
+
+                if (message.ConversationID == _activeConvId)
+                    BuildMessages();
+            }));
         }
 
         private Task HandleSignalRCallSignalAsync(string callId, string signal)
@@ -2881,6 +3296,9 @@ namespace SecureChat.Client
             _wallpaper?.Dispose();
             _chatMoreMenu?.Dispose();
             SecureChat.Shared.Security.KeyManager.Clear();
+            _decryptor.ForgetAll();
+            _myMemberIdByConv.Clear();
+            _syncedConversations.Clear();
             lock (_processedMessageIdsLock)
             {
                 _processedMessageIds.Clear();

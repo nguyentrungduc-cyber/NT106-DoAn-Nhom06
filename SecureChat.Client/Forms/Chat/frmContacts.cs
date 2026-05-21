@@ -477,31 +477,8 @@ namespace SecureChat.Client
                 AutoEllipsis = true
             };
 
-            // 4. Nút tin nhắn
-            var btnMsg = new TelegramButton
-            {
-                Text = "💬",
-                Width = 36,
-                Height = 28,
-                Font = new Font("Segoe UI Emoji", 11f),
-                Radius = TG.RadiusSmall,
-
-                // NormalColor = Color.Transparent,
-                NormalColor = Color.White,
-
-                TextColor = TG.Blue,
-                Cursor = Cursors.Hand
-            };
-
-            btnMsg.Click += (s, e) =>
-            {
-                var mainForm = Application.OpenForms["MainForm"] as frmMainChat ?? new frmMainChat();
-                mainForm.Show();
-                mainForm.BringToFront();
-            };
-
-            // 5. Thêm các control vào panel
-            pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
+            // 4. Thêm các control vào panel
+            pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub });
 
             // 6. Vẽ đường kẻ chia hàng (Divider)
             pnl.Paint += (s, e) =>
@@ -516,12 +493,8 @@ namespace SecureChat.Client
             // 7. Xử lý co giãn (Responsive)
             pnl.Resize += (s, e) =>
             {
-                int rightMargin = 15;
-                btnMsg.Left = pnl.Width - btnMsg.Width - rightMargin;
-                btnMsg.Top = (pnl.Height - btnMsg.Height) / 2;
-
                 int textLeft = lblName.Left;
-                int textWidth = btnMsg.Left - textLeft - 10;
+                int textWidth = pnl.Width - textLeft - 12;
 
                 lblName.Width = Math.Max(0, textWidth);
                 lblSub.Width = Math.Max(0, textWidth);
@@ -555,18 +528,8 @@ namespace SecureChat.Client
             // pnl.MouseLeave += (s, e) => setHoverColor(Color.White);
 
             // Trong hàm BuildFriendRow, đoạn xử lý Hover:
-            pnl.MouseEnter += (s, e) =>
-            {
-                pnl.BackColor = TG.SidebarHover;
-                btnMsg.NormalColor = TG.SidebarHover; // Cập nhật màu nghỉ của nút cho khớp với nền mới
-                btnMsg.Invalidate();
-            };
-            pnl.MouseLeave += (s, e) =>
-            {
-                pnl.BackColor = Color.White;
-                btnMsg.NormalColor = Color.White; // Trả về trắng
-                btnMsg.Invalidate();
-            };
+            pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
 
             return pnl;
         }
@@ -587,7 +550,7 @@ namespace SecureChat.Client
                 AutoSize = false,
                 Height = 20,
                 Location = new Point(62, 12),
-                Width = initialWidth - 112,
+                Width = initialWidth - 80,
                 BackColor = Color.Transparent,
             };
 

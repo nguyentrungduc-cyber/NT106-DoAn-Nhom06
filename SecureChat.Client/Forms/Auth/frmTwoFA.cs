@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.ProgressBar;
 using System.Threading.Tasks;
+using SecureChat.Client.Forms.Shared;
 using SecureChat.Client.Services;
 
 namespace SecureChat.Client
@@ -106,26 +107,26 @@ namespace SecureChat.Client
             };
 
             // OTP boxes for 6 Textboxes
-            var pnlOtp = new Panel { Height = 78, BackColor = Color.Transparent };
+            var pnlOtp = new Panel { Height = 56, BackColor = Color.Transparent };
             for (int i = 0; i < 6; i++)
             {
                 int idx = i;
                 var box = new TextBox
                 {
                     MaxLength = 1,
-                    Font = TG.FontTitle(22f),
+                    Font = TG.FontTitle(20f),
                     ForeColor = TG.Blue,
                     TextAlign = HorizontalAlignment.Center, // Căn giữa ký tự cho một TextBox
                     BackColor = Color.White,
                     BorderStyle = BorderStyle.None, // Ẩn viền mặc định (tự vẽ viền bo góc)
-                    Size = new Size(56, 68),
+                    Size = new Size(46, 50),
                 };
 
                 // Panel bọc ngoài TextBox để vẽ viền bo góc tùy chỉnh.
                 // Mỗi wrap bọc 1 Textbox
                 var wrap = new Panel
                 {
-                    Size = new Size(58, 78),
+                    Size = new Size(48, 56),
                     BackColor = Color.White,
                 };
 
@@ -155,7 +156,7 @@ namespace SecureChat.Client
                     e.Graphics.DrawPath(new Pen(border, bw), path); // Vẽ viền
                 };
                 wrap.Controls.Add(box);
-                box.Location = new Point(1, (78 - box.Height) / 2); // Căn giữa dọc trong wrap
+                box.Location = new Point(1, (56 - box.Height) / 2); // Căn giữa dọc trong wrap
                 // X = 1 thì tự căn chiều ngang rồi
 
                 // Auto advance
@@ -189,7 +190,7 @@ namespace SecureChat.Client
             // Layout OTP
             pnlOtp.Resize += (s, e) =>
             {
-                int boxW = 58;
+                int boxW = 48;
                 int spacing = 12;
                 int total = 6 * boxW + 5 * spacing; // 6 boxes + spacing
                 int startX = (pnlOtp.Width - total) / 2;
@@ -257,7 +258,11 @@ namespace SecureChat.Client
                         var (ok, _, err) = await ApiClient.Instance.PostAsync<object, System.Text.Json.JsonElement>("api/auth/resend-login-otp", payload);
                         if (!ok)
                         {
-                            this.Invoke(() => { ShowError(err); lnkResend.Enabled = true; });
+                            this.Invoke(() =>
+                            {
+                                lnkResend.Enabled = true;
+                                frmError.ShowApi(this, err, "Không thể gửi lại OTP. Vui lòng thử lại.");
+                            });
                             return;
                         }
 
@@ -268,12 +273,16 @@ namespace SecureChat.Client
                             _lblTimer.Text = $"({_countdown}s)";
                             StartCountdown();
                             HideError();
-                            MessageBox.Show(this, "OTP has been resent to your email.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            frmError.ShowSuccess(this, "Đã gửi lại OTP", "Mã xác nhận mới đã được gửi đến email của bạn.");
                         });
                     }
                     catch (Exception ex)
                     {
-                        this.Invoke(() => { ShowError("Gửi lại thất bại: " + ex.Message); lnkResend.Enabled = true; });
+                        this.Invoke(() =>
+                        {
+                            lnkResend.Enabled = true;
+                            frmError.ShowError(this, "Gửi lại thất bại", ex.Message);
+                        });
                     }
                 });
             };
@@ -287,7 +296,7 @@ namespace SecureChat.Client
             {
                 int pad = 28, w = pnlBody.Width - pad * 2, y = 16;
                 _lblDesc.SetBounds(0, y, pnlBody.Width, 28); y += 36;
-                pnlOtp.SetBounds(pad, y, w, 78); y += 88;
+                pnlOtp.SetBounds(pad, y, w, 56); y += 76;
                 _lblError.SetBounds(0, y, pnlBody.Width, 20); y += 24;
                 _btnConfirm.SetBounds(pad, y, w, 46); y += 58;
                 _lblResend.Location = new Point(pad, y);
@@ -335,7 +344,11 @@ namespace SecureChat.Client
                     var (ok, res, err) = await ApiClient.Instance.PostAsync<object, System.Text.Json.JsonElement>("api/auth/verify-login-otp", payload);
                     if (!ok)
                     {
-                        this.Invoke(() => { ShowError(err); _btnConfirm.Enabled = true; });
+                        this.Invoke(() =>
+                        {
+                            _btnConfirm.Enabled = true;
+                            frmError.ShowApi(this, err, "Mã OTP không đúng hoặc đã hết hạn.");
+                        });
                         return;
                     }
 
@@ -351,11 +364,19 @@ namespace SecureChat.Client
                         }
                     }
 
-                    this.Invoke(() => { ShowError("Xác thực thất bại."); _btnConfirm.Enabled = true; });
+                    this.Invoke(() =>
+                    {
+                        _btnConfirm.Enabled = true;
+                        frmError.ShowError(this, "Xác thực thất bại", "Phản hồi từ máy chủ không hợp lệ.");
+                    });
                 }
                 catch (Exception ex)
                 {
-                    this.Invoke(() => { ShowError("Lỗi: " + ex.Message); _btnConfirm.Enabled = true; });
+                    this.Invoke(() =>
+                    {
+                        _btnConfirm.Enabled = true;
+                        frmError.ShowError(this, "Lỗi kết nối", ex.Message);
+                    });
                 }
             });
         }
