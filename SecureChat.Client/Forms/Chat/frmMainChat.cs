@@ -1001,18 +1001,46 @@ namespace SecureChat.Client
 
         private async void DeleteAndLeave()
         {
-            var members = new[] { "Duck Cyber", "Sim 18a3", "Tuấn Thành", "Hoang Hieu" };
-            using var dlg = new SecureChat.Client.Forms.Chat.frmLeaveGroup(_lblChatName.Text, "Duck Cyber", members);
-            if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
-                return;
+            // Kiểm tra xem có phải group không
+            var currentConv = _convs.Find(c => c.Id == _activeConvId);
+            bool isGroup = currentConv.IsGroup;
+
+            // Nếu là group, hiện dialog leave group với appoint admin
+            if (isGroup)
+            {
+                var members = new[] { "Duck Cyber", "Sim 18a3", "Tuấn Thành", "Hoang Hieu" };
+                using var dlg = new SecureChat.Client.Forms.Chat.frmLeaveGroup(_lblChatName.Text, "Duck Cyber", members);
+                if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
+                    return;
+            }
+            else
+            {
+                // Nếu là chat 1-1, chỉ confirm delete (không cần appoint admin)
+                var result = MessageBox.Show(this,
+                    $"Bạn có chắc chắn muốn xóa cuộc trò chuyện với {_lblChatName.Text}?\n\nTất cả tin nhắn sẽ bị xóa vĩnh viễn.",
+                    "Xóa cuộc trò chuyện",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result != DialogResult.Yes)
+                    return;
+            }
 
             if (!await TryRemoveConversationOnServerAsync(_activeConvId))
             {
                 var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
+                string errorTitle = isGroup 
+                    ? (resources.GetString("ChatLeaveTitle") ?? "Leave group")
+                    : (resources.GetString("ChatDeleteTitle") ?? "Delete conversation");
+                string errorMessage = isGroup
+                    ? (resources.GetString("ChatLeaveFailed") ?? "Unable to leave the group right now.")
+                    : "Không thể xóa cuộc trò chuyện. Vui lòng thử lại.";
+
                 MessageBox.Show(this,
-                    resources.GetString("ChatLeaveFailed") ?? "Unable to leave the group right now.",
-                    resources.GetString("ChatLeaveTitle") ?? "Leave group",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    errorMessage,
+                    errorTitle,
+                    MessageBoxButtons.OK, 
+                    MessageBoxIcon.Warning);
                 return;
             }
 
@@ -1061,16 +1089,45 @@ namespace SecureChat.Client
             if (string.IsNullOrWhiteSpace(conversationId))
                 return;
 
+            // Xóa conversation khỏi danh sách
             _convs.RemoveAll(c => c.Id == conversationId);
+            
+            // Xóa tất cả tin nhắn của conversation
             _allMsgs.Remove(conversationId);
+            
+            // Xóa khỏi cache sync
             _syncedConversations.Remove(conversationId);
             _myMemberIdByConv.Remove(conversationId);
+            
+            // Xóa conversation key khỏi decryptor cache
+            _decryptor.ForgetConversation(conversationId);
+            
+            // Xóa processed message IDs của conversation này
+            lock (_processedMessageIdsLock)
+            {
+                // Không thể xóa specific message IDs vì không có mapping conversationId -> messageIds
+                // Nhưng khi conversation bị xóa, các message IDs cũ sẽ không còn ý nghĩa
+            }
 
+            // Nếu conversation đang active bị xóa, chuyển sang conversation khác hoặc empty state
             if (_activeConvId == conversationId)
-                _activeConvId = _convs.Count > 0 ? _convs[0].Id : string.Empty;
+            {
+                _activeConvId = string.Empty;
+                
+                // Clear current messages
+                _currentMsgs.Clear();
+                
+                // Chọn conversation đầu tiên nếu còn
+                if (_convs.Count > 0)
+                {
+                    _activeConvId = _convs[0].Id;
+                }
+            }
 
+            // Rebuild UI
             BuildConvList();
 
+            // Load conversation mới hoặc hiện empty state
             if (!string.IsNullOrWhiteSpace(_activeConvId))
                 LoadConversation(_activeConvId);
             else
@@ -1389,7 +1446,36 @@ namespace SecureChat.Client
                         var respStr = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                         if (!resp.IsSuccessStatusCode)
                         {
-                            this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Upload failed: {respStr}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                            string errorMessage = "Không thể upload file lên server.";
+                            if (!string.IsNullOrWhiteSpace(respStr))
+                            {
+                                try
+                                {
+                                    var errorDoc = System.Text.Json.JsonDocument.Parse(respStr);
+                                    if (errorDoc.RootElement.TryGetProperty("message", out var msgProp))
+                                    {
+                                        errorMessage = $"Upload thất bại: {msgProp.GetString()}";
+                                    }
+                                    else if (errorDoc.RootElement.TryGetProperty("error", out var errProp))
+                                    {
+                                        errorMessage = $"Upload thất bại: {errProp.GetString()}";
+                                    }
+                                    else
+                                    {
+                                        errorMessage = $"Upload thất bại (HTTP {(int)resp.StatusCode}): {respStr}";
+                                    }
+                                }
+                                catch
+                                {
+                                    errorMessage = $"Upload thất bại (HTTP {(int)resp.StatusCode}): {respStr}";
+                                }
+                            }
+                            else
+                            {
+                                errorMessage = $"Upload thất bại với mã lỗi HTTP {(int)resp.StatusCode}.";
+                            }
+                            
+                            this.BeginInvoke(new Action(() => MessageBox.Show(this, errorMessage, "Lỗi Upload File", MessageBoxButtons.OK, MessageBoxIcon.Error)));
                             return;
                         }
 
@@ -1548,7 +1634,36 @@ namespace SecureChat.Client
                                 var (okUpload, respStr, uploadErr) = await ApiClient.Instance.PostMultipartAsync("api/files/upload", content);
                                 if (!okUpload)
                                 {
-                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Upload failed: {uploadErr}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                                    string errorMessage = "Không thể upload file lên server.";
+                                    if (!string.IsNullOrWhiteSpace(uploadErr))
+                                    {
+                                        errorMessage = $"Upload thất bại: {uploadErr}";
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(respStr))
+                                    {
+                                        try
+                                        {
+                                            var errorDoc = System.Text.Json.JsonDocument.Parse(respStr);
+                                            if (errorDoc.RootElement.TryGetProperty("message", out var msgProp))
+                                            {
+                                                errorMessage = $"Upload thất bại: {msgProp.GetString()}";
+                                            }
+                                            else if (errorDoc.RootElement.TryGetProperty("error", out var errProp))
+                                            {
+                                                errorMessage = $"Upload thất bại: {errProp.GetString()}";
+                                            }
+                                            else
+                                            {
+                                                errorMessage = $"Upload thất bại: {respStr}";
+                                            }
+                                        }
+                                        catch
+                                        {
+                                            errorMessage = $"Upload thất bại: {respStr}";
+                                        }
+                                    }
+                                    
+                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, errorMessage, "Lỗi Upload Voice", MessageBoxButtons.OK, MessageBoxIcon.Error)));
                                     return;
                                 }
 
