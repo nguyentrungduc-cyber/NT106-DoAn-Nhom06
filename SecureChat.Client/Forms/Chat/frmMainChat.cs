@@ -3258,34 +3258,236 @@ namespace SecureChat.Client
         // ════════════════════════════════════════════
         //  SEND MESSAGE
         // ════════════════════════════════════════════
-        private void SendMessage()
+        private async void SendMessage()
         {
-            if (string.IsNullOrWhiteSpace(_tbMessage.Text)) return;
+            // ─────────────────────────────────────────────────────────────────
+            // VALIDATION: Kiểm tra input và trạng thái
+            // ─────────────────────────────────────────────────────────────────
+            if (string.IsNullOrWhiteSpace(_tbMessage.Text))
+            {
+                return;
+            }
+
             string text = _tbMessage.Text.Trim();
+
+            // Validate message length (tránh spam hoặc message quá dài)
+            if (text.Length > 4096)
+            {
+                MessageBox.Show(this, 
+                    "Tin nhắn quá dài. Vui lòng giới hạn trong 4096 ký tự.", 
+                    "Lỗi", 
+                    MessageBoxButtons.OK, 
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Kiểm tra có conversation đang active không
+            if (string.IsNullOrWhiteSpace(_activeConvId))
+            {
+                MessageBox.Show(this, 
+                    "Vui lòng chọn một cuộc trò chuyện trước khi gửi tin nhắn.", 
+                    "Lỗi", 
+                    MessageBoxButtons.OK, 
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Clear input ngay lập tức để UX mượt mà
             _tbMessage.Text = "";
 
+            // ─────────────────────────────────────────────────────────────────
+            // PREPARE: Xử lý reply context nếu có
+            // ─────────────────────────────────────────────────────────────────
+            string? replyToId = null;
             string finalMessageText = text;
 
-            // Nếu đang trong chế độ Reply, lấy thông tin tin nhắn cũ gộp vào
             if (!string.IsNullOrEmpty(_replyingToMessageId))
             {
                 var origMsg = _currentMsgs.Find(m => m.Id == _replyingToMessageId);
-                if (origMsg.Id != null) // Tồn tại
+                if (origMsg.Id != null)
                 {
+                    replyToId = _replyingToMessageId;
                     string origSender = string.IsNullOrEmpty(origMsg.Sender) ? "You" : origMsg.Sender;
                     // Format: reply::SenderName::OriginalText::NewText
                     finalMessageText = $"reply::{origSender}::{origMsg.Text}::{text}";
                 }
             }
 
-            _currentMsgs.Add((Guid.NewGuid().ToString(), finalMessageText, true, DateTime.Now.ToString("h:mm tt"), ""));
-
-            // Dọn dẹp giao diện sau khi gửi
+            // ─────────────────────────────────────────────────────────────────
+            // UI CLEANUP: Dọn dẹp giao diện reply context
+            // ─────────────────────────────────────────────────────────────────
             _pnlReplyContext.Visible = false;
             _pnlInputBar.Height = 56;
             _replyingToMessageId = null;
 
+            // ─────────────────────────────────────────────────────────────────
+            // OPTIMISTIC UI: Thêm message vào UI ngay lập tức (pending state)
+            // ─────────────────────────────────────────────────────────────────
+            string tempMessageId = Guid.NewGuid().ToString();
+            _currentMsgs.Add((tempMessageId, finalMessageText, true, DateTime.Now.ToString("h:mm tt"), ""));
             BuildMessages();
+
+            try
+            {
+                // ─────────────────────────────────────────────────────────────────
+                // ENCRYPTION: Lấy conversation key và encrypt message
+                // ─────────────────────────────────────────────────────────────────
+                byte[]? conversationKey = await _decryptor.EnsureConversationKeyAsync(_activeConvId);
+
+                if (conversationKey is null || conversationKey.Length != SecureChat.Shared.Security.AesEncryption.KeySize)
+                {
+                    throw new InvalidOperationException(
+                        "Không thể lấy khóa mã hóa của cuộc trò chuyện. " +
+                        "Vui lòng thử tải lại cuộc trò chuyện.");
+                }
+
+                // Validate conversation key
+                var encryptionService = new MessageEncryptionService();
+                if (!encryptionService.ValidateConversationKey(conversationKey))
+                {
+                    throw new InvalidOperationException(
+                        "Khóa mã hóa không hợp lệ. Vui lòng thử tải lại cuộc trò chuyện.");
+                }
+
+                // Encrypt message content
+                string encryptedContent;
+                string contentIV;
+
+                try
+                {
+                    (encryptedContent, contentIV) = encryptionService.EncryptMessage(finalMessageText, conversationKey);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Không thể mã hóa tin nhắn: {ex.Message}", ex);
+                }
+
+                // Validate encryption output
+                if (string.IsNullOrWhiteSpace(encryptedContent) || string.IsNullOrWhiteSpace(contentIV))
+                {
+                    throw new InvalidOperationException(
+                        "Mã hóa tin nhắn thất bại: kết quả rỗng.");
+                }
+
+                // ─────────────────────────────────────────────────────────────────
+                // API CALL: Gửi encrypted message lên server
+                // ─────────────────────────────────────────────────────────────────
+                var sendRequest = new SendMessageRequest(
+                    Type: MessageType.Text,
+                    Content: encryptedContent,
+                    ContentIV: contentIV,
+                    ReplyToID: replyToId,
+                    OriginalSenderID: null,
+                    Attachments: null,
+                    MentionedMemberIDs: null
+                );
+
+                var (success, messageResponse, errorMessage) = await ApiClient.Instance.PostAsync<SendMessageRequest, MessageResponse>(
+                    $"api/conversations/{_activeConvId}/messages",
+                    sendRequest
+                );
+
+                if (!success || messageResponse is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Không thể gửi tin nhắn lên server: {errorMessage}");
+                }
+
+                // ─────────────────────────────────────────────────────────────────
+                // SIGNALR BROADCAST: Phát tin nhắn qua SignalR để realtime
+                // ─────────────────────────────────────────────────────────────────
+                if (_signalRClient is not null && _signalRClient.IsConnected)
+                {
+                    try
+                    {
+                        await _signalRClient.SendMessageAsync(_activeConvId, messageResponse);
+                    }
+                    catch (Exception ex)
+                    {
+                        // SignalR broadcast thất bại không phải lỗi nghiêm trọng
+                        // Message đã được lưu vào DB, người khác sẽ nhận khi sync
+                        System.Diagnostics.Debug.WriteLine($"SignalR broadcast failed: {ex.Message}");
+                    }
+                }
+
+                // ─────────────────────────────────────────────────────────────────
+                // UI UPDATE: Cập nhật message với ID thật từ server
+                // ─────────────────────────────────────────────────────────────────
+                var index = _currentMsgs.FindIndex(m => m.Id == tempMessageId);
+                if (index >= 0)
+                {
+                    _currentMsgs[index] = (
+                        messageResponse.MessageID,
+                        finalMessageText,
+                        true,
+                        messageResponse.SentAt.ToLocalTime().ToString("h:mm tt"),
+                        ""
+                    );
+                    BuildMessages();
+                }
+
+                // ─────────────────────────────────────────────────────────────────
+                // TRACKING: Đánh dấu message đã xử lý để tránh duplicate
+                // ─────────────────────────────────────────────────────────────────
+                lock (_processedMessageIdsLock)
+                {
+                    _processedMessageIds.Add(messageResponse.MessageID);
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                // ─────────────────────────────────────────────────────────────────
+                // ERROR HANDLING: Xử lý lỗi và thông báo cho user
+                // ─────────────────────────────────────────────────────────────────
+                BeginInvoke(new Action(() =>
+                {
+                    MessageBox.Show(this,
+                        $"Không thể gửi tin nhắn:\n{ex.Message}",
+                        "Lỗi gửi tin nhắn",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+
+                    // Xóa optimistic message khỏi UI
+                    var index = _currentMsgs.FindIndex(m => m.Id == tempMessageId);
+                    if (index >= 0)
+                    {
+                        _currentMsgs.RemoveAt(index);
+                        BuildMessages();
+                    }
+
+                    // Khôi phục text vào input box để user có thể gửi lại
+                    _tbMessage.Text = text;
+                }));
+            }
+            catch (Exception ex)
+            {
+                // ─────────────────────────────────────────────────────────────────
+                // UNEXPECTED ERROR: Xử lý lỗi không mong đợi
+                // ─────────────────────────────────────────────────────────────────
+                BeginInvoke(new Action(() =>
+                {
+                    MessageBox.Show(this,
+                        $"Lỗi không mong đợi khi gửi tin nhắn:\n{ex.Message}\n\nVui lòng thử lại.",
+                        "Lỗi",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+
+                    // Xóa optimistic message khỏi UI
+                    var index = _currentMsgs.FindIndex(m => m.Id == tempMessageId);
+                    if (index >= 0)
+                    {
+                        _currentMsgs.RemoveAt(index);
+                        BuildMessages();
+                    }
+
+                    // Khôi phục text vào input box
+                    _tbMessage.Text = text;
+                }));
+
+                // Log lỗi để debug
+                System.Diagnostics.Debug.WriteLine($"SendMessage failed: {ex}");
+            }
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
