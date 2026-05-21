@@ -45,8 +45,8 @@ namespace SecureChat.Client
         private void InitializeComponent()
         {
             Text = "Xác minh 2 bước";
-            Size = new Size(460, 580);
-            MinimumSize = new Size(420, 540);
+            Size = new Size(520, 600);
+            MinimumSize = new Size(500, 580);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -107,26 +107,26 @@ namespace SecureChat.Client
             };
 
             // OTP boxes for 6 Textboxes
-            var pnlOtp = new Panel { Height = 64, BackColor = Color.Transparent };
+            var pnlOtp = new Panel { Height = 70, BackColor = Color.Transparent };
             for (int i = 0; i < 6; i++)
             {
                 int idx = i;
                 var box = new TextBox
                 {
                     MaxLength = 1,
-                    Font = TG.FontTitle(22f),
+                    Font = TG.FontTitle(24f),
                     ForeColor = TG.Blue,
                     TextAlign = HorizontalAlignment.Center, // Căn giữa ký tự cho một TextBox
                     BackColor = Color.White,
                     BorderStyle = BorderStyle.None, // Ẩn viền mặc định (tự vẽ viền bo góc)
-                    Size = new Size(52, 58),
+                    Size = new Size(58, 62),
                 };
 
                 // Panel bọc ngoài TextBox để vẽ viền bo góc tùy chỉnh.
                 // Mỗi wrap bọc 1 Textbox
                 var wrap = new Panel
                 {
-                    Size = new Size(56, 64),
+                    Size = new Size(62, 70),
                     BackColor = Color.White,
                 };
 
@@ -156,8 +156,8 @@ namespace SecureChat.Client
                     e.Graphics.DrawPath(new Pen(border, bw), path); // Vẽ viền
                 };
                 wrap.Controls.Add(box);
-                box.Location = new Point(2, (64 - box.Height) / 2); // Căn giữa dọc trong wrap
-                // X = 2 thì tự căn chiều ngang rồi
+                box.Location = new Point(2, (70 - box.Height) / 2); // Căn giữa dọc trong wrap
+                // X = 2 để có padding đều hai bên
 
                 // Auto advance
                 box.TextChanged += (s, e) =>
@@ -187,13 +187,21 @@ namespace SecureChat.Client
                 _otpBoxes[i] = box;
             }
 
-            // Layout OTP
+            // Layout OTP - Đảm bảo không bị khuất khi resize
             pnlOtp.Resize += (s, e) =>
             {
-                int boxW = 56;
-                int spacing = 12;
-                int total = 6 * boxW + 5 * spacing; // 6 boxes + spacing
-                int startX = (pnlOtp.Width - total) / 2;
+                int boxW = 62;
+                int spacing = 14;
+                int total = 6 * boxW + 5 * spacing; // 6 boxes + 5 spacing
+                
+                // Đảm bảo có đủ không gian, nếu không thì giảm spacing
+                if (total > pnlOtp.Width)
+                {
+                    spacing = Math.Max(8, (pnlOtp.Width - 6 * boxW) / 5);
+                    total = 6 * boxW + 5 * spacing;
+                }
+                
+                int startX = Math.Max(0, (pnlOtp.Width - total) / 2);
                 for (int i = 0; i < pnlOtp.Controls.Count; i++)
                     pnlOtp.Controls[i].Location = new Point(startX + i * (boxW + spacing), 0);
             };
@@ -287,18 +295,18 @@ namespace SecureChat.Client
                 });
             };
 
-            // Panel chứa toàn bộ nội dung bên dưới header, padding 28px hai bên
-            var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(28, 16, 28, 16) };
+            // Panel chứa toàn bộ nội dung bên dưới header, padding tăng lên để thoáng hơn
+            var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(40, 20, 40, 20) };
             pnlBody.Controls.AddRange(new Control[] { _lblDesc, pnlOtp, _lblError, _btnConfirm, _lblResend, lnkResend, _lblTimer });
 
             // Sắp xếp các control theo chiều dọc, tự tính lại khi form thay đổi kích thước. Biến y tích lũy vị trí từng control.
             pnlBody.Resize += (s, e) =>
             {
-                int pad = 28, w = pnlBody.Width - pad * 2, y = 16;
-                _lblDesc.SetBounds(0, y, pnlBody.Width, 28); y += 36;
-                pnlOtp.SetBounds(pad, y, w, 64); y += 80;
-                _lblError.SetBounds(0, y, pnlBody.Width, 20); y += 24;
-                _btnConfirm.SetBounds(pad, y, w, 46); y += 58;
+                int pad = 40, w = pnlBody.Width - pad * 2, y = 20;
+                _lblDesc.SetBounds(0, y, pnlBody.Width, 28); y += 40;
+                pnlOtp.SetBounds(pad, y, w, 70); y += 86;
+                _lblError.SetBounds(0, y, pnlBody.Width, 20); y += 28;
+                _btnConfirm.SetBounds(pad, y, w, 46); y += 60;
                 _lblResend.Location = new Point(pad, y);
                 lnkResend.Location = new Point(pad + _lblResend.Width + 4, y);
                 _lblTimer.Location = new Point(pad + _lblResend.Width + lnkResend.Width + 8, y);
