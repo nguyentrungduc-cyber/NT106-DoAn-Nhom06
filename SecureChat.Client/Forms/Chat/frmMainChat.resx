@@ -117,4 +117,19 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="ChatEmptySelectMessage" xml:space="preserve">
+    <value>Select a chat to start messaging</value>
+  </data>
+  <data name="ChatDeleteFailed" xml:space="preserve">
+    <value>Unable to delete the conversation right now.</value>
+  </data>
+  <data name="ChatDeleteTitle" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="ChatLeaveFailed" xml:space="preserve">
+    <value>Unable to leave the group right now.</value>
+  </data>
+  <data name="ChatLeaveTitle" xml:space="preserve">
+    <value>Leave group</value>
+  </data>
 </root>
