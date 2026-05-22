@@ -47,19 +47,27 @@ namespace SecureChat.Controllers
 			if (member is null)
 				return Forbid();
 
-			if (member.BannedUntil.HasValue && member.BannedUntil > DateTime.UtcNow)
-				return BadRequest(new { error = "Bạn đang bị cấm gửi tin nhắn." });
+		if (member.BannedUntil.HasValue && member.BannedUntil > DateTime.UtcNow)
+			return BadRequest(new { error = "Bạn đang bị cấm gửi tin nhắn." });
 
-			var msg = await messages.CreateAsync(new Message {
-				MessageID        = NewID(),
-				ConversationID   = conversationID,
-				SenderID         = member.MemberID,
-				OriginalSenderID = req.OriginalSenderID,
-				ReplyToID        = req.ReplyToID,
-				Type             = req.Type,
-				Content          = req.Content,
-				ContentIV        = req.ContentIV
-			});
+		// Calculate ExpiresAt if ExpiresAfterSeconds is provided
+		DateTime? expiresAt = null;
+		if (req.ExpiresAfterSeconds.HasValue && req.ExpiresAfterSeconds.Value > 0)
+		{
+			expiresAt = DateTime.UtcNow.AddSeconds(req.ExpiresAfterSeconds.Value);
+		}
+
+		var msg = await messages.CreateAsync(new Message {
+			MessageID        = NewID(),
+			ConversationID   = conversationID,
+			SenderID         = member.MemberID,
+			OriginalSenderID = req.OriginalSenderID,
+			ReplyToID        = req.ReplyToID,
+			Type             = req.Type,
+			Content          = req.Content,
+			ContentIV        = req.ContentIV,
+			ExpiresAt        = expiresAt
+		});
 
 			if (req.Attachments is not null)
 				foreach (var att in req.Attachments)

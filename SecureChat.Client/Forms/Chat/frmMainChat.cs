@@ -104,6 +104,16 @@ namespace SecureChat.Client
         // Thêm biến lưu trạng thái trả lời tin nhắn
         private string _replyingToMessageId = null;
 
+        // Self-destruct timer (seconds) - null means no self-destruct
+        private int? _selfDestructSeconds = null;
+        private Label _lblSelfDestructTimer;
+
+        // Message expiration service
+        private readonly MessageExpirationService _expirationService = new();
+        
+        // Timer to refresh UI for countdown display
+        private System.Windows.Forms.Timer? _countdownRefreshTimer;
+
         // Local audio recorder service (NAudio)
         private SecureChat.Client.Services.AudioRecorderService? _audioRecorder;
 
@@ -188,6 +198,22 @@ namespace SecureChat.Client
             await SyncConversationsAsync();
 
             await InitializeSignalRAsync();
+
+            // Start message expiration service
+            _expirationService.MessageExpired += OnMessageExpired;
+            _expirationService.Start();
+
+            // Start countdown refresh timer (refresh UI every second to update countdown display)
+            _countdownRefreshTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            _countdownRefreshTimer.Tick += (s, e) =>
+            {
+                // Only refresh if there are tracked messages and active conversation
+                if (_expirationService.TrackedMessageCount > 0 && !string.IsNullOrWhiteSpace(_activeConvId))
+                {
+                    BeginInvoke(new Action(() => _pnlMessages?.Invalidate()));
+                }
+            };
+            _countdownRefreshTimer.Start();
         }
 
         protected override void OnResize(EventArgs e)
@@ -1585,6 +1611,25 @@ namespace SecureChat.Client
                 }
                 catch { }
             };
+
+            // Self-destruct timer button
+            var btnTimer = MakeInputBtn("⏱");
+            btnTimer.Click += (s, e) =>
+            {
+                // Show context menu to select self-destruct time
+                var menu = new ContextMenuStrip();
+                menu.Items.Add("Không tự hủy", null, (_, __) => { _selfDestructSeconds = null; UpdateTimerButtonText(btnTimer); });
+                menu.Items.Add(new ToolStripSeparator());
+                menu.Items.Add("5 giây", null, (_, __) => { _selfDestructSeconds = 5; UpdateTimerButtonText(btnTimer); });
+                menu.Items.Add("10 giây", null, (_, __) => { _selfDestructSeconds = 10; UpdateTimerButtonText(btnTimer); });
+                menu.Items.Add("30 giây", null, (_, __) => { _selfDestructSeconds = 30; UpdateTimerButtonText(btnTimer); });
+                menu.Items.Add("1 phút", null, (_, __) => { _selfDestructSeconds = 60; UpdateTimerButtonText(btnTimer); });
+                menu.Items.Add("5 phút", null, (_, __) => { _selfDestructSeconds = 300; UpdateTimerButtonText(btnTimer); });
+                menu.Items.Add("1 giờ", null, (_, __) => { _selfDestructSeconds = 3600; UpdateTimerButtonText(btnTimer); });
+                menu.Items.Add("1 ngày", null, (_, __) => { _selfDestructSeconds = 86400; UpdateTimerButtonText(btnTimer); });
+                menu.Show(btnTimer, new Point(0, btnTimer.Height));
+            };
+
             _tbMessage = new TelegramTextBox { Height = 36 };
             _tbMessage.SetPlaceholder("Write a message...");
             _tbMessage.KeyDown += (s, e) => { if (e.KeyCode == Keys.Return && !e.Shift) { e.SuppressKeyPress = true; SendMessage(); } };
@@ -1790,15 +1835,16 @@ namespace SecureChat.Client
 
             // Gom nhóm ô nhập liệu vào một Panel dưới cùng
             var pnlInputControls = new Panel { Dock = DockStyle.Bottom, Height = 56, BackColor = Color.Transparent };
-            pnlInputControls.Controls.AddRange(new Control[] { btnAttach, _tbMessage, btnEmoji, btnMic, btnSend });
+            pnlInputControls.Controls.AddRange(new Control[] { btnAttach, btnTimer, _tbMessage, btnEmoji, btnMic, btnSend });
 
             pnlInputControls.Resize += (s, e) => {
                 int y = 10;
                 btnAttach.Location = new Point(8, y);
+                btnTimer.Location = new Point(btnAttach.Right + 2, y);
                 btnEmoji.Location = new Point(Math.Max(0, pnlInputControls.Width - 84), y);
                 btnMic.Location = new Point(Math.Max(0, pnlInputControls.Width - 44), y);
                 btnSend.Location = new Point(Math.Max(0, pnlInputControls.Width - 44), y);
-                _tbMessage.SetBounds(btnAttach.Right + 6, y, Math.Max(0, btnEmoji.Left - btnAttach.Right - 12), 36);
+                _tbMessage.SetBounds(btnTimer.Right + 6, y, Math.Max(0, btnEmoji.Left - btnTimer.Right - 12), 36);
             };
 
             // Nạp cả Panel Reply và Panel Input vào Input Bar tổng
@@ -1831,6 +1877,43 @@ namespace SecureChat.Client
             btn.UseCompatibleTextRendering = true;
 
             return btn;
+        }
+
+        private void UpdateTimerButtonText(Button btnTimer)
+        {
+            if (_selfDestructSeconds.HasValue)
+            {
+                // Show timer with number
+                if (_selfDestructSeconds.Value < 60)
+                    btnTimer.Text = $"⏱{_selfDestructSeconds.Value}s";
+                else if (_selfDestructSeconds.Value < 3600)
+                    btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 60}m";
+                else if (_selfDestructSeconds.Value < 86400)
+                    btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 3600}h";
+                else
+                    btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 86400}d";
+                
+                btnTimer.ForeColor = Color.FromArgb(255, 87, 34); // Orange color for active timer
+                btnTimer.Font = TG.FontSemiBold(10f);
+            }
+            else
+            {
+                btnTimer.Text = "⏱";
+                btnTimer.ForeColor = TG.Blue;
+                btnTimer.Font = new Font("Segoe UI Emoji", 13f);
+            }
+        }
+
+        private string FormatRemainingTime(int seconds)
+        {
+            if (seconds < 60)
+                return $"{seconds}s";
+            else if (seconds < 3600)
+                return $"{seconds / 60}m";
+            else if (seconds < 86400)
+                return $"{seconds / 3600}h";
+            else
+                return $"{seconds / 86400}d";
         }
 
         // ════════════════════════════════════════════
@@ -2377,6 +2460,12 @@ namespace SecureChat.Client
 
                 var dm = await _decryptor.ProcessAsync(msg, myMemberId);
                 decrypted.Add(dm);
+
+                // Track message expiration nếu có ExpiresAt
+                if (msg.ExpiresAt.HasValue)
+                {
+                    _expirationService.TrackMessage(msg.MessageID, msg.ExpiresAt.Value);
+                }
             }
 
             decrypted.Sort((a, b) => a.Raw.SentAt.CompareTo(b.Raw.SentAt));
@@ -2886,6 +2975,24 @@ namespace SecureChat.Client
                     using var tickFont = new Font("Segoe UI Symbol", 8f, FontStyle.Bold);
                     e.Graphics.DrawString("✓✓", tickFont, new SolidBrush(TG.Blue), tickX, ty - 1);
                 }
+
+                // 5. Self-destruct timer indicator (nếu message có expiration)
+                if (!string.IsNullOrWhiteSpace(messageId) && _expirationService.IsTracking(messageId))
+                {
+                    int? remainingSeconds = _expirationService.GetRemainingSeconds(messageId);
+                    if (remainingSeconds.HasValue && remainingSeconds.Value > 0)
+                    {
+                        string timerText = FormatRemainingTime(remainingSeconds.Value);
+                        using var timerFont = TG.FontSemiBold(7.5f);
+                        var timerSz = e.Graphics.MeasureString(timerText, timerFont);
+                        float timerX = x + pad;
+                        float timerY = y + bh - timerSz.Height - 6;
+                        
+                        // Draw timer icon and text
+                        e.Graphics.DrawString("⏱", new Font("Segoe UI Emoji", 8f), new SolidBrush(Color.FromArgb(255, 87, 34)), timerX, timerY - 1);
+                        e.Graphics.DrawString(timerText, timerFont, new SolidBrush(Color.FromArgb(255, 87, 34)), timerX + 14, timerY);
+                    }
+                }
             };
 
             // Tạo Context Menu
@@ -3173,6 +3280,12 @@ namespace SecureChat.Client
             }
 
             var dm = await _decryptor.ProcessAsync(message, myMemberId);
+
+            // Track message expiration nếu có ExpiresAt
+            if (message.ExpiresAt.HasValue)
+            {
+                _expirationService.TrackMessage(message.MessageID, message.ExpiresAt.Value);
+            }
 
             BeginInvoke(new Action(() =>
             {
@@ -3495,7 +3608,8 @@ namespace SecureChat.Client
                     ReplyToID: replyToId,
                     OriginalSenderID: null,
                     Attachments: null,
-                    MentionedMemberIDs: null
+                    MentionedMemberIDs: null,
+                    ExpiresAfterSeconds: _selfDestructSeconds
                 );
 
                 var (success, messageResponse, errorMessage) = await ApiClient.Instance.PostAsync<SendMessageRequest, MessageResponse>(
@@ -3548,6 +3662,14 @@ namespace SecureChat.Client
                 lock (_processedMessageIdsLock)
                 {
                     _processedMessageIds.Add(messageResponse.MessageID);
+                }
+
+                // ─────────────────────────────────────────────────────────────────
+                // EXPIRATION TRACKING: Track message nếu có ExpiresAt
+                // ─────────────────────────────────────────────────────────────────
+                if (messageResponse.ExpiresAt.HasValue)
+                {
+                    _expirationService.TrackMessage(messageResponse.MessageID, messageResponse.ExpiresAt.Value);
                 }
             }
             catch (InvalidOperationException ex)
@@ -3605,6 +3727,31 @@ namespace SecureChat.Client
             }
         }
 
+        /// <summary>
+        /// Event handler khi message hết hạn (self-destruct).
+        /// Xóa message khỏi UI và untrack khỏi expiration service.
+        /// </summary>
+        private void OnMessageExpired(string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(messageId))
+                return;
+
+            // Xóa message khỏi UI (thread-safe)
+            BeginInvoke(new Action(() =>
+            {
+                var index = _currentMsgs.FindIndex(m => m.Id == messageId);
+                if (index >= 0)
+                {
+                    _currentMsgs.RemoveAt(index);
+                    BuildMessages();
+                    System.Diagnostics.Debug.WriteLine($"Message {messageId} expired and removed from UI.");
+                }
+            }));
+
+            // Untrack message (đã được xóa tự động trong service, nhưng gọi để chắc chắn)
+            _expirationService.UntrackMessage(messageId);
+        }
+
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             _slideTimer?.Stop();
@@ -3612,6 +3759,15 @@ namespace SecureChat.Client
             _wallpaperWatcher?.Dispose();
             _wallpaper?.Dispose();
             _chatMoreMenu?.Dispose();
+            
+            // Stop and dispose countdown refresh timer
+            _countdownRefreshTimer?.Stop();
+            _countdownRefreshTimer?.Dispose();
+            
+            // Stop and dispose expiration service
+            _expirationService?.Stop();
+            _expirationService?.Dispose();
+            
             SecureChat.Shared.Security.KeyManager.Clear();
             _decryptor.ForgetAll();
             _myMemberIdByConv.Clear();

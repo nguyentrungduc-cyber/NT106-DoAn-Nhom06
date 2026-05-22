@@ -37,11 +37,14 @@ namespace SecureChat.Models
 		[Column("deleted_at")]
 		public DateTime? DeletedAt { get; set; }
 
-		[Column("edited_at")]
-		public DateTime? EditedAt { get; set; }
+	[Column("edited_at")]
+	public DateTime? EditedAt { get; set; }
 
-		[ForeignKey(nameof(ConversationID)), InverseProperty(nameof(Conversation.Messages))]
-		public Conversation Conversation { get; set; } = null!;
+	[Column("expires_at")]
+	public DateTime? ExpiresAt { get; set; }
+
+	[ForeignKey(nameof(ConversationID)), InverseProperty(nameof(Conversation.Messages))]
+	public Conversation Conversation { get; set; } = null!;
 
 		[ForeignKey(nameof(SenderID)), InverseProperty(nameof(ConversationMember.SentMessages))]
 		public ConversationMember? Sender { get; set; }

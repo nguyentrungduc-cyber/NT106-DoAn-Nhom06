@@ -10,7 +10,8 @@ namespace SecureChat.DTOs
 		string? ReplyToID,
 		string? OriginalSenderID,
 		List<CreateAttachmentRequest>? Attachments,
-		List<string>? MentionedMemberIDs
+		List<string>? MentionedMemberIDs,
+		int? ExpiresAfterSeconds = null
 	);
 
 	public record EditMessageRequest(
@@ -51,6 +52,7 @@ namespace SecureChat.DTOs
 		DateTime SentAt,
 		DateTime? EditedAt,
 		DateTime? DeletedAt,
+		DateTime? ExpiresAt,
 		List<AttachmentResponse>? Attachments,
 		List<ReactionResponse>? Reactions,
 		List<string>? MentionedMemberIDs
@@ -61,7 +63,7 @@ namespace SecureChat.DTOs
 			m.SenderID, m.Sender?.User.Username,
 			m.OriginalSenderID, m.ReplyToID,
 			m.Type, m.Content ?? "", m.ContentIV ?? "",
-			m.SentAt, m.EditedAt, m.DeletedAt,
+			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt,
 			m.Attachments.Select(AttachmentResponse.From).ToList(),
 			m.Reactions.Select(ReactionResponse.From).ToList(),
 			m.Mentions?.Select(mention => mention.MemberID).ToList()
