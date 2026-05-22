@@ -15,7 +15,7 @@ namespace SecureChat.Client.Services
         private readonly ConcurrentDictionary<string, DateTime> _trackedMessages = new();
 
         // Timer để check expired messages định kỳ
-        private Timer? _checkTimer;
+        private System.Threading.Timer? _checkTimer;
 
         // Callback khi message hết hạn
         public event Action<string>? MessageExpired;
@@ -46,7 +46,7 @@ namespace SecureChat.Client.Services
                 if (_isRunning)
                     return;
 
-                _checkTimer = new Timer(CheckExpiredMessages, null, _checkIntervalMs, _checkIntervalMs);
+                _checkTimer = new System.Threading.Timer(CheckExpiredMessages, null, _checkIntervalMs, _checkIntervalMs);
                 _isRunning = true;
             }
         }
