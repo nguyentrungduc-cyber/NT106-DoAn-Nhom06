@@ -1,20 +1,25 @@
+﻿using SecureChat.Client.Services;
+
 namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmMembersSettings : Form
     {
+
+        // Thêm biến này để lưu trữ ID của nhóm hiện tại
+        private readonly string _conversationId;
         public sealed record MemberItemData(string Name, string Status, string Role, Color AvatarColor, string Initials);
 
-        private readonly System.Windows.Forms.Timer _fadeTimer;
-        private readonly TextBox _txtSearch;
-        private readonly Panel _pnlList;
-        private readonly List<MemberItemData> _allMembers;
+        private System.Windows.Forms.Timer _fadeTimer;
+        private TextBox _txtSearch;
+        private Panel _pnlList;
+        private List<MemberItemData> _allMembers;
 
         public IReadOnlyList<MemberItemData> Members => _allMembers;
 
-        public frmMembersSettings(IEnumerable<MemberItemData> members)
+        public frmMembersSettings(string conversationId)
         {
-            _allMembers = members.ToList();
-
+            _conversationId = conversationId;  // Gán vào biến
+            _ = LoadMembersAsync();
             Text = "Members";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
@@ -226,11 +231,47 @@ namespace SecureChat.Client.Forms.Chat
             return row;
         }
 
-        private void AddMember()
+        // SỬA LẠI HÀM AddMember() trong frmMembersSettings.cs
+        private async void AddMember()
         {
-            int index = _allMembers.Count + 1;
-            _allMembers.Add(new MemberItemData($"New member {index}", "last seen recently", string.Empty, Color.FromArgb(0x6C, 0xB2, 0xF0), $"N{index % 10}"));
-            BuildMemberRows(_txtSearch.Focused ? _txtSearch.Text.Trim() : string.Empty);
+            // 1. Mở Form chọn bạn bè (Giả sử bạn có frmSelectFriend trả về ID)
+            // using var frm = new frmSelectFriend();
+            // if (frm.ShowDialog() != DialogResult.OK) return;
+            // string targetUserId = frm.SelectedUserId;
+
+            string targetUserId = "ID_LAY_TU_FORM_CHON_BAN_BE"; // Tạm thời để string cho bạn dễ hình dung
+
+            // Lưu ý: Cần thuật toán sinh khóa AES mới cho user này rồi mã hóa bằng Public Key của họ.
+            // Ở đây dùng string tạm, bạn nhớ thay bằng hàm Crypto thực tế nhé.
+            string encryptedKeyForNewMember = "KHOA_AES_DA_MA_HOA_BANG_PUBLIC_KEY_CUA_NEW_MEMBER";
+
+            var req = new SecureChat.DTOs.AddMemberRequest(
+                UserID: targetUserId,
+                EncryptedKey: encryptedKeyForNewMember,
+                Role: SecureChat.Models.MemberRole.Member
+            );
+
+            // Vô hiệu hóa nút trong lúc chờ API (tránh spam click)
+            var btn = (Button)ActiveControl;
+            btn.Enabled = false;
+            btn.Text = "Adding...";
+
+            var (ok, res, err) = await ApiClient.Instance.PostAsync<SecureChat.DTOs.AddMemberRequest, object>($"api/conversations/{_conversationId}/members", req);
+
+            btn.Enabled = true;
+            btn.Text = "Add members";
+
+            if (!ok)
+            {
+                MessageBox.Show($"Không thể thêm thành viên: {err}", "Lỗi Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            MessageBox.Show("Thêm thành viên thành công!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            // 2. Gọi API tải lại danh sách thành viên mới (hoặc load lại form)
+            // Nếu bạn muốn tải lại, bạn có thể gọi lại 1 hàm FetchMembers() chứa logic lấy danh sách từ API ở đây, 
+            // sau đó gán lại vào _allMembers và gọi BuildMemberRows(_txtSearch.Text.Trim());
         }
 
         private static Button BuildBottomButton(string text, Color color, bool bold, int width)
@@ -254,6 +295,28 @@ namespace SecureChat.Client.Forms.Chat
             _fadeTimer.Stop();
             _fadeTimer.Dispose();
             base.OnFormClosed(e);
+        }
+
+        private async Task LoadMembersAsync()
+        {
+            // Gọi API lấy danh sách thành viên thật từ database
+            var (ok, res, err) = await SecureChat.Client.Services.ApiClient.Instance
+                .GetAsync<List<SecureChat.DTOs.MemberResponse>>($"api/conversations/{_conversationId}/members");
+
+            if (ok && res != null)
+            {
+                // Chuyển đổi dữ liệu từ API (res) sang định dạng _allMembers của Form
+                _allMembers = res.Select(m => new MemberItemData(
+                    m.User?.Username ?? "Unknown",
+                    "online",
+                    m.Role.ToString(),
+                    Color.FromArgb(0x5C, 0xA5, 0xEC), // Màu mặc định
+                    (m.User?.Username ?? "U").Substring(0, 1).ToUpper()
+                )).ToList();
+
+                // Vẽ lại danh sách lên màn hình
+                BuildMemberRows(string.Empty);
+            }
         }
     }
 }

@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Net.Http.Json;
 
 namespace SecureChat.Client.Services
 {
@@ -174,6 +175,27 @@ namespace SecureChat.Client.Services
             catch (Exception ex)
             {
                 return (false, $"Không thể kết nối máy chủ: {ex.Message}");
+            }
+        }
+
+        public async Task<(bool IsSuccess, TData Data, string ErrorMessage)> GetAsync<TData>(string endpoint)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync(endpoint);
+                if (response.IsSuccessStatusCode)
+                {
+                    // Phân giải dữ liệu JSON trả về thành Object
+                    var data = await response.Content.ReadFromJsonAsync<TData>();
+                    return (true, data, string.Empty);
+                }
+
+                var error = await response.Content.ReadAsStringAsync();
+                return (false, default, $"Lỗi server: {error}");
+            }
+            catch (Exception ex)
+            {
+                return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
             }
         }
     }

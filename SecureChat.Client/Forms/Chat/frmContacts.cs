@@ -1,3 +1,4 @@
+using SecureChat.Client.Services;
 using System;
 using System.Collections.Generic; //  cho phép dùng List<T>.
 using System.Drawing; //  làm việc với màu sắc (Color), font, hình ảnh.
@@ -106,7 +107,6 @@ namespace SecureChat.Client
 
         public frmContacts()
         {
-            InitMockData();
 
             // TabPage chính vừa là cái "đầu tab" (tabstrip) vừa là vùng nội dung bên trong.
             // Chuỗi "  Danh sách  " truyền vào constructor chính là thuộc tính Text của TabPage, và WinForms tự dùng Text đó để vẽ chữ lên tabstrip.
@@ -137,41 +137,56 @@ namespace SecureChat.Client
         _groups — 2 nhóm chat.
         _requests — 3 lời mời đến + 1 lời mời đã gửi.
         _incomingCount — đếm số request IsIncoming = true(= 3).*/
-        private void InitMockData()
+
+        private async void frmContacts_Load(object sender, EventArgs e)
         {
-            _friends = new List<ContactItem>
-            {
-                new() { Type = ContactType.Friend, UserId = "usr-001", DisplayName = "Nguyễn Văn A", Username = "nguyenvana", Nickname = "", IsOnline = true, Status = FriendStatus.Friend, LastSeenAt = "2025-03-31T09:00:00Z" },
-                new() { Type = ContactType.Friend, UserId = "usr-002", DisplayName = "Trần Thị B", Username = "tranthib", Nickname = "Bé B", IsOnline = true, Status = FriendStatus.Friend, LastSeenAt = "2025-03-31T08:55:00Z" },
-                new() { Type = ContactType.Friend, UserId = "usr-003", DisplayName = "Lê Minh C", Username = "leminhc", IsOnline = false, Status = FriendStatus.Friend, LastSeenAt = "2025-03-31T08:00:00Z" },
-                new() { Type = ContactType.Friend, UserId = "usr-004", DisplayName = "Phạm Minh Đức", Username = "phamminhduc", IsOnline = false, Status = FriendStatus.Friend, LastSeenAt = "2025-03-30T20:00:00Z" },
-            };
-
-            _groups = new List<ContactItem>
-            {
-                new() { Type = ContactType.Group, ConversationId = "conv-g01", DisplayName = "Nhóm NT106.Q22", MemberCount = 5, LastSeenAt = "2025-03-31T07:00:00Z" },
-                new() { Type = ContactType.Group, ConversationId = "conv-g02", DisplayName = "Nhóm An Toàn TT", MemberCount = 8, LastSeenAt = "2025-03-30T18:00:00Z" },
-            };
-
-            _requests = new List<FriendRequestItem>
-            {
-                new() { RequestId = "req-001", SenderId = "usr-010", RecipientId = "usr-me", DisplayName = "Trần Thị H", Username = "tranthih", MutualCount = 2, IsIncoming = true, CreatedAt = "2025-03-30T10:00:00Z" },
-                new() { RequestId = "req-002", SenderId = "usr-011", RecipientId = "usr-me", DisplayName = "Phạm Văn D", Username = "phamvand", MutualCount = 0, IsIncoming = true, CreatedAt = "2025-03-29T15:30:00Z" },
-                new() { RequestId = "req-003", SenderId = "usr-012", RecipientId = "usr-me", DisplayName = "Lê Thị E", Username = "lethie", MutualCount = 5, IsIncoming = true, CreatedAt = "2025-03-28T08:00:00Z" },
-                new() { RequestId = "req-004", SenderId = "usr-me", RecipientId = "usr-013", DisplayName = "Nguyễn Quốc K", Username = "nguyenquock", MutualCount = 1, IsIncoming = false, CreatedAt = "2025-03-31T06:00:00Z" },
-            };
-
-            _blockedUsers = new List<ContactItem>
-            {
-                new() { Type = ContactType.Friend, UserId = "usr-005", DisplayName = "Spam Bot", Username = "spambot2024", IsOnline = false, Status = FriendStatus.Blocked },
-                new() { Type = ContactType.Friend, UserId = "usr-006", DisplayName = "Troll User", Username = "trolluser", IsOnline = true, Status = FriendStatus.Blocked },
-            };
-
-            _incomingCount = _requests.FindAll(r => r.IsIncoming).Count;
-            // FindAll(r => r.IsIncoming): Duyệt qua toàn bộ danh sách _requests và lọc ra một danh sách con chỉ chứa các lời mời có IsIncoming == true.
-            // Count: Đếm xem danh sách con đó có bao nhiêu phần tử và gán con số đó vào biến _incomingCount.
+            await LoadContactsAsync();
         }
 
+        private async Task LoadContactsAsync()
+        {
+            // -- TẢI BẠN BÈ --
+            var (okFriends, resFriends, errFriends) = await ApiClient.Instance.GetAsync<List<SecureChat.DTOs.FriendResponse>>("api/friend");
+            if (okFriends && resFriends != null)
+            {
+                _friends.Clear();
+                foreach (var f in resFriends)
+                {
+                    _friends.Add(new ContactItem
+                    {
+                        Type = ContactType.Friend,
+                        UserId = f.Friend?.UserID ?? "",
+                        DisplayName = f.Friend?.Username ?? "Unknown",
+                        AvatarUrl = f.Friend?.AvatarURL ?? "",
+                        LastSeenAt = "last seen recently",
+                        Status = FriendStatus.Friend
+                    });
+                }
+                BuildFriendList(_friends, _pnlFriends);
+            }
+
+            // -- TẢI NHÓM CHAT (Sử dụng ConversationResponse từ file DTO của bạn) --
+            var (okGroups, resGroups, errGroups) = await ApiClient.Instance.GetAsync<List<SecureChat.DTOs.ConversationResponse>>("api/conversations");
+            if (okGroups && resGroups != null)
+            {
+                _groups.Clear();
+                foreach (var c in resGroups)
+                {
+                    if (c.Type == SecureChat.Models.ConversationType.Group) // Dựa vào Enum trong DTO
+                    {
+                        _groups.Add(new ContactItem
+                        {
+                            Type = ContactType.Group,
+                            ConversationId = c.ConversationID,
+                            DisplayName = c.Name ?? "Group Chat",
+                            AvatarUrl = c.AvatarURL ?? "",
+                            MemberCount = c.MemberCount
+                        });
+                    }
+                }
+                BuildGroupList(_groups, _pnlGroups);
+            }
+        }
         private void InitializeComponent()
         {
             Text = "Danh bạ";
@@ -862,9 +877,8 @@ namespace SecureChat.Client
             _tabSearch.Controls.AddRange(new Control[] { _pnlSearchResults, pnlSearch });
         }
 
-        private void DoSearch(string query)
+        private async void DoSearch(string query)
         {
-            // Xóa tất cả các thành phần (labels, rows, icons) đang hiển thị trong Panel kết quả để chuẩn bị hiển thị dữ liệu mới.
             _pnlSearchResults.Controls.Clear();
 
             if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
@@ -872,39 +886,43 @@ namespace SecureChat.Client
                 _pnlSearchResults.Controls.Add(_lblSearchHint);
                 return;
             }
-            // string.IsNullOrWhiteSpace(query): Kiểm tra nếu chuỗi tìm kiếm bị trống hoặc chỉ toàn dấu cách.
-            // query.Length < 2: Nếu người dùng nhập ít hơn 2 ký tự, hệ thống sẽ không tìm kiếm (để tránh xử lý quá nhiều khi kết quả quá rộng).
-            // _pnlSearchResults.Controls.Add(_lblSearchHint): Nếu thỏa mãn điều kiện trên, nó hiện lại nhãn hướng dẫn(ví dụ: "Hãy nhập tên để tìm kiếm") và kết thúc hàm bằng return.
 
-            //  Tạo ra một danh sách cứng (Hardcoded) các đối tượng ContactItem.
-            //  Trong thực tế, chỗ này thường là một câu lệnh gọi vào Database hoặc API
-            var results = new List<ContactItem>
-            {
-                new() { Type = ContactType.Friend, UserId = "usr-001", DisplayName = "Nguyễn Văn A", Username = "nguyenvana", Status = FriendStatus.Friend, IsOnline = true },
-                new() { Type = ContactType.Friend, UserId = "usr-020", DisplayName = "Nguyễn Thị H", Username = "nguyenthih", Status = FriendStatus.None, IsOnline = false },
-                new() { Type = ContactType.Friend, UserId = "usr-013", DisplayName = "Nguyễn Minh K", Username = "nguyenquock", Status = FriendStatus.PendingOutgoing, IsOnline = false },
-            };
+            // Tạm hiển thị label Đang tìm kiếm...
+            var lblLoading = new Label { Text = "Đang tìm kiếm...", ForeColor = TG.TextSecondary, AutoSize = false, Height = 30, Width = _pnlSearchResults.Width, TextAlign = ContentAlignment.MiddleCenter };
+            _pnlSearchResults.Controls.Add(lblLoading);
 
-            int y = 0; // Biến y dùng để tính toán vị trí theo chiều dọc (từ trên xuống dưới)
-            var lblHdr = new Label
+            // GỌI API TÌM KIẾM (Thay endpoint bằng endpoint tìm kiếm thật của backend)
+            var (ok, users, err) = await ApiClient.Instance.GetAsync<List<SecureChat.DTOs.UserResponse>>($"api/users/search?q={Uri.EscapeDataString(query)}");
+
+            _pnlSearchResults.Controls.Clear();
+
+            if (!ok || users == null || users.Count == 0)
             {
-                Text = $"Kết quả cho \"{query}\"",  // Hiển thị dòng chữ: Kết quả cho "abc"
-                Font = TG.FontRegular(8.5f),
-                ForeColor = TG.TextSecondary,
-                AutoSize = false,
-                Height = 24,
-                BackColor = Color.Transparent,
-                Padding = new Padding(12, 4, 0, 0),
-                Location = new Point(0, y), // Đặt ở tọa độ y = 0 (trên cùng)
-                Width = _pnlSearchResults.ClientSize.Width // Kéo dài hết chiều ngang panel
-            };
-            _pnlSearchResults.Controls.Add(lblHdr); // Thêm tiêu đề vào panel
-            y += 26; // Tăng y lên 26 đơn vị để hàng tiếp theo không đè lên tiêu đề
+                var lblHdr = new Label { Text = $"Không tìm thấy kết quả cho \"{query}\"", ForeColor = TG.TextSecondary, AutoSize = false, Height = 24, Padding = new Padding(12, 4, 0, 0), Width = _pnlSearchResults.Width };
+                _pnlSearchResults.Controls.Add(lblHdr);
+                return;
+            }
+
+            int y = 0;
+            var lblTitle = new Label { Text = $"Kết quả cho \"{query}\"", Font = TG.FontRegular(8.5f), ForeColor = TG.TextSecondary, AutoSize = false, Height = 24, Padding = new Padding(12, 4, 0, 0), Location = new Point(0, y), Width = _pnlSearchResults.Width };
+            _pnlSearchResults.Controls.Add(lblTitle);
+            y += 26;
 
             int initialWidth = _pnlSearchResults.ClientSize.Width > 0 ? _pnlSearchResults.ClientSize.Width : 360;
-            foreach (var r in results)
+
+            foreach (var u in users)
             {
-                var row = BuildSearchRow(r, initialWidth);
+                // Chuyển UserResponse sang ContactItem để xài chung UI BuildSearchRow
+                var contact = new ContactItem
+                {
+                    Type = ContactType.Friend,
+                    UserId = u.UserID,
+                    DisplayName = u.Username ?? "Unknown",
+                    Username = u.Username ?? "",
+                    Status = FriendStatus.None // Mặc định là None, nếu backend trả về trạng thái bạn bè thì map vào đây
+                };
+
+                var row = BuildSearchRow(contact, initialWidth);
                 row.Location = new Point(0, y);
                 _pnlSearchResults.Controls.Add(row);
                 y += 60;
