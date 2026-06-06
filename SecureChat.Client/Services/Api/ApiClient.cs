@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using System.Net.Http.Json;
 
 namespace SecureChat.Client.Services
 {
@@ -24,6 +23,8 @@ namespace SecureChat.Client.Services
                 BaseAddress = new Uri(ResolveBaseUrl())
             };
         }
+
+        public HttpClient GetHttpClient() => _httpClient;
 
         // POST multipart/form-data using the singleton HttpClient (this preserves Authorization header)
         public async Task<(bool IsSuccess, string ResponseContent, string ErrorMessage)> PostMultipartAsync(string endpoint, MultipartFormDataContent content)
@@ -160,6 +161,29 @@ namespace SecureChat.Client.Services
             }
         }
 
+        // Generic GET helper added to support deconstruction calls like: var (ok, data, err) = await ApiClient.Instance.GetAsync<T>(url);
+        public async Task<(bool IsSuccess, T? Data, string ErrorMessage)> GetAsync<T>(string endpoint)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync(endpoint);
+                var responseStr = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var data = JsonSerializer.Deserialize<T>(responseStr, options);
+                    return (true, data, string.Empty);
+                }
+
+                return (false, default, $"Lỗi server: {responseStr}");
+            }
+            catch (Exception ex)
+            {
+                return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
+            }
+        }
+
         public async Task<(bool IsSuccess, string ErrorMessage)> DeleteAsync(string endpoint)
         {
             try
@@ -175,27 +199,6 @@ namespace SecureChat.Client.Services
             catch (Exception ex)
             {
                 return (false, $"Không thể kết nối máy chủ: {ex.Message}");
-            }
-        }
-
-        public async Task<(bool IsSuccess, TData Data, string ErrorMessage)> GetAsync<TData>(string endpoint)
-        {
-            try
-            {
-                var response = await _httpClient.GetAsync(endpoint);
-                if (response.IsSuccessStatusCode)
-                {
-                    // Phân giải dữ liệu JSON trả về thành Object
-                    var data = await response.Content.ReadFromJsonAsync<TData>();
-                    return (true, data, string.Empty);
-                }
-
-                var error = await response.Content.ReadAsStringAsync();
-                return (false, default, $"Lỗi server: {error}");
-            }
-            catch (Exception ex)
-            {
-                return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
             }
         }
     }

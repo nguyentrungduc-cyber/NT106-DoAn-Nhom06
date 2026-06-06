@@ -1,5 +1,4 @@
 ﻿using SecureChat.Client.Components.Group;
-using SecureChat.Client.Services;
 using System.Drawing.Drawing2D;
 
 namespace SecureChat.Client.Forms.Chat
@@ -38,20 +37,11 @@ namespace SecureChat.Client.Forms.Chat
 
         public event Action? AddMemberRequested;
 
-        private readonly string _conversationId;
-        public frmGroupInfo(string conversationId, string groupName, Image? groupAvatar)
+        public frmGroupInfo()
         {
-            _conversationId = conversationId;
             InitializeComponent();
             BuildUI();
-
-            // Set thông tin cơ bản trước
-            _lblName.Text = groupName;
-            _pbAvatar.Image = groupAvatar;
-            _pbAvatar.BackColor = groupAvatar == null ? Color.FromArgb(0xF4, 0xA4, 0x44) : Color.Transparent;
-
-            // Load danh sách thành viên thật từ API
-            _ = LoadGroupMembersAsync(_conversationId);
+            // Dữ liệu nhóm sẽ được load từ bên ngoài qua LoadGroup(...)
         }
 
         private void BuildUI()
@@ -287,7 +277,7 @@ namespace SecureChat.Client.Forms.Chat
 
         private void OpenEditGroup()
         {
-            using var f = new frmEditGroup(_conversationId, _lblName.Text);
+            using var f = new frmEditGroup(_lblName.Text, string.Empty);
             if (f.ShowDialog(this) != DialogResult.OK) return;
 
             _lblName.Text = f.GroupName;
@@ -300,6 +290,16 @@ namespace SecureChat.Client.Forms.Chat
 
             if (f.LeaveConfirmed)
                 Close();
+        }
+
+        private void LoadSample()
+        {
+            var members = new List<MemberModel>
+            {
+                new("Hoang Hieu", "online", "owner", null, Color.FromArgb(0xF3,0x7A,0x5A)),
+                new("Duck Cyber", "last seen recently", string.Empty, null, Color.FromArgb(0x5C,0xA5,0xEC)),
+            };
+            LoadGroup("test", null, members);
         }
 
         public void LoadGroup(string name, Image? avatar, IReadOnlyList<MemberModel> members)
@@ -350,88 +350,7 @@ namespace SecureChat.Client.Forms.Chat
                 }
             }
         }
-
-        private async Task LoadGroupMembersAsync(string conversationId)
-        {
-            var (ok, members, err) = await ApiClient.Instance.GetAsync<List<SecureChat.DTOs.MemberResponse>>($"api/conversations/{conversationId}/members");
-
-            if (!ok)
-            {
-                MessageBox.Show($"Lỗi tải danh sách thành viên: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            var uiMembers = new List<MemberModel>();
-
-            if (members != null)
-            {
-                foreach (var m in members)
-                {
-                    string role = m.Role.ToString();
-                    string name = m.User?.Username ?? m.Nickname ?? "Unknown User";
-                    // Lấy màu từ hash tên để tạo màu avatar mặc định
-                    Color avatarColor = GetColorFromUsername(name);
-
-                    uiMembers.Add(new MemberModel(name, "last seen recently", role, null, avatarColor));
-                }
-            }
-
-            // Cập nhật số lượng
-            _lblCount.Text = $"{uiMembers.Count} members";
-            _lblMembersTitle.Text = $"{uiMembers.Count} MEMBERS";
-
-            // Đổ vào UI
-            BuildMembersList(uiMembers);
-        }
-
-        private Color GetColorFromUsername(string username)
-        {
-            var colors = new[] { Color.FromArgb(0x5C, 0xA5, 0xEC), Color.FromArgb(0xF3, 0x7A, 0x5A), Color.FromArgb(0x6C, 0xB2, 0xF0), TG.Blue };
-            return colors[Math.Abs(username.GetHashCode()) % colors.Length];
-        }
-
-        private void BuildMembersList(List<MemberModel> members)
-        {
-            // Dừng cập nhật giao diện tạm thời để vẽ mượt hơn
-            _pnlList.SuspendLayout();
-            _pnlList.Controls.Clear();
-
-            int y = 0;
-            foreach (var m in members)
-            {
-                // Khởi tạo Custom Control của bạn
-                var item = new ucGroupMemberItem
-                {
-                    Dock = DockStyle.None,
-                    Margin = Padding.Empty,
-                    Location = new Point(SECTION_PAD, y), // SECTION_PAD = 18 như bạn đã định nghĩa
-                    BackColor = Color.Transparent
-                };
-
-                // Đổ dữ liệu thật vào Control
-                item.DisplayName = m.Name;
-                item.Status = m.Status;
-                item.Role = m.Role;
-                item.AvatarImage = m.Avatar;
-                item.AvatarColor = m.AvatarColor;
-                item.SetInitial(m.Name.Length > 0 ? m.Name.Substring(0, 1).ToUpperInvariant() : "?");
-
-                // Thêm vào danh sách UI
-                _pnlList.Controls.Add(item);
-                y += item.Height;
-            }
-
-            // Cập nhật lại thanh cuộn
-            _pnlList.AutoScrollMinSize = new Size(0, y);
-            _pnlList.ResumeLayout();
-
-            // Gọi hàm căn lề có sẵn của bạn
-            LayoutMemberItems();
-        }
     }
 
     public record MemberModel(string Name, string Status, string Role, Image? Avatar, Color AvatarColor);
-
-
-
 }
