@@ -23,12 +23,14 @@ namespace SecureChat.Repositories
 		public async Task<User?> GetByEmailAsync(string email)
 			=> await db.Users.FirstOrDefaultAsync(u => u.Email == email);
 
-		public async Task<List<User>> SearchAsync(string query)
-			=> await db.Users
-				.Where(u => (EF.Functions.Like(u.Username, $"%{query}%") || EF.Functions.Like(u.DisplayName, $"%{query}%")))
-				.ToListAsync();
+        public async Task<List<User>> SearchAsync(string query, string? excludeUserId = null)
+    => await db.Users
+        .Where(u =>
+            (EF.Functions.Like(u.Username, $"%{query}%") || EF.Functions.Like(u.DisplayName, $"%{query}%"))
+            && (excludeUserId == null || u.UserID != excludeUserId))
+        .ToListAsync();
 
-		public async Task<bool> ExistsByIdAsync(string userID)
+        public async Task<bool> ExistsByIdAsync(string userID)
 			=> await db.Users.AnyAsync(u => u.UserID == userID);
 
 		public async Task<bool> ExistsByUsernameAsync(string username)
