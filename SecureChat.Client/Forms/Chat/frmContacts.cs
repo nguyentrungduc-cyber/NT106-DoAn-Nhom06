@@ -739,7 +739,7 @@ namespace SecureChat.Client
             };
 
             pnl.Resize += resizeHandler;
-            resizeHandler(pnl, EventArgs.Empty);
+            pnl.HandleCreated += resizeHandler; // Gọi sau khi panel có kích thước thật
 
             foreach (Control ctrl in pnl.Controls)
             {
