@@ -91,7 +91,7 @@ namespace SecureChat.Client.Forms.Chat
 
             _lblName = new Label
             {
-                Text = "test",
+                Text = string.Empty,
                 Font = new Font("Segoe UI Semibold", 17f),
                 ForeColor = C_TEXT,
                 AutoSize = false,

@@ -103,7 +103,6 @@ namespace SecureChat.Client.Forms.Chat
         {
             InitializeComponent();
             BuildUI();
-            // LoadUserList(DefaultUsers());
         }
 
         protected override void OnShown(EventArgs e)
@@ -544,18 +543,6 @@ namespace SecureChat.Client.Forms.Chat
             RoundRect(g, pen, cx - 5, cy - 15, 10, 7, 2);     // top bump
             using var dot = new SolidBrush(Color.White);
             g.FillEllipse(dot, cx + 8, cy - 11, 4, 4);        // flash
-        }
-
-        // ═══════════════════════════════════════════════════
-        //  SAMPLE DATA
-        // ═══════════════════════════════════════════════════
-        private static IEnumerable<(string Name, string Status)> DefaultUsers()
-        {
-            yield return ("Name1", "last seen a long time ago");
-            yield return ("Name2", "last seen a long time ago");
-            yield return ("Name3", "last seen a long time ago");
-            yield return ("Name4", "last seen a long time ago");
-            yield return ("Name5", "last seen within a month");
         }
 
         // ═══════════════════════════════════════════════════
