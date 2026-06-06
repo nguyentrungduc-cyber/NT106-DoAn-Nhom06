@@ -74,6 +74,8 @@ namespace SecureChat.Client
         private string _activeConvId = string.Empty;
         private string _currentUserId = string.Empty;
         private string _currentDisplayName = string.Empty;
+        private string _currentUsername = string.Empty;
+        private string _currentEmail = string.Empty;
 
         private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new();
 
@@ -126,6 +128,8 @@ namespace SecureChat.Client
                     {
                         _currentUserId = me.UserID;
                         _currentDisplayName = me.DisplayName;
+                        _currentUsername = me.Username;
+                        _currentEmail = me.Email;
                     }
                 }
             }
@@ -912,12 +916,36 @@ namespace SecureChat.Client
                 MessageBoxIcon.Information);
         }
 
-        private void OpenGroupInfo()
+        private async void OpenGroupInfo()
         {
+            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+            var members = new List<SecureChat.Client.Forms.Chat.MemberModel>();
+            try
+            {
+                var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(json, opts);
+                    if (list != null)
+                        members = list.Select(m => new SecureChat.Client.Forms.Chat.MemberModel(
+            m.User?.DisplayName ?? m.Nickname ?? "Unknown",
+            m.User?.ShowOnlineStatus == true ? "online" : "last seen recently",
+            m.Role.ToString(),
+            null,
+            System.Drawing.Color.Gray
+        )).ToList();
+                }
+            }
+            catch { }
+
             using var dlg = new SecureChat.Client.Forms.Chat.frmGroupInfo();
+            dlg.LoadGroup(_lblChatName.Text, null, members);
             dlg.StartPosition = FormStartPosition.CenterParent;
             dlg.ShowDialog(this);
         }
+
 
         private void OpenEditGroupFromChat()
         {
@@ -955,13 +983,31 @@ namespace SecureChat.Client
             BuildMessages();
         }
 
-        private void DeleteAndLeave()
+        private async void DeleteAndLeave()
         {
-            var members = new[] { "Duck Cyber", "Sim 18a3", "Tuấn Thành", "Hoang Hieu" };
-            using var dlg = new SecureChat.Client.Forms.Chat.frmLeaveGroup(_lblChatName.Text, "Duck Cyber", members);
+            // Load members từ API
+            var memberNames = new List<string>();
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(json, opts);
+                    if (list != null)
+                        memberNames = list
+                            .Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown")
+                            .ToList();
+                }
+            }
+            catch { }
+
+            using var dlg = new SecureChat.Client.Forms.Chat.frmLeaveGroup(
+                _lblChatName.Text, _currentDisplayName, memberNames);
             if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
                 return;
-
             _currentMsgs.Clear();
             BuildMessages();
             _lblChatStatus.Text = $"You left this group · New owner: {dlg.AppointedAdminName}";
@@ -1875,8 +1921,8 @@ namespace SecureChat.Client
                             var profile = new SecureChat.Client.Models.ProfileModel
                             {
                                 FullName = _currentDisplayName,
-                                PhoneNumber = "0123456789",
-                                Username = "Duck_Cyber",
+                                PhoneNumber = _currentEmail,
+                                Username = _currentUsername,
                                 AvatarPath = string.Empty,
                                 StatusText = "online"
                             };
