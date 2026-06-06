@@ -942,6 +942,7 @@ namespace SecureChat.Client
 
             using var dlg = new SecureChat.Client.Forms.Chat.frmGroupInfo();
             dlg.LoadGroup(_lblChatName.Text, null, members);
+            dlg.SetContext(_activeConvId, _currentDisplayName);
             dlg.StartPosition = FormStartPosition.CenterParent;
             dlg.ShowDialog(this);
         }
@@ -1983,7 +1984,7 @@ namespace SecureChat.Client
                     {
                         try
                         {
-                            var profile = new SecureChat.Client.Models.ProfileModel { FullName = "Quack Cyber" };
+                            var profile = new SecureChat.Client.Models.ProfileModel { FullName = _currentDisplayName };
                             using var settings = new SecureChat.Client.Forms.Settings.frmSettings(profile);
                             settings.StartPosition = FormStartPosition.CenterParent;
                             var dr = settings.ShowDialog(this);

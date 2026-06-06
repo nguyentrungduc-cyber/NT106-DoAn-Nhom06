@@ -294,7 +294,7 @@
 
         private void OpenAdministratorsSettings()
         {
-            using var dlg = new frmAdministratorsSettings(_adminsCount);
+            using var dlg = new frmAdministratorsSettings(_conversationId, _adminsCount);
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
             _adminsCount = dlg.AdministratorsCount;
