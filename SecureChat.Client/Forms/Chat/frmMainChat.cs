@@ -73,6 +73,7 @@ namespace SecureChat.Client
         // ── Conversation data ──────────────────────────────
         private string _activeConvId = string.Empty;
         private string _currentUserId = string.Empty;
+        private string _currentDisplayName = string.Empty;
 
         private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new();
 
@@ -114,9 +115,19 @@ namespace SecureChat.Client
         {
             try
             {
-                var me = await SecureChat.Client.Services.ApiClient.Instance.GetCurrentUserIdAsync();
-                if (!string.IsNullOrWhiteSpace(me))
-                    _currentUserId = me;
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var res = await http.GetAsync("api/users/me");
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var me = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.UserResponse>(json, opts);
+                    if (me != null)
+                    {
+                        _currentUserId = me.UserID;
+                        _currentDisplayName = me.DisplayName;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -1210,7 +1221,8 @@ namespace SecureChat.Client
             _pnlReplyContext.Controls.AddRange(new Control[] { pnlAccent, _lblReplySender, _lblReplyText, btnCloseReply, lblReplyIcon });
 
             // Tự động giãn dòng text theo chiều rộng Form
-            _pnlReplyContext.Resize += (s, e) => {
+            _pnlReplyContext.Resize += (s, e) =>
+            {
                 btnCloseReply.Location = new Point(_pnlReplyContext.Width - 40, 7);
                 _lblReplyText.Width = _pnlReplyContext.Width - 110;
             };
@@ -1532,7 +1544,8 @@ namespace SecureChat.Client
             var pnlInputControls = new Panel { Dock = DockStyle.Bottom, Height = 56, BackColor = Color.Transparent };
             pnlInputControls.Controls.AddRange(new Control[] { btnAttach, _tbMessage, btnEmoji, btnMic, btnSend });
 
-            pnlInputControls.Resize += (s, e) => {
+            pnlInputControls.Resize += (s, e) =>
+            {
                 int y = 10;
                 btnAttach.Location = new Point(8, y);
                 btnEmoji.Location = new Point(Math.Max(0, pnlInputControls.Width - 84), y);
@@ -1635,11 +1648,11 @@ namespace SecureChat.Client
             btnClose.Click += (s, e) => HideSettingsMenu();
 
             var userAvatar = new AvatarControl { Size = new Size(56, 56), Location = new Point(14, 52) };
-            userAvatar.SetName("Quack Cyber");
+            userAvatar.SetName(_currentDisplayName);
 
             var lblUserName = new Label
             {
-                Text = "Quack Cyber",
+                Text = _currentDisplayName,
                 Font = TG.FontSemiBold(11f),
                 ForeColor = Color.White,
                 AutoSize = false,
@@ -1861,7 +1874,7 @@ namespace SecureChat.Client
                         {
                             var profile = new SecureChat.Client.Models.ProfileModel
                             {
-                                FullName = "Quack Cyber",
+                                FullName = _currentDisplayName,
                                 PhoneNumber = "0123456789",
                                 Username = "Duck_Cyber",
                                 AvatarPath = string.Empty,

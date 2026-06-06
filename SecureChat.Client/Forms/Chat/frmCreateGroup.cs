@@ -103,13 +103,33 @@ namespace SecureChat.Client.Forms.Chat
         {
             InitializeComponent();
             BuildUI();
-            LoadUserList(DefaultUsers());
+            // LoadUserList(DefaultUsers());
         }
 
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            ShowStep(1); // safe now
+            ShowStep(1);
+            _ = LoadFriendsAsync(); // Load API thật
+        }
+
+        private async Task LoadFriendsAsync()
+        {
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var res = await http.GetAsync("api/friends");
+                if (!res.IsSuccessStatusCode) return;
+
+                var json = await res.Content.ReadAsStringAsync();
+                var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.FriendResponse>>(json, opts);
+                if (list == null) return;
+
+                var users = list.Select(f => (f.Friend.DisplayName, "last seen recently"));
+                BeginInvoke(new Action(() => LoadUserList(users)));
+            }
+            catch { /* Giữ list rỗng nếu lỗi mạng */ }
         }
 
         // ───────────────────────────────────────────────────
