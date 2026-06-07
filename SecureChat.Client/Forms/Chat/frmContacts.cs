@@ -91,6 +91,8 @@ namespace SecureChat.Client
         private readonly Panel _pnlBlockedUsers; // Panel mới cho tab "Đã chặn"
         private Panel _pnlIncoming = new();      // Panel lời mời đã nhận (field để refresh sau khi load API)
         private Panel _pnlSentRequests = new();  // Panel lời mời đã gửi (field để refresh sau khi load API)
+        private TabPage _tpIncoming = new();
+        private TabPage _tpSent = new();
         // Panel cho 2 tab con được khai báo cục bộ
         // Trong lập trình WinForms, thay vì tìm cách chèn thêm 1 dòng vào giữa một cái Panel đang có sẵn, người ta thường chọn cách xóa sạch và vẽ lại:
 
@@ -782,11 +784,11 @@ namespace SecureChat.Client
             int outgoingCount = _requests.FindAll(r => !r.IsIncoming).Count;
             int blockedCount = _blockedUsers.Count;  // ✅ FIX: Thêm đếm số blocked users
 
-            var tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            var tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            _tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            _tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
             var tabBlocked = new TabPage($"Đã chặn ({blockedCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };  // ✅ FIX: Thêm ({blockedCount})
 
-            _requestSubTabs.TabPages.AddRange(new[] { tpIncoming, tpSent, tabBlocked });
+            _requestSubTabs.TabPages.AddRange(new[] { _tpIncoming, _tpSent, tabBlocked });
 
             // Gán Panel cho tab "Đã chặn"
             _pnlBlockedUsers.Dock = DockStyle.Fill;
@@ -807,7 +809,7 @@ namespace SecureChat.Client
                 _pnlIncoming.Controls.Add(row);
                 y += 86;
             }
-            tpIncoming.Controls.Add(_pnlIncoming);
+            _tpIncoming.Controls.Add(_pnlIncoming);
 
             // ============ TAB "Đã gửi" ============
             _pnlSentRequests = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
@@ -821,7 +823,7 @@ namespace SecureChat.Client
                 _pnlSentRequests.Controls.Add(row);
                 y += 86;
             }
-            tpSent.Controls.Add(_pnlSentRequests);
+            _tpSent.Controls.Add(_pnlSentRequests);
 
             _tabRequests.Controls.Add(_requestSubTabs);
 

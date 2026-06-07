@@ -88,7 +88,7 @@ namespace SecureChat.Repositories
             => await db.FriendRequests
                 .Include(r => r.Sender)
                 .Include(r => r.Recipient)
-                .Where(r => r.SenderID == senderID)
+                .Where(r => r.SenderID == senderID && r.Status == FriendRequestStatus.Pending)
                 .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync();
 
