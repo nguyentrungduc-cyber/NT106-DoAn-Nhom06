@@ -1088,7 +1088,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextBlue,
                 AutoSize = false,
-                Height = 16,
+                Height = 20,
                 Location = new Point(58, 30),
                 Width = initialWidth - 158,
                 BackColor = Color.Transparent,
@@ -1113,7 +1113,37 @@ namespace SecureChat.Client
                     break;
                 default:
                     var btn = new TelegramButton { Text = "+ Kết bạn", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
-                    btn.Click += (s, e) => { c.Status = FriendStatus.PendingOutgoing; pnl.Refresh(); };
+                    btn.Click += async (s, e) =>
+                    {
+                        btn.Enabled = false;
+                        btn.Text = "Đang gửi...";
+                        try
+                        {
+                            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                            var body = new StringContent(
+                                System.Text.Json.JsonSerializer.Serialize(new { RecipientID = c.UserId }),
+                                System.Text.Encoding.UTF8, "application/json");
+                            var res = await http.PostAsync("api/friends/requests", body);
+                            if (res.IsSuccessStatusCode)
+                            {
+                                c.Status = FriendStatus.PendingOutgoing;
+                                btn.Text = "Đã gửi";
+                                btn.ForeColor = System.Drawing.Color.FromArgb(0xE6, 0x5C, 0x00);
+                                await LoadContactsFromApiAsync();
+                            }
+                            else
+                            {
+                                btn.Text = "+ Kết bạn";
+                                btn.Enabled = true;
+                                MessageBox.Show("Gửi lời mời thất bại.", "Lỗi");
+                            }
+                        }
+                        catch
+                        {
+                            btn.Text = "+ Kết bạn";
+                            btn.Enabled = true;
+                        }
+                    };
                     statusCtrl = btn;
                     break;
             }
