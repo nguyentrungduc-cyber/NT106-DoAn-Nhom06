@@ -1238,6 +1238,8 @@ namespace SecureChat.Client
                 _pnlSentRequests.Controls.Add(row);
                 y += 86;
             }
+            _tpIncoming.Text = $"Đã nhận ({_requests.Count(r => r.IsIncoming)})";
+            _tpSent.Text = $"Đã gửi ({_requests.Count(r => !r.IsIncoming)})";
         }
 
         private void LoadBlockedUsers()
