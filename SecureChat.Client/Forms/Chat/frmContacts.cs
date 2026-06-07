@@ -877,8 +877,26 @@ namespace SecureChat.Client
                 var btnAccept = new TelegramButton { Text = "Chấp nhận", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(64, 54), Width = btnWidth };
                 var btnDecline = new TelegramButton { Text = "Từ chối", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64 + btnWidth + 8, 54), Width = btnWidth };
 
-                btnAccept.Click += (s, e) => { RemoveRequest(pnl, isAccepted: true); _incomingCount--; _tabs.Refresh(); };
-                btnDecline.Click += (s, e) => RemoveRequest(pnl, isAccepted: false);
+                btnAccept.Click += async (s, e) =>
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.PutAsync($"api/friends/requests/{req.RequestId}/accept", null);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        _incomingCount--;
+                        _tabs.Refresh();
+                        await LoadContactsFromApiAsync();
+                    }
+                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                };
+                btnDecline.Click += async (s, e) =>
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.PutAsync($"api/friends/requests/{req.RequestId}/decline", null);
+                    if (res.IsSuccessStatusCode)
+                        await LoadContactsFromApiAsync();
+                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                };
 
                 pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnAccept, btnDecline });
 
@@ -896,7 +914,14 @@ namespace SecureChat.Client
             else
             {
                 var btnCancel = new TelegramButton { Text = "Hủy lời mời", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64, 54), Width = initialWidth - 76 };
-                btnCancel.Click += (s, e) => RemoveRequest(pnl, false);
+                btnCancel.Click += async (s, e) =>
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.DeleteAsync($"api/friends/requests/{req.RequestId}");
+                    if (res.IsSuccessStatusCode)
+                        await LoadContactsFromApiAsync();
+                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                };
 
                 pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnCancel });
 
