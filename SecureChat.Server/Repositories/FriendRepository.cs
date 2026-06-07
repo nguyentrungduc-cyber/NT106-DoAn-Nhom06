@@ -71,8 +71,10 @@ namespace SecureChat.Repositories
                 .FirstOrDefaultAsync(r => r.RequestID == requestID);
 
         public async Task<FriendRequest?> GetFriendRequestByPairAsync(string senderID, string recipientID)
-            => await db.FriendRequests
-                .FirstOrDefaultAsync(r => r.SenderID == senderID && r.RecipientID == recipientID);
+    => await db.FriendRequests
+        .FirstOrDefaultAsync(r =>
+            (r.SenderID == senderID && r.RecipientID == recipientID) ||
+            (r.SenderID == recipientID && r.RecipientID == senderID));
 
         public async Task<List<FriendRequest>> GetPendingRequestsForRecipientAsync(string recipientID)
             => await db.FriendRequests

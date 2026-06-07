@@ -1149,7 +1149,7 @@ namespace SecureChat.Client
                                 System.Text.Json.JsonSerializer.Serialize(new { RecipientID = c.UserId }),
                                 System.Text.Encoding.UTF8, "application/json");
                             var res = await http.PostAsync("api/friends/requests", body);
-                            if (res.IsSuccessStatusCode)
+                            if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.Conflict)
                             {
                                 c.Status = FriendStatus.PendingOutgoing;
                                 btn.Text = "Đã gửi";
@@ -1158,9 +1158,10 @@ namespace SecureChat.Client
                             }
                             else
                             {
+                                var errorBody = await res.Content.ReadAsStringAsync();
                                 btn.Text = "+ Kết bạn";
                                 btn.Enabled = true;
-                                MessageBox.Show("Gửi lời mời thất bại.", "Lỗi");
+                                MessageBox.Show($"Lỗi {(int)res.StatusCode}: {errorBody}", "Gửi thất bại");
                             }
                         }
                         catch
