@@ -140,6 +140,11 @@ namespace SecureChat.Client
 
         private async Task LoadContactsFromApiAsync()
         {
+            _friends = new();
+            _requests = new();
+            _blockedUsers = new();
+            _groups = new();
+
             var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
             var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
@@ -274,6 +279,9 @@ namespace SecureChat.Client
                 BuildGroupList(_groups, _pnlGroups);
                 RefreshRequestPanels();
                 LoadBlockedUsers();
+                // Refresh lại search nếu user đang tìm kiếm
+                if (!string.IsNullOrWhiteSpace(_tbSearch.Text) && _tbSearch.Text.Length >= 2)
+                    DoSearch(_tbSearch.Text);
             }));
         }
 
@@ -1240,6 +1248,8 @@ namespace SecureChat.Client
             }
             _tpIncoming.Text = $"Đã nhận ({_requests.Count(r => r.IsIncoming)})";
             _tpSent.Text = $"Đã gửi ({_requests.Count(r => !r.IsIncoming)})";
+            _requestSubTabs.Invalidate();
+
         }
 
         private void LoadBlockedUsers()
