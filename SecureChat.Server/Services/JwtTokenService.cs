@@ -18,7 +18,8 @@ namespace SecureChat.Services
 
 			var claims = new[] {
 				new Claim(JwtRegisteredClaimNames.Sub, userID),
-				new Claim(JwtRegisteredClaimNames.Jti, sessionID),
+                new Claim(ClaimTypes.NameIdentifier, userID),
+                new Claim(JwtRegisteredClaimNames.Jti, sessionID),
 			};
 
 			var expiry = DateTime.UtcNow.AddMinutes(double.Parse(config["Jwt:AccessTokenMinutes"] ?? "15"));

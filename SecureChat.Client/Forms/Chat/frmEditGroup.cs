@@ -1,4 +1,4 @@
-namespace SecureChat.Client.Forms.Chat
+﻿namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmEditGroup : Form
     {
@@ -17,14 +17,10 @@ namespace SecureChat.Client.Forms.Chat
 
         private string _groupType = "Private";
         private string _chatHistory = "Hidden";
-        private int _inviteLinksCount = 1;
-        private int _adminsCount = 1;
-        private int _membersCount = 2;
-        private readonly List<frmMembersSettings.MemberItemData> _members =
-        [
-            new frmMembersSettings.MemberItemData("Hoang Hieu", "online", "owner", Color.FromArgb(0xF3, 0x7A, 0x5A), "HH"),
-            new frmMembersSettings.MemberItemData("Duck Cyber", "last seen recently", string.Empty, Color.FromArgb(0x5C, 0xA5, 0xEC), "DC")
-        ];
+        private int _inviteLinksCount = 0;
+        private int _adminsCount = 0;
+        private int _membersCount = 0;
+        private readonly string _conversationId; // Thêm biến lưu ID nhóm
 
         public string GroupName { get; private set; }
         public string DescriptionText => _txtDescription.Text.Trim();
@@ -35,8 +31,9 @@ namespace SecureChat.Client.Forms.Chat
         public int MembersCount => _membersCount;
         public Image? GroupAvatar => _avatar.Image;
 
-        public frmEditGroup(string currentName)
+        public frmEditGroup(string conversationId, string currentName)
         {
+            _conversationId = conversationId; // Gán ID nhóm
             GroupName = currentName;
 
             Text = "Edit group";
@@ -213,6 +210,7 @@ namespace SecureChat.Client.Forms.Chat
                 _lblDescPlaceholder, _txtDescription, section,
                 btnCancel, btnSave
             });
+            _ = LoadGroupInfoAsync();
         }
 
         private Panel BuildSettingsRow(string leftText, string rightText, out Label rightValue)
@@ -296,22 +294,17 @@ namespace SecureChat.Client.Forms.Chat
 
         private void OpenAdministratorsSettings()
         {
-            using var dlg = new frmAdministratorsSettings(_adminsCount);
+            using var dlg = new frmAdministratorsSettings(_conversationId, _adminsCount);
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
             _adminsCount = dlg.AdministratorsCount;
             _lblAdminsValue.Text = _adminsCount.ToString();
         }
-
         private void OpenMembersSettings()
         {
-            using var dlg = new frmMembersSettings(_members);
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-
-            _members.Clear();
-            _members.AddRange(dlg.Members);
-            _membersCount = _members.Count;
-            _lblMembersValue.Text = _membersCount.ToString();
+            // Truyền _conversationId sang frmMembersSettings thay vì truyền mảng dữ liệu giả
+            using var dlg = new frmMembersSettings(_conversationId);
+            dlg.ShowDialog(this);
         }
 
         private void PickAvatarImage()
@@ -362,5 +355,35 @@ namespace SecureChat.Client.Forms.Chat
             _avatar.Image = null;
             base.OnFormClosed(e);
         }
+
+        private async Task LoadGroupInfoAsync()
+        {
+            // Gọi API lấy danh sách thành viên của nhóm này
+            var (ok, members, err) = await SecureChat.Client.Services.ApiClient.Instance
+                .GetAsync<List<SecureChat.DTOs.MemberResponse>>($"api/conversations/{_conversationId}/members");
+
+            if (ok && members != null)
+            {
+                // 1. Cập nhật tổng số thành viên thật
+                _membersCount = members.Count;
+
+                // Đoạn này dùng Invoke để đảm bảo an toàn khi cập nhật Giao diện (UI) từ luồng bất đồng bộ (Task)
+                if (this.IsHandleCreated)
+                {
+                    this.Invoke(new Action(() =>
+                    {
+                        _lblMembersValue.Text = _membersCount.ToString();
+
+                        // 2. Tự động đếm xem có bao nhiêu Admin / Owner
+                        _adminsCount = members.Count(m =>
+                            m.Role.ToString().Equals("Admin", StringComparison.OrdinalIgnoreCase) ||
+                            m.Role.ToString().Equals("Owner", StringComparison.OrdinalIgnoreCase));
+
+                        _lblAdminsValue.Text = _adminsCount.ToString();
+                    }));
+                }
+            }
+        }
     }
+
 }

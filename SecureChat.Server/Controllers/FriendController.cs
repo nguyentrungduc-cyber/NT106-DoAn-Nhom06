@@ -53,33 +53,41 @@ namespace SecureChat.Controllers
 			return Ok(list.Select(FriendRequestResponse.From));
 		}
 
-		[HttpPost("requests")]
-		public async Task<IActionResult> SendRequest([FromBody] SendFriendRequestRequest req)
-		{
-			if (req.RecipientID == Me)
-				return BadRequest(new { error = "Không thể kết bạn với chính mình." });
-			if (!await users.ExistsByIdAsync(req.RecipientID))
-				return NotFound(new { error = "Người dùng không tồn tại." });
-			if (await friends.AreFriendsAsync(Me, req.RecipientID))
-				return Conflict(new { error = "Đã là bạn bè." });
-			if (await friends.IsBlockedEitherWayAsync(Me, req.RecipientID))
-				return Forbid();
+        [HttpPost("requests")]
+        public async Task<IActionResult> SendRequest([FromBody] SendFriendRequestRequest req)
+        {
+            if (await friends.AreFriendsAsync(Me, req.RecipientID))
+                return Conflict(new { error = "Đã là bạn bè." });
 
-			var existing = await friends.GetFriendRequestByPairAsync(Me, req.RecipientID);
-			if (existing is not null && existing.Status == FriendRequestStatus.Pending)
-				return Conflict(new { error = "Lời mời kết bạn đã được gửi." });
+            var existing = await friends.GetFriendRequestByPairAsync(Me, req.RecipientID);
 
-			var request = await friends.CreateFriendRequestAsync(new FriendRequest {
-				RequestID   = NewID(),
-				SenderID    = Me,
-				RecipientID = req.RecipientID
-			});
+            if (existing is not null)
+            {
+                if (existing.Status == FriendRequestStatus.Pending)
+                    return Conflict(new { error = "Lời mời kết bạn đã được gửi." });
 
-			var loaded = await friends.GetFriendRequestByIdAsync(request.RequestID);
-			return CreatedAtAction(nameof(GetReceivedRequests), FriendRequestResponse.From(loaded!));
-		}
+                // Nếu đã cancelled/declined trước đó → update lại thành Pending thay vì insert mới
+                if (existing.SenderID == Me)
+                {
+                    await friends.UpdateFriendRequestStatusAsync(existing.RequestID, FriendRequestStatus.Pending);
+                    return Ok(new { message = "Đã gửi lại lời mời." });
+                }
+            }
 
-		[HttpPut("requests/{requestID}/accept")]
+            // Tạo mới nếu chưa có record nào
+            var newReq = new SecureChat.Models.FriendRequest
+            {
+                RequestID = NewID(),
+                SenderID = Me,
+                RecipientID = req.RecipientID,
+                Status = FriendRequestStatus.Pending,
+                CreatedAt = DateTime.UtcNow
+            };
+            await friends.CreateFriendRequestAsync(newReq);
+            return CreatedAtAction(nameof(GetReceivedRequests), new { }, null);
+        }
+
+        [HttpPut("requests/{requestID}/accept")]
 		public async Task<IActionResult> AcceptRequest(string requestID)
 		{
 			var request = await friends.GetFriendRequestByIdAsync(requestID);

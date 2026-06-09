@@ -1,4 +1,4 @@
-using SecureChat.Client.Components.Group;
+﻿using SecureChat.Client.Components.Group;
 using System.Drawing.Drawing2D;
 
 namespace SecureChat.Client.Forms.Chat
@@ -36,12 +36,14 @@ namespace SecureChat.Client.Forms.Chat
         private DateTime? _muteUntilUtc;
 
         public event Action? AddMemberRequested;
+        private string _conversationId = string.Empty;
+        private string _currentUserDisplayName = string.Empty;
 
         public frmGroupInfo()
         {
             InitializeComponent();
             BuildUI();
-            LoadSample();
+            // Dữ liệu nhóm sẽ được load từ bên ngoài qua LoadGroup(...)
         }
 
         private void BuildUI()
@@ -89,7 +91,7 @@ namespace SecureChat.Client.Forms.Chat
 
             _lblName = new Label
             {
-                Text = "test",
+                Text = string.Empty,
                 Font = new Font("Segoe UI Semibold", 17f),
                 ForeColor = C_TEXT,
                 AutoSize = false,
@@ -277,7 +279,7 @@ namespace SecureChat.Client.Forms.Chat
 
         private void OpenEditGroup()
         {
-            using var f = new frmEditGroup(_lblName.Text);
+            using var f = new frmEditGroup(_lblName.Text, string.Empty);
             if (f.ShowDialog(this) != DialogResult.OK) return;
 
             _lblName.Text = f.GroupName;
@@ -285,21 +287,11 @@ namespace SecureChat.Client.Forms.Chat
 
         private void OpenLeaveGroup()
         {
-            using var f = new frmLeaveGroup(_lblName.Text, "Duck Cyber");
+            using var f = new frmLeaveGroup(_lblName.Text, _currentUserDisplayName);
             if (f.ShowDialog(this) != DialogResult.OK) return;
 
             if (f.LeaveConfirmed)
                 Close();
-        }
-
-        private void LoadSample()
-        {
-            var members = new List<MemberModel>
-            {
-                new("Hoang Hieu", "online", "owner", null, Color.FromArgb(0xF3,0x7A,0x5A)),
-                new("Duck Cyber", "last seen recently", string.Empty, null, Color.FromArgb(0x5C,0xA5,0xEC)),
-            };
-            LoadGroup("test", null, members);
         }
 
         public void LoadGroup(string name, Image? avatar, IReadOnlyList<MemberModel> members)
@@ -349,6 +341,12 @@ namespace SecureChat.Client.Forms.Chat
                     item.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
                 }
             }
+        }
+
+        public void SetContext(string conversationId, string currentUserDisplayName)
+        {
+            _conversationId = conversationId;
+            _currentUserDisplayName = currentUserDisplayName;
         }
     }
 

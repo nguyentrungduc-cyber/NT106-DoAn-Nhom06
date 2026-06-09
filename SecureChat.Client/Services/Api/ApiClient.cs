@@ -24,6 +24,8 @@ namespace SecureChat.Client.Services
             };
         }
 
+        public HttpClient GetHttpClient() => _httpClient;
+
         // POST multipart/form-data using the singleton HttpClient (this preserves Authorization header)
         public async Task<(bool IsSuccess, string ResponseContent, string ErrorMessage)> PostMultipartAsync(string endpoint, MultipartFormDataContent content)
         {
@@ -148,6 +150,29 @@ namespace SecureChat.Client.Services
                 {
                     var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                     var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
+                    return (true, data, string.Empty);
+                }
+
+                return (false, default, $"Lỗi server: {responseStr}");
+            }
+            catch (Exception ex)
+            {
+                return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
+            }
+        }
+
+        // Generic GET helper added to support deconstruction calls like: var (ok, data, err) = await ApiClient.Instance.GetAsync<T>(url);
+        public async Task<(bool IsSuccess, T? Data, string ErrorMessage)> GetAsync<T>(string endpoint)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync(endpoint);
+                var responseStr = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var data = JsonSerializer.Deserialize<T>(responseStr, options);
                     return (true, data, string.Empty);
                 }
 

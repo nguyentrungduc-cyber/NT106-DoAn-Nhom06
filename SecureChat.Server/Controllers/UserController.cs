@@ -101,17 +101,15 @@ namespace SecureChat.Controllers
 			return NoContent();
 		}
 
-		[HttpGet("search")]
-		public async Task<IActionResult> Search([FromQuery] string q)
-		{
-			if (string.IsNullOrWhiteSpace(q))
-				return BadRequest(new { error = "Thiếu từ khóa tìm kiếm." });
+        [HttpGet("search")]
+        public async Task<IActionResult> Search([FromQuery] string q)
+        {
+            var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var results = await users.SearchAsync(q, currentUserId);
+            return Ok(results.Select(UserResponse.From));
+        }
 
-			var results = await users.SearchAsync(q);
-			return Ok(results.Select(UserResponse.From));
-		}
-
-		[HttpGet("{userID}")]
+        [HttpGet("{userID}")]
 		public async Task<IActionResult> GetUser(string userID)
 		{
 			var user = await users.GetByIdAsync(userID);
