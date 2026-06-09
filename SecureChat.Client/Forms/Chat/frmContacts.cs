@@ -146,7 +146,11 @@ namespace SecureChat.Client
             _groups = new();
 
             var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
-            var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var opts = new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            };
 
             // 1. Load danh sách bạn bè
             try
@@ -204,7 +208,6 @@ namespace SecureChat.Client
                 if (res.IsSuccessStatusCode)
                 {
                     var json = await res.Content.ReadAsStringAsync();
-                    MessageBox.Show($"Sent JSON: {json}");
                     var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.FriendRequestResponse>>(json, opts);
                     if (list != null)
                     {
@@ -222,13 +225,12 @@ namespace SecureChat.Client
                     else
                     {
                         var err = await res.Content.ReadAsStringAsync();
-                        MessageBox.Show($"Sent requests lỗi {(int)res.StatusCode}: {err}", "Debug");
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Sent requests exception: {ex.Message}", "Debug");
+                
             }
 
             // 4. Load danh sách bị block
@@ -1232,7 +1234,6 @@ namespace SecureChat.Client
 
         private void RefreshRequestPanels()
         {
-            MessageBox.Show($"incoming={_requests.Count(r => r.IsIncoming)}, outgoing={_requests.Count(r => !r.IsIncoming)}");
             // Rebuild panel lời mời đã nhận
             _pnlIncoming.Controls.Clear();
             int y = 0;
