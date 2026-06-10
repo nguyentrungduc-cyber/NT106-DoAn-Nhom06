@@ -785,12 +785,16 @@ namespace SecureChat.Client
                 TextColor = TG.Blue,
                 Location = new Point(initialWidth - 46, 17),
             };
-            btnMsg.Click += (s, e) =>
+            btnMsg.Click += async (s, e) =>
             {
-                var mainForm = Application.OpenForms["MainForm"] as frmMainChat ?? new frmMainChat();
-                mainForm.Show();
+                btnMsg.Enabled = false;
+                try
+                {
+                    PendingOpenConversationId = c.ConversationId;
+                    Close();
+                }
+                catch { btnMsg.Enabled = true; }
             };
-
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
             pnl.Paint += (s, e) => e.Graphics.DrawLine(new Pen(TG.DividerLight), 62, 61, pnl.Width, 61);
 
