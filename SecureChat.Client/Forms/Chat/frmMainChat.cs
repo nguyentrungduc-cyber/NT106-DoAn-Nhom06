@@ -168,7 +168,11 @@ namespace SecureChat.Client
                 if (!response.IsSuccessStatusCode) return;
 
                 var json = await response.Content.ReadAsStringAsync();
-                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                };
                 var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.ConversationResponse>>(json, options);
                 if (list == null) return;
 
@@ -209,7 +213,11 @@ namespace SecureChat.Client
                 if (!response.IsSuccessStatusCode) return;
 
                 var json = await response.Content.ReadAsStringAsync();
-                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                };
                 var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MessageResponse>>(json, options);
                 if (list == null) return;
 
@@ -580,6 +588,12 @@ namespace SecureChat.Client
 
                 lblUnread.BringToFront(); // đảm bảo 99+ không bị đè
             };
+
+            // Set width ngay lần đầu render
+            int initWidth = _pnlConvList.ClientSize.Width > 0 ? _pnlConvList.ClientSize.Width : 280;
+            lblName.Width = Math.Max(0, initWidth - 66 - 70);
+            int initPreviewMargin = (unread > 0) ? 40 : 12;
+            lblPreview.Width = Math.Max(0, initWidth - 66 - initPreviewMargin);
 
             // Truyền sự kiện (Event Propagation)/hover for child controls
             // Trong WinForms, khi bạn click vào một Label nằm bên trong Panel, sự kiện Click của Panel sẽ không tự kích hoạt.
@@ -1332,7 +1346,11 @@ namespace SecureChat.Client
                         }
 
                         // Parse response JSON
-                        var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var opts = new System.Text.Json.JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                        };
                         var doc = System.Text.Json.JsonDocument.Parse(respStr);
                         var root = doc.RootElement;
                         string url = root.GetProperty("url").GetString() ?? string.Empty;
@@ -1479,7 +1497,11 @@ namespace SecureChat.Client
                                 }
 
                                 // Parse response JSON
-                                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                                var opts = new System.Text.Json.JsonSerializerOptions
+                                {
+                                    PropertyNameCaseInsensitive = true,
+                                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                                };
                                 var doc = System.Text.Json.JsonDocument.Parse(respStr);
                                 var root = doc.RootElement;
                                 string url = root.GetProperty("url").GetString() ?? string.Empty;

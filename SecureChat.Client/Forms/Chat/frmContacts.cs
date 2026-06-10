@@ -624,7 +624,11 @@ namespace SecureChat.Client
                 try
                 {
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
-                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var opts = new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
 
                     // Lấy current user ID
                     var meRes = await http.GetAsync("api/users/me");
@@ -658,6 +662,14 @@ namespace SecureChat.Client
                 }
                 catch { btnMsg.Enabled = true; }
             };
+
+            int initRightMargin = 15;
+            btnMsg.Location = new Point(
+                initialWidth - btnMsg.Width - initRightMargin,
+                (62 - btnMsg.Height) / 2);
+            int initTextWidth = btnMsg.Left - 62 - 10;
+            lblName.Width = Math.Max(0, initTextWidth);
+            lblSub.Width = Math.Max(0, initTextWidth);
 
             // 5. Thêm các control vào panel
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
