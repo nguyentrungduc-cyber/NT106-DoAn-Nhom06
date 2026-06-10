@@ -559,7 +559,8 @@ namespace SecureChat.Client
             // Resize child layout when row width changes
             pnl.Resize += (s, e) =>
             {
-                lblName.Width = Math.Max(0, pnl.Width - 66 - 70); // 70px là trừ hao cho phần hiển thị thời gian
+                // lblName.Width = Math.Max(0, pnl.Width - 66 - 58); // 58px là trừ hao cho phần hiển thị thời gian
+                lblName.Width = Math.Max(0, pnl.Width - 66 - 60);
 
                 // NẾU CÓ TIN NHẮN CHƯA ĐỌC: Trừ đi độ rộng của Badge (khoảng 35-40px tính cả lề)
                 // NẾU KHÔNG CÓ: Chỉ trừ lề phải 12px
@@ -591,7 +592,11 @@ namespace SecureChat.Client
 
             // Set width ngay lần đầu render
             int initWidth = _pnlConvList.ClientSize.Width > 0 ? _pnlConvList.ClientSize.Width : 280;
-            lblName.Width = Math.Max(0, initWidth - 66 - 70);
+
+            // lblTime.Location = new Point(initWidth - lblTime.Width - 12, 12);
+            // lblUnread.Location = new Point(initWidth - lblUnread.Width - 12, 34);
+            // lblName.Width = Math.Max(0, initWidth - 66 - lblTime.Width - 16);
+            lblName.Width = Math.Max(0, initWidth - 66 - 60);
             int initPreviewMargin = (unread > 0) ? 40 : 12;
             lblPreview.Width = Math.Max(0, initWidth - 66 - initPreviewMargin);
 
