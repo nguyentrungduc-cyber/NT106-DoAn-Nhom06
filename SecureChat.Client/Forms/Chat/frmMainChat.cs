@@ -2591,8 +2591,7 @@ namespace SecureChat.Client
             );
 
             // Gọi API post tới cuộc trò chuyện được chọn
-            var (ok, _, err) = await ApiClient.Instance.PostAsync<SendMessageRequest, MessageResponse>($"api/messages/{targetConversationId}", req);
-
+            var (ok, _, err) = await ApiClient.Instance.PostAsync<SendMessageRequest, MessageResponse>($"api/conversations/{targetConversationId}/messages", req);
             if (ok)
             {
                 MessageBox.Show(this, "Đã chuyển tiếp tin nhắn thành công!", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -2660,11 +2659,8 @@ namespace SecureChat.Client
 
             if (isOut)
             {
-                // Hiện Popup custom giống Telegram
                 var dialog = ShowTelegramDialog("Delete message?", "Also delete for other user", "Delete", Color.FromArgb(0xE2, 0x4B, 0x4A));
                 if (dialog.Result != DialogResult.Yes) return;
-
-                // SỬA LỖI Ở ĐÂY: Dùng dialog.IsChecked thay vì dialog.Checked
                 deleteForEveryone = dialog.IsChecked;
             }
             else
@@ -2675,22 +2671,36 @@ namespace SecureChat.Client
 
             if (deleteForEveryone)
             {
-                // Ở đây sẽ văng lỗi vì Server chưa có API, bạn cứ Comment lại để test UI trước đã
-                // var (ok, err) = await ApiClient.Instance.DeleteAsync($"api/messages/{messageId}");
-                // if (!ok) { MessageBox.Show(err); return; }
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var res = await http.DeleteAsync($"api/conversations/{_activeConvId}/messages/{messageId}");
+                if (!res.IsSuccessStatusCode)
+                {
+                    var err = await res.Content.ReadAsStringAsync();
+                    MessageBox.Show(this, $"Lỗi thu hồi: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
             }
 
             _currentMsgs.RemoveAt(msgIndex);
             BuildMessages();
         }
 
-        private void OnPinMessage(string messageId)
+        private async void OnPinMessage(string messageId)
         {
             var dialog = ShowTelegramDialog("Pin message?", "Pin for both sides", "Pin", TG.Blue);
-            if (dialog.Result == DialogResult.Yes)
+            if (dialog.Result != DialogResult.Yes) return;
+
+            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+            var res = await http.PostAsync(
+                $"api/conversations/{_activeConvId}/messages/{messageId}/pin",
+                null);
+
+            if (res.IsSuccessStatusCode)
+                MessageBox.Show(this, "Đã ghim tin nhắn.", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            else
             {
-                // SỬA LỖI Ở ĐÂY: Dùng dialog.IsChecked
-                MessageBox.Show($"Đã ghim! (Pin for both: {dialog.IsChecked})", "Ghim tin nhắn", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                var err = await res.Content.ReadAsStringAsync();
+                MessageBox.Show(this, $"Lỗi ghim: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
