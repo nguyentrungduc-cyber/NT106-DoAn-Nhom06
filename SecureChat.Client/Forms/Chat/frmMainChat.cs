@@ -1910,7 +1910,7 @@ namespace SecureChat.Client
             return pnl;
         }
 
-        private void OnSettingsMenuClick(string label)
+        private async void OnSettingsMenuClick(string label)
         {
             HideSettingsMenu();
             switch (label)
@@ -1963,6 +1963,19 @@ namespace SecureChat.Client
                             using var contacts = new frmContacts();
                             contacts.StartPosition = FormStartPosition.CenterParent;
                             contacts.ShowDialog(this);
+
+                            // Nếu user bấm 💬 mở chat với bạn bè
+                            if (!string.IsNullOrEmpty(contacts.PendingOpenConversationId))
+                            {
+                                var convId = contacts.PendingOpenConversationId;
+                                if (!_convs.Any(c => c.Id == convId))
+                                    await LoadConversationsAsync();
+
+                                _activeConvId = convId;
+                                BuildConvList();
+                                _ = LoadMessagesAsync(convId);
+                                LoadConversation(convId);
+                            }
                         }
                         catch (Exception ex)
                         {

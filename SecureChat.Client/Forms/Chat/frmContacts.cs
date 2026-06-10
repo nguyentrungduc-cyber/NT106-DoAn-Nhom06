@@ -104,6 +104,7 @@ namespace SecureChat.Client
 
         // Đếm số những lời mời bạn đã nhận được (Incoming) (để hiển thị badge đỏ trên tab "Lời mời").
         private int _incomingCount = 0;
+        public string? PendingOpenConversationId { get; private set; }
 
         private List<ContactItem> _friends = new List<ContactItem>();
         private List<ContactItem> _groups = new List<ContactItem>();
@@ -617,11 +618,45 @@ namespace SecureChat.Client
                 Cursor = Cursors.Hand
             };
 
-            btnMsg.Click += (s, e) =>
+            btnMsg.Click += async (s, e) =>
             {
-                var mainForm = Application.OpenForms["MainForm"] as frmMainChat ?? new frmMainChat();
-                mainForm.Show();
-                mainForm.BringToFront();
+                btnMsg.Enabled = false;
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+                    // Lấy current user ID
+                    var meRes = await http.GetAsync("api/users/me");
+                    if (!meRes.IsSuccessStatusCode) { btnMsg.Enabled = true; return; }
+                    var me = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.UserResponse>(
+                        await meRes.Content.ReadAsStringAsync(), opts);
+                    if (me == null) { btnMsg.Enabled = true; return; }
+
+                    // Tạo hoặc lấy conversation direct
+                    var reqBody = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        Type = 0, // ConversationType.Direct
+                        Name = (string?)null,
+                        AvatarUrl = (string?)null,
+                        Members = new[]
+                        {
+                new { UserID = me.UserID, EncryptedKey = "TBD" },
+                new { UserID = c.UserId,  EncryptedKey = "TBD" }
+            }
+                    });
+                    var res = await http.PostAsync("api/conversations",
+                        new StringContent(reqBody, System.Text.Encoding.UTF8, "application/json"));
+                    if (!res.IsSuccessStatusCode) { btnMsg.Enabled = true; return; }
+
+                    var conv = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.ConversationResponse>(
+                        await res.Content.ReadAsStringAsync(), opts);
+                    if (conv == null) { btnMsg.Enabled = true; return; }
+
+                    PendingOpenConversationId = conv.ConversationID;
+                    Close();
+                }
+                catch { btnMsg.Enabled = true; }
             };
 
             // 5. Thêm các control vào panel
