@@ -479,7 +479,7 @@ namespace SecureChat.Client
                 ForeColor = TG.TextName,
                 AutoSize = false,
                 AutoEllipsis = true,  
-                Height = 20,
+                Height = 22,
                 Location = new Point(66, 10),
                 BackColor = Color.Transparent,
             };
@@ -506,7 +506,6 @@ namespace SecureChat.Client
                 ForeColor = TG.TextTime,
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             // Nhãn hiển thị số lượng tin nhắn chưa đọc.
             // Nó chỉ hiện lên khi unread > 0.
@@ -560,7 +559,7 @@ namespace SecureChat.Client
             // Resize child layout when row width changes
             pnl.Resize += (s, e) =>
             {
-                lblName.Width = Math.Max(0, pnl.Width - 66 - 60);
+                lblName.Width = Math.Max(0, pnl.Width - 66 - 80);
 
                 // NẾU CÓ TIN NHẮN CHƯA ĐỌC: Trừ đi độ rộng của Badge (khoảng 35-40px tính cả lề)
                 // NẾU KHÔNG CÓ: Chỉ trừ lề phải 12px
@@ -592,8 +591,8 @@ namespace SecureChat.Client
 
             // Set width ngay lần đầu render
             int initWidth = _pnlConvList.ClientSize.Width > 0 ? _pnlConvList.ClientSize.Width : 280;
-
-            lblName.Width = Math.Max(0, initWidth - 66 - 60);
+            lblTime.Location = new Point(Math.Max(0, initWidth - lblTime.Width - 12), 12); // thêm dòng này
+            lblName.Width = Math.Max(0, initWidth - 66 - 80);
             int initPreviewMargin = (unread > 0) ? 40 : 12;
             lblPreview.Width = Math.Max(0, initWidth - 66 - initPreviewMargin);
 

@@ -584,7 +584,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 20,
+                Height = 22,
                 Location = new Point(62, 12),
                 BackColor = Color.Transparent,
                 AutoEllipsis = true // Tự động thêm "..." nếu tên quá dài
