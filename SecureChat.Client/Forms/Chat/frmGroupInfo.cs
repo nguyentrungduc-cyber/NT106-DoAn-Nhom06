@@ -1,5 +1,6 @@
-using SecureChat.Client.Components.Group;
+﻿using SecureChat.Client.Components.Group;
 using System.Drawing.Drawing2D;
+using System.Linq;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -36,12 +37,14 @@ namespace SecureChat.Client.Forms.Chat
         private DateTime? _muteUntilUtc;
 
         public event Action? AddMemberRequested;
+        private string _conversationId = string.Empty;
+        private string _currentUserDisplayName = string.Empty;
 
         public frmGroupInfo()
         {
             InitializeComponent();
             BuildUI();
-            LoadSample();
+            // Dữ liệu nhóm sẽ được load từ bên ngoài qua LoadGroup(...)
         }
 
         private void BuildUI()
@@ -89,7 +92,7 @@ namespace SecureChat.Client.Forms.Chat
 
             _lblName = new Label
             {
-                Text = "test",
+                Text = string.Empty,
                 Font = new Font("Segoe UI Semibold", 17f),
                 ForeColor = C_TEXT,
                 AutoSize = false,
@@ -209,23 +212,25 @@ namespace SecureChat.Client.Forms.Chat
 
         private Button BuildActionCard(string emoji, string title, Color? titleColor = null)
         {
-            var b = new Button
             {
-                Size = new Size(112, 70),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0xF7, 0xF9, 0xFB),
-                ForeColor = titleColor ?? C_TEXT,
-                Font = new Font("Segoe UI Emoji", 10.8f),
-                Text = $"{emoji}\n{title}",
-                TextAlign = ContentAlignment.MiddleCenter,
-                Cursor = Cursors.Hand,
-                UseCompatibleTextRendering = true,
-                TabStop = false
-            };
-            b.FlatAppearance.BorderSize = 0;
-            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xEF, 0xF3, 0xF8);
-            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEE, 0xF6);
-            return b;
+                var b = new Button
+                {
+                    Size = new Size(112, 70),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = Color.FromArgb(0xF7, 0xF9, 0xFB),
+                    ForeColor = titleColor ?? C_TEXT,
+                    Font = new Font("Segoe UI Emoji", 10.8f),
+                    Text = $"{emoji}\n{title}",
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Cursor = Cursors.Hand,
+                    UseCompatibleTextRendering = true,
+                    TabStop = false
+                };
+                b.FlatAppearance.BorderSize = 0;
+                b.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xEF, 0xF3, 0xF8);
+                b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEE, 0xF6);
+                return b;
+            }
         }
 
         private static Button FlatIconButton(string text, string fontFamily, float size)
@@ -277,29 +282,42 @@ namespace SecureChat.Client.Forms.Chat
 
         private void OpenEditGroup()
         {
-            using var f = new frmEditGroup(_lblName.Text);
+            using var f = new frmEditGroup(_lblName.Text, string.Empty);
             if (f.ShowDialog(this) != DialogResult.OK) return;
 
             _lblName.Text = f.GroupName;
         }
 
-        private void OpenLeaveGroup()
+        private async void OpenLeaveGroup()
         {
-            using var f = new frmLeaveGroup(_lblName.Text, "Duck Cyber");
-            if (f.ShowDialog(this) != DialogResult.OK) return;
+            var memberNames = _pnlList.Controls
+                .OfType<ucGroupMemberItem>()
+                .Select(item => item.DisplayName)
+                .ToList();
 
-            if (f.LeaveConfirmed)
-                Close();
-        }
+            using var f = new frmLeaveGroup(_lblName.Text, _currentUserDisplayName, memberNames);
+            if (f.ShowDialog(this) != DialogResult.OK || !f.LeaveConfirmed) return;
 
-        private void LoadSample()
-        {
-            var members = new List<MemberModel>
+            try
             {
-                new("Hoang Hieu", "online", "owner", null, Color.FromArgb(0xF3,0x7A,0x5A)),
-                new("Duck Cyber", "last seen recently", string.Empty, null, Color.FromArgb(0x5C,0xA5,0xEC)),
-            };
-            LoadGroup("test", null, members);
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var res = await http.PostAsync(
+                    $"api/conversations/{_conversationId}/leave",
+                    null);
+
+                if (res.IsSuccessStatusCode)
+                    Close();
+                else
+                {
+                    var err = await res.Content.ReadAsStringAsync();
+                    MessageBox.Show(this, $"Không thể rời nhóm: {err}", "Lỗi",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         public void LoadGroup(string name, Image? avatar, IReadOnlyList<MemberModel> members)
@@ -349,6 +367,12 @@ namespace SecureChat.Client.Forms.Chat
                     item.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
                 }
             }
+        }
+
+        public void SetContext(string conversationId, string currentUserDisplayName)
+        {
+            _conversationId = conversationId;
+            _currentUserDisplayName = currentUserDisplayName;
         }
     }
 

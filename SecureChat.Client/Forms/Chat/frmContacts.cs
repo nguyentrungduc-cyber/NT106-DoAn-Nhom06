@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic; //  cho phép dùng List<T>.
 using System.Drawing; //  làm việc với màu sắc (Color), font, hình ảnh.
 using System.Drawing.Drawing2D; // vẽ nâng cao như SmoothingMode, AntiAlias.
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms; // tạo giao diện desktop (Form, Panel, Label, Button...).
 
 namespace SecureChat.Client
@@ -87,6 +89,10 @@ namespace SecureChat.Client
         // Tab con trong "Lời mời" để chia Đã nhận / Đã gửi.
         private readonly TabControl _requestSubTabs;
         private readonly Panel _pnlBlockedUsers; // Panel mới cho tab "Đã chặn"
+        private Panel _pnlIncoming = new();      // Panel lời mời đã nhận (field để refresh sau khi load API)
+        private Panel _pnlSentRequests = new();  // Panel lời mời đã gửi (field để refresh sau khi load API)
+        private TabPage _tpIncoming = new();
+        private TabPage _tpSent = new();
         // Panel cho 2 tab con được khai báo cục bộ
         // Trong lập trình WinForms, thay vì tìm cách chèn thêm 1 dòng vào giữa một cái Panel đang có sẵn, người ta thường chọn cách xóa sạch và vẽ lại:
 
@@ -98,6 +104,7 @@ namespace SecureChat.Client
 
         // Đếm số những lời mời bạn đã nhận được (Incoming) (để hiển thị badge đỏ trên tab "Lời mời").
         private int _incomingCount = 0;
+        public string? PendingOpenConversationId { get; private set; }
 
         private List<ContactItem> _friends = new List<ContactItem>();
         private List<ContactItem> _groups = new List<ContactItem>();
@@ -106,8 +113,6 @@ namespace SecureChat.Client
 
         public frmContacts()
         {
-            InitMockData();
-
             // TabPage chính vừa là cái "đầu tab" (tabstrip) vừa là vùng nội dung bên trong.
             // Chuỗi "  Danh sách  " truyền vào constructor chính là thuộc tính Text của TabPage, và WinForms tự dùng Text đó để vẽ chữ lên tabstrip.
             // WinForms không tự vẽ nữa — thay vào đó hàm DrawTabItem() tự lấy tab.Text ra để vẽ.
@@ -130,46 +135,166 @@ namespace SecureChat.Client
             _lblSearchHint = new Label();
 
             InitializeComponent();
+            this.Load += async (s, e) => await LoadContactsFromApiAsync();
         }
 
-        /*Tạo dữ liệu giả cho demo:
-        _friends — 4 người bạn(2 online, 2 offline).
-        _groups — 2 nhóm chat.
-        _requests — 3 lời mời đến + 1 lời mời đã gửi.
-        _incomingCount — đếm số request IsIncoming = true(= 3).*/
-        private void InitMockData()
+
+        private async Task LoadContactsFromApiAsync()
         {
-            _friends = new List<ContactItem>
+            _friends = new();
+            _requests = new();
+            _blockedUsers = new();
+            _groups = new();
+
+            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+            var opts = new System.Text.Json.JsonSerializerOptions
             {
-                new() { Type = ContactType.Friend, UserId = "usr-001", DisplayName = "Nguyễn Văn A", Username = "nguyenvana", Nickname = "", IsOnline = true, Status = FriendStatus.Friend, LastSeenAt = "2025-03-31T09:00:00Z" },
-                new() { Type = ContactType.Friend, UserId = "usr-002", DisplayName = "Trần Thị B", Username = "tranthib", Nickname = "Bé B", IsOnline = true, Status = FriendStatus.Friend, LastSeenAt = "2025-03-31T08:55:00Z" },
-                new() { Type = ContactType.Friend, UserId = "usr-003", DisplayName = "Lê Minh C", Username = "leminhc", IsOnline = false, Status = FriendStatus.Friend, LastSeenAt = "2025-03-31T08:00:00Z" },
-                new() { Type = ContactType.Friend, UserId = "usr-004", DisplayName = "Phạm Minh Đức", Username = "phamminhduc", IsOnline = false, Status = FriendStatus.Friend, LastSeenAt = "2025-03-30T20:00:00Z" },
+                PropertyNameCaseInsensitive = true,
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
             };
 
-            _groups = new List<ContactItem>
+            // 1. Load danh sách bạn bè
+            try
             {
-                new() { Type = ContactType.Group, ConversationId = "conv-g01", DisplayName = "Nhóm NT106.Q22", MemberCount = 5, LastSeenAt = "2025-03-31T07:00:00Z" },
-                new() { Type = ContactType.Group, ConversationId = "conv-g02", DisplayName = "Nhóm An Toàn TT", MemberCount = 8, LastSeenAt = "2025-03-30T18:00:00Z" },
-            };
+                var res = await http.GetAsync("api/friends");
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.FriendResponse>>(json, opts);
+                    if (list != null)
+                    {
+                        _friends = list.Select(f => new ContactItem
+                        {
+                            Type = ContactType.Friend,
+                            UserId = f.Friend.UserID,
+                            DisplayName = f.Friend.DisplayName,
+                            Username = f.Friend.Username,
+                            IsOnline = f.Friend.ShowOnlineStatus,
+                            Status = FriendStatus.Friend,
+                        }).ToList();
+                    }
+                }
+            }
+            catch { /* Bỏ qua lỗi mạng, giữ list rỗng */ }
 
-            _requests = new List<FriendRequestItem>
+            // 2. Load lời mời đã nhận (received)
+            try
             {
-                new() { RequestId = "req-001", SenderId = "usr-010", RecipientId = "usr-me", DisplayName = "Trần Thị H", Username = "tranthih", MutualCount = 2, IsIncoming = true, CreatedAt = "2025-03-30T10:00:00Z" },
-                new() { RequestId = "req-002", SenderId = "usr-011", RecipientId = "usr-me", DisplayName = "Phạm Văn D", Username = "phamvand", MutualCount = 0, IsIncoming = true, CreatedAt = "2025-03-29T15:30:00Z" },
-                new() { RequestId = "req-003", SenderId = "usr-012", RecipientId = "usr-me", DisplayName = "Lê Thị E", Username = "lethie", MutualCount = 5, IsIncoming = true, CreatedAt = "2025-03-28T08:00:00Z" },
-                new() { RequestId = "req-004", SenderId = "usr-me", RecipientId = "usr-013", DisplayName = "Nguyễn Quốc K", Username = "nguyenquock", MutualCount = 1, IsIncoming = false, CreatedAt = "2025-03-31T06:00:00Z" },
-            };
+                var res = await http.GetAsync("api/friends/requests/received");
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.FriendRequestResponse>>(json, opts);
+                    if (list != null)
+                    {
+                        _requests = list.Select(r => new FriendRequestItem
+                        {
+                            RequestId = r.RequestID,
+                            SenderId = r.Sender.UserID,
+                            RecipientId = r.Recipient.UserID,
+                            DisplayName = r.Sender.DisplayName,
+                            Username = r.Sender.Username,
+                            IsIncoming = true,
+                            CreatedAt = r.CreatedAt.ToString("o"),
+                        }).ToList();
+                    }
+                }
+            }
+            catch { }
 
-            _blockedUsers = new List<ContactItem>
+            // 3. Load lời mời đã gửi (sent)
+            try
             {
-                new() { Type = ContactType.Friend, UserId = "usr-005", DisplayName = "Spam Bot", Username = "spambot2024", IsOnline = false, Status = FriendStatus.Blocked },
-                new() { Type = ContactType.Friend, UserId = "usr-006", DisplayName = "Troll User", Username = "trolluser", IsOnline = true, Status = FriendStatus.Blocked },
-            };
+                var res = await http.GetAsync("api/friends/requests/sent");
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.FriendRequestResponse>>(json, opts);
+                    if (list != null)
+                    {
+                        _requests.AddRange(list.Select(r => new FriendRequestItem
+                        {
+                            RequestId = r.RequestID,
+                            SenderId = r.Sender.UserID,
+                            RecipientId = r.Recipient.UserID,
+                            DisplayName = r.Recipient.DisplayName,
+                            Username = r.Recipient.Username,
+                            IsIncoming = false,
+                            CreatedAt = r.CreatedAt.ToString("o"),
+                        }));
+                    }
+                    else
+                    {
+                        var err = await res.Content.ReadAsStringAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                
+            }
 
-            _incomingCount = _requests.FindAll(r => r.IsIncoming).Count;
-            // FindAll(r => r.IsIncoming): Duyệt qua toàn bộ danh sách _requests và lọc ra một danh sách con chỉ chứa các lời mời có IsIncoming == true.
-            // Count: Đếm xem danh sách con đó có bao nhiêu phần tử và gán con số đó vào biến _incomingCount.
+            // 4. Load danh sách bị block
+            try
+            {
+                var res = await http.GetAsync("api/friends/blocked");
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.BlockedUserResponse>>(json, opts);
+                    if (list != null)
+                    {
+                        _blockedUsers = list.Select(b => new ContactItem
+                        {
+                            Type = ContactType.Friend,
+                            UserId = b.Blocked.UserID,
+                            DisplayName = b.Blocked.DisplayName,
+                            Username = b.Blocked.Username,
+                            IsOnline = false,
+                            Status = FriendStatus.Blocked,
+                        }).ToList();
+                    }
+                }
+            }
+            catch { }
+
+            // 5. Load nhóm chat (conversations có type = Group)
+            try
+            {
+                var res = await http.GetAsync("api/conversations");
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.ConversationResponse>>(json, opts);
+                    if (list != null)
+                    {
+                        _groups = list
+                            .Where(c => c.Type == SecureChat.Models.ConversationType.Group)
+                            .Select(c => new ContactItem
+                            {
+                                Type = ContactType.Group,
+                                ConversationId = c.ConversationID,
+                                DisplayName = c.Name ?? "Nhóm",
+                                MemberCount = c.MemberCount,
+                            }).ToList();
+                    }
+                }
+            }
+            catch { }
+
+            _incomingCount = _requests.Count(r => r.IsIncoming);
+
+            // Refresh UI trên main thread
+            BeginInvoke(new Action(() =>
+            {
+                BuildFriendList(_friends, _pnlFriends);
+                BuildGroupList(_groups, _pnlGroups);
+                RefreshRequestPanels();
+                LoadBlockedUsers();
+                // Refresh lại search nếu user đang tìm kiếm
+                if (!string.IsNullOrWhiteSpace(_tbSearch.Text) && _tbSearch.Text.Length >= 2)
+                    DoSearch(_tbSearch.Text);
+            }));
         }
 
         private void InitializeComponent()
@@ -459,7 +584,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 20,
+                Height = 22,
                 Location = new Point(62, 12),
                 BackColor = Color.Transparent,
                 AutoEllipsis = true // Tự động thêm "..." nếu tên quá dài
@@ -476,10 +601,77 @@ namespace SecureChat.Client
                 BackColor = Color.Transparent,
                 AutoEllipsis = true
             };
+            // 4. Nút tin nhắn
+            var btnMsg = new TelegramButton
+            {
+                Text = "💬",
+                Width = 36,
+                Height = 28,
+                Font = new Font("Segoe UI Emoji", 11f),
+                Radius = TG.RadiusSmall,
 
-            // 4. Thêm các control vào panel
-            pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub });
+                // NormalColor = Color.Transparent,
+                NormalColor = Color.White,
 
+                TextColor = TG.Blue,
+                Cursor = Cursors.Hand
+            };
+
+            btnMsg.Click += async (s, e) =>
+            {
+                btnMsg.Enabled = false;
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var opts = new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
+
+                    // Lấy current user ID
+                    var meRes = await http.GetAsync("api/users/me");
+                    if (!meRes.IsSuccessStatusCode) { btnMsg.Enabled = true; return; }
+                    var me = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.UserResponse>(
+                        await meRes.Content.ReadAsStringAsync(), opts);
+                    if (me == null) { btnMsg.Enabled = true; return; }
+
+                    // Tạo hoặc lấy conversation direct
+                    var reqBody = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        Type = 0, // ConversationType.Direct
+                        Name = (string?)null,
+                        AvatarUrl = (string?)null,
+                        Members = new[]
+                        {
+                new { UserID = me.UserID, EncryptedKey = "TBD" },
+                new { UserID = c.UserId,  EncryptedKey = "TBD" }
+            }
+                    });
+                    var res = await http.PostAsync("api/conversations",
+                        new StringContent(reqBody, System.Text.Encoding.UTF8, "application/json"));
+                    if (!res.IsSuccessStatusCode) { btnMsg.Enabled = true; return; }
+
+                    var conv = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.ConversationResponse>(
+                        await res.Content.ReadAsStringAsync(), opts);
+                    if (conv == null) { btnMsg.Enabled = true; return; }
+
+                    PendingOpenConversationId = conv.ConversationID;
+                    Close();
+                }
+                catch { btnMsg.Enabled = true; }
+            };
+
+            int initRightMargin = 15;
+            btnMsg.Location = new Point(
+                initialWidth - btnMsg.Width - initRightMargin,
+                (62 - btnMsg.Height) / 2);
+            int initTextWidth = btnMsg.Left - 62 - 10;
+            lblName.Width = Math.Max(0, initTextWidth);
+            lblSub.Width = Math.Max(0, initTextWidth);
+
+            // 5. Thêm các control vào panel
+            pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
             // 6. Vẽ đường kẻ chia hàng (Divider)
             pnl.Paint += (s, e) =>
             {
@@ -577,12 +769,16 @@ namespace SecureChat.Client
                 TextColor = TG.Blue,
                 Location = new Point(initialWidth - 46, 17),
             };
-            btnMsg.Click += (s, e) =>
+            btnMsg.Click += async (s, e) =>
             {
-                var mainForm = Application.OpenForms["MainForm"] as frmMainChat ?? new frmMainChat();
-                mainForm.Show();
+                btnMsg.Enabled = false;
+                try
+                {
+                    PendingOpenConversationId = c.ConversationId;
+                    Close();
+                }
+                catch { btnMsg.Enabled = true; }
             };
-
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
             pnl.Paint += (s, e) => e.Graphics.DrawLine(new Pen(TG.DividerLight), 62, 61, pnl.Width, 61);
 
@@ -599,7 +795,7 @@ namespace SecureChat.Client
             };
 
             pnl.Resize += resizeHandler;
-            resizeHandler(pnl, EventArgs.Empty);
+            pnl.HandleCreated += resizeHandler; // Gọi sau khi panel có kích thước thật
 
             foreach (Control ctrl in pnl.Controls)
             {
@@ -642,11 +838,11 @@ namespace SecureChat.Client
             int outgoingCount = _requests.FindAll(r => !r.IsIncoming).Count;
             int blockedCount = _blockedUsers.Count;  // ✅ FIX: Thêm đếm số blocked users
 
-            var tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            var tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            _tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            _tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
             var tabBlocked = new TabPage($"Đã chặn ({blockedCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };  // ✅ FIX: Thêm ({blockedCount})
 
-            _requestSubTabs.TabPages.AddRange(new[] { tpIncoming, tpSent, tabBlocked });
+            _requestSubTabs.TabPages.AddRange(new[] { _tpIncoming, _tpSent, tabBlocked });
 
             // Gán Panel cho tab "Đã chặn"
             _pnlBlockedUsers.Dock = DockStyle.Fill;
@@ -656,32 +852,32 @@ namespace SecureChat.Client
             LoadBlockedUsers();  // ✅ FIX: Gọi hàm load dữ liệu
 
             // ============ TAB "Đã nhận" ============
-            var pnlIn = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
-            pnlIn.Resize += Pnl_UpdateRowsWidth;
+            _pnlIncoming = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+            _pnlIncoming.Resize += Pnl_UpdateRowsWidth;
             int y = 0;
-            int initInWidth = pnlIn.ClientSize.Width > 0 ? pnlIn.ClientSize.Width : 360;
+            int initInWidth = _pnlIncoming.ClientSize.Width > 0 ? _pnlIncoming.ClientSize.Width : 360;
             foreach (var req in _requests.FindAll(r => r.IsIncoming))
             {
                 var row = BuildRequestRow(req, true, initInWidth);
                 row.Location = new Point(0, y);
-                pnlIn.Controls.Add(row);
+                _pnlIncoming.Controls.Add(row);
                 y += 86;
             }
-            tpIncoming.Controls.Add(pnlIn);
+            _tpIncoming.Controls.Add(_pnlIncoming);
 
             // ============ TAB "Đã gửi" ============
-            var pnlSent = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
-            pnlSent.Resize += Pnl_UpdateRowsWidth;
+            _pnlSentRequests = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+            _pnlSentRequests.Resize += Pnl_UpdateRowsWidth;
             y = 0;
-            int initSentWidth = pnlSent.ClientSize.Width > 0 ? pnlSent.ClientSize.Width : 360;
+            int initSentWidth = _pnlSentRequests.ClientSize.Width > 0 ? _pnlSentRequests.ClientSize.Width : 360;
             foreach (var req in _requests.FindAll(r => !r.IsIncoming))
             {
                 var row = BuildRequestRow(req, false, initSentWidth);
                 row.Location = new Point(0, y);
-                pnlSent.Controls.Add(row);
+                _pnlSentRequests.Controls.Add(row);
                 y += 86;
             }
-            tpSent.Controls.Add(pnlSent);
+            _tpSent.Controls.Add(_pnlSentRequests);
 
             _tabRequests.Controls.Add(_requestSubTabs);
 
@@ -737,8 +933,26 @@ namespace SecureChat.Client
                 var btnAccept = new TelegramButton { Text = "Chấp nhận", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(64, 54), Width = btnWidth };
                 var btnDecline = new TelegramButton { Text = "Từ chối", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64 + btnWidth + 8, 54), Width = btnWidth };
 
-                btnAccept.Click += (s, e) => { RemoveRequest(pnl, isAccepted: true); _incomingCount--; _tabs.Refresh(); };
-                btnDecline.Click += (s, e) => RemoveRequest(pnl, isAccepted: false);
+                btnAccept.Click += async (s, e) =>
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.PutAsync($"api/friends/requests/{req.RequestId}/accept", null);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        _incomingCount--;
+                        _tabs.Refresh();
+                        await LoadContactsFromApiAsync();
+                    }
+                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                };
+                btnDecline.Click += async (s, e) =>
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.PutAsync($"api/friends/requests/{req.RequestId}/decline", null);
+                    if (res.IsSuccessStatusCode)
+                        await LoadContactsFromApiAsync();
+                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                };
 
                 pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnAccept, btnDecline });
 
@@ -756,7 +970,14 @@ namespace SecureChat.Client
             else
             {
                 var btnCancel = new TelegramButton { Text = "Hủy lời mời", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64, 54), Width = initialWidth - 76 };
-                btnCancel.Click += (s, e) => RemoveRequest(pnl, false);
+                btnCancel.Click += async (s, e) =>
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.DeleteAsync($"api/friends/requests/{req.RequestId}");
+                    if (res.IsSuccessStatusCode)
+                        await LoadContactsFromApiAsync();
+                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                };
 
                 pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnCancel });
 
@@ -825,9 +1046,8 @@ namespace SecureChat.Client
             _tabSearch.Controls.AddRange(new Control[] { _pnlSearchResults, pnlSearch });
         }
 
-        private void DoSearch(string query)
+        private async void DoSearch(string query)
         {
-            // Xóa tất cả các thành phần (labels, rows, icons) đang hiển thị trong Panel kết quả để chuẩn bị hiển thị dữ liệu mới.
             _pnlSearchResults.Controls.Clear();
 
             if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
@@ -835,34 +1055,84 @@ namespace SecureChat.Client
                 _pnlSearchResults.Controls.Add(_lblSearchHint);
                 return;
             }
-            // string.IsNullOrWhiteSpace(query): Kiểm tra nếu chuỗi tìm kiếm bị trống hoặc chỉ toàn dấu cách.
-            // query.Length < 2: Nếu người dùng nhập ít hơn 2 ký tự, hệ thống sẽ không tìm kiếm (để tránh xử lý quá nhiều khi kết quả quá rộng).
-            // _pnlSearchResults.Controls.Add(_lblSearchHint): Nếu thỏa mãn điều kiện trên, nó hiện lại nhãn hướng dẫn(ví dụ: "Hãy nhập tên để tìm kiếm") và kết thúc hàm bằng return.
 
-            //  Tạo ra một danh sách cứng (Hardcoded) các đối tượng ContactItem.
-            //  Trong thực tế, chỗ này thường là một câu lệnh gọi vào Database hoặc API
-            var results = new List<ContactItem>
+            // Hiển thị trạng thái đang tìm
+            var lblLoading = new Label
             {
-                new() { Type = ContactType.Friend, UserId = "usr-001", DisplayName = "Nguyễn Văn A", Username = "nguyenvana", Status = FriendStatus.Friend, IsOnline = true },
-                new() { Type = ContactType.Friend, UserId = "usr-020", DisplayName = "Nguyễn Thị H", Username = "nguyenthih", Status = FriendStatus.None, IsOnline = false },
-                new() { Type = ContactType.Friend, UserId = "usr-013", DisplayName = "Nguyễn Minh K", Username = "nguyenquock", Status = FriendStatus.PendingOutgoing, IsOnline = false },
+                Text = "Đang tìm kiếm...",
+                Font = TG.FontRegular(9f),
+                ForeColor = TG.TextSecondary,
+                AutoSize = false,
+                Height = 40,
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Top,
             };
+            _pnlSearchResults.Controls.Add(lblLoading);
 
-            int y = 0; // Biến y dùng để tính toán vị trí theo chiều dọc (từ trên xuống dưới)
+            List<ContactItem> results = new();
+
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var encoded = Uri.EscapeDataString(query);
+                var res = await http.GetAsync($"api/users/search?q={encoded}");
+
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var users = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.UserResponse>>(json, opts);
+                    if (users != null)
+                    {
+                        // Xác định trạng thái quan hệ với từng user trong kết quả
+                        results = users.Select(u =>
+                        {
+                            FriendStatus status = FriendStatus.None;
+                            if (_friends.Any(f => f.UserId == u.UserID))
+                                status = FriendStatus.Friend;
+                            else if (_requests.Any(r => r.RecipientId == u.UserID && !r.IsIncoming))
+                                status = FriendStatus.PendingOutgoing;
+                            else if (_requests.Any(r => r.SenderId == u.UserID && r.IsIncoming))
+                                status = FriendStatus.PendingIncoming;
+                            else if (_blockedUsers.Any(b => b.UserId == u.UserID))
+                                status = FriendStatus.Blocked;
+
+                            return new ContactItem
+                            {
+                                Type = ContactType.Friend,
+                                UserId = u.UserID,
+                                DisplayName = u.DisplayName,
+                                Username = u.Username,
+                                IsOnline = u.ShowOnlineStatus,
+                                Status = status,
+                            };
+                        }).ToList();
+                    }
+                }
+            }
+            catch { /* Bỏ qua lỗi mạng */ }
+
+            // Rebuild kết quả trên UI
+            _pnlSearchResults.Controls.Clear();
+
+            int y = 0;
             var lblHdr = new Label
             {
-                Text = $"Kết quả cho \"{query}\"",  // Hiển thị dòng chữ: Kết quả cho "abc"
+                Text = results.Count > 0
+                    ? $"Kết quả cho \"{query}\""
+                    : $"Không tìm thấy kết quả cho \"{query}\"",
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
                 Height = 24,
                 BackColor = Color.Transparent,
                 Padding = new Padding(12, 4, 0, 0),
-                Location = new Point(0, y), // Đặt ở tọa độ y = 0 (trên cùng)
-                Width = _pnlSearchResults.ClientSize.Width // Kéo dài hết chiều ngang panel
+                Location = new Point(0, y),
+                Width = _pnlSearchResults.ClientSize.Width,
             };
-            _pnlSearchResults.Controls.Add(lblHdr); // Thêm tiêu đề vào panel
-            y += 26; // Tăng y lên 26 đơn vị để hàng tiếp theo không đè lên tiêu đề
+            _pnlSearchResults.Controls.Add(lblHdr);
+            y += 26;
 
             int initialWidth = _pnlSearchResults.ClientSize.Width > 0 ? _pnlSearchResults.ClientSize.Width : 360;
             foreach (var r in results)
@@ -899,7 +1169,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextBlue,
                 AutoSize = false,
-                Height = 16,
+                Height = 20,
                 Location = new Point(58, 30),
                 Width = initialWidth - 158,
                 BackColor = Color.Transparent,
@@ -924,7 +1194,38 @@ namespace SecureChat.Client
                     break;
                 default:
                     var btn = new TelegramButton { Text = "+ Kết bạn", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
-                    btn.Click += (s, e) => { c.Status = FriendStatus.PendingOutgoing; pnl.Refresh(); };
+                    btn.Click += async (s, e) =>
+                    {
+                        btn.Enabled = false;
+                        btn.Text = "Đang gửi...";
+                        try
+                        {
+                            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                            var body = new StringContent(
+                                System.Text.Json.JsonSerializer.Serialize(new { RecipientID = c.UserId }),
+                                System.Text.Encoding.UTF8, "application/json");
+                            var res = await http.PostAsync("api/friends/requests", body);
+                            if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.Conflict)
+                            {
+                                c.Status = FriendStatus.PendingOutgoing;
+                                btn.Text = "Đã gửi";
+                                btn.ForeColor = System.Drawing.Color.FromArgb(0xE6, 0x5C, 0x00);
+                                await LoadContactsFromApiAsync();
+                            }
+                            else
+                            {
+                                var errorBody = await res.Content.ReadAsStringAsync();
+                                btn.Text = "+ Kết bạn";
+                                btn.Enabled = true;
+                                MessageBox.Show($"Lỗi {(int)res.StatusCode}: {errorBody}", "Gửi thất bại");
+                            }
+                        }
+                        catch
+                        {
+                            btn.Text = "+ Kết bạn";
+                            btn.Enabled = true;
+                        }
+                    };
                     statusCtrl = btn;
                     break;
             }
@@ -964,6 +1265,37 @@ namespace SecureChat.Client
             pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
 
             return pnl;
+        }
+
+        private void RefreshRequestPanels()
+        {
+            // Rebuild panel lời mời đã nhận
+            _pnlIncoming.Controls.Clear();
+            int y = 0;
+            int w = _pnlIncoming.ClientSize.Width > 0 ? _pnlIncoming.ClientSize.Width : 360;
+            foreach (var req in _requests.FindAll(r => r.IsIncoming))
+            {
+                var row = BuildRequestRow(req, true, w);
+                row.Location = new Point(0, y);
+                _pnlIncoming.Controls.Add(row);
+                y += 86;
+            }
+
+            // Rebuild panel lời mời đã gửi
+            _pnlSentRequests.Controls.Clear();
+            y = 0;
+            w = _pnlSentRequests.ClientSize.Width > 0 ? _pnlSentRequests.ClientSize.Width : 360;
+            foreach (var req in _requests.FindAll(r => !r.IsIncoming))
+            {
+                var row = BuildRequestRow(req, false, w);
+                row.Location = new Point(0, y);
+                _pnlSentRequests.Controls.Add(row);
+                y += 86;
+            }
+            _tpIncoming.Text = $"Đã nhận ({_requests.Count(r => r.IsIncoming)})";
+            _tpSent.Text = $"Đã gửi ({_requests.Count(r => !r.IsIncoming)})";
+            _requestSubTabs.Invalidate();
+
         }
 
         private void LoadBlockedUsers()

@@ -14,14 +14,28 @@ namespace SecureChat.Controllers
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
-		[HttpGet]
-		public async Task<IActionResult> GetMyConversations()
-		{
-			var list = await conversations.GetByUserAsync(Me);
-			return Ok(list.Select(ConversationResponse.From));
-		}
+        [HttpGet]
+        public async Task<IActionResult> GetMyConversations()
+        {
+            var list = await conversations.GetByUserAsync(Me);
+            var result = list.Select(c =>
+            {
+                var res = ConversationResponse.From(c);
 
-		[HttpGet("{conversationID}")]
+                // Với Direct conversation: dùng tên người kia làm tên hội thoại
+                if (c.Type == ConversationType.Direct && string.IsNullOrEmpty(c.Name))
+                {
+                    var other = c.Members.FirstOrDefault(m => m.UserID != Me && m.LeftAt == null);
+                    if (other?.User != null)
+                        res = res with { Name = other.User.DisplayName };
+                }
+
+                return res;
+            });
+            return Ok(result);
+        }
+
+        [HttpGet("{conversationID}")]
 		public async Task<IActionResult> GetConversation(string conversationID)
 		{
 			var conv = await conversations.GetByIdWithMembersAsync(conversationID);
