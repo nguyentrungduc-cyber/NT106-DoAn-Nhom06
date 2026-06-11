@@ -11,9 +11,9 @@ namespace SecureChat.Client.Forms.Profile
     {
         private void InitializeComponent() { /* built in code */ }
 
-        private static readonly Color C_BG = Color.FromArgb(0x14, 0x1D, 0x27);
-        private static readonly Color C_TEXT = Color.FromArgb(0xF5, 0xF5, 0xF5);
-        private static readonly Color C_SUB = Color.FromArgb(0x89, 0x9A, 0xB4);
+        private static readonly Color C_BG = Color.White;
+        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
+        private static readonly Color C_SUB = Color.FromArgb(0x7D, 0x8B, 0x98);
         private static readonly Color C_ACCENT = Color.FromArgb(0x2A, 0xAB, 0xEE);
 
         private readonly ProfileModel _profile;
@@ -216,8 +216,8 @@ namespace SecureChat.Client.Forms.Profile
                 Padding = new Padding(8, 2, 8, 2),
             };
             b.FlatAppearance.BorderSize = 0;
-            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 255, 255, 255);
-            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 255, 255, 255);
+            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xF2, 0xF5, 0xF9);
+            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEF, 0xF6);
             return b;
         }
 

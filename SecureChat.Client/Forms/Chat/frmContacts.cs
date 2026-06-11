@@ -601,7 +601,6 @@ namespace SecureChat.Client
                 BackColor = Color.Transparent,
                 AutoEllipsis = true
             };
-
             // 4. Nút tin nhắn
             var btnMsg = new TelegramButton
             {
@@ -673,7 +672,6 @@ namespace SecureChat.Client
 
             // 5. Thêm các control vào panel
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
-
             // 6. Vẽ đường kẻ chia hàng (Divider)
             pnl.Paint += (s, e) =>
             {
@@ -687,12 +685,8 @@ namespace SecureChat.Client
             // 7. Xử lý co giãn (Responsive)
             pnl.Resize += (s, e) =>
             {
-                int rightMargin = 15;
-                btnMsg.Left = pnl.Width - btnMsg.Width - rightMargin;
-                btnMsg.Top = (pnl.Height - btnMsg.Height) / 2;
-
                 int textLeft = lblName.Left;
-                int textWidth = btnMsg.Left - textLeft - 10;
+                int textWidth = pnl.Width - textLeft - 12;
 
                 lblName.Width = Math.Max(0, textWidth);
                 lblSub.Width = Math.Max(0, textWidth);
@@ -726,18 +720,8 @@ namespace SecureChat.Client
             // pnl.MouseLeave += (s, e) => setHoverColor(Color.White);
 
             // Trong hàm BuildFriendRow, đoạn xử lý Hover:
-            pnl.MouseEnter += (s, e) =>
-            {
-                pnl.BackColor = TG.SidebarHover;
-                btnMsg.NormalColor = TG.SidebarHover; // Cập nhật màu nghỉ của nút cho khớp với nền mới
-                btnMsg.Invalidate();
-            };
-            pnl.MouseLeave += (s, e) =>
-            {
-                pnl.BackColor = Color.White;
-                btnMsg.NormalColor = Color.White; // Trả về trắng
-                btnMsg.Invalidate();
-            };
+            pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
 
             return pnl;
         }
@@ -758,7 +742,7 @@ namespace SecureChat.Client
                 AutoSize = false,
                 Height = 20,
                 Location = new Point(62, 12),
-                Width = initialWidth - 112,
+                Width = initialWidth - 80,
                 BackColor = Color.Transparent,
             };
 

@@ -85,12 +85,12 @@ namespace SecureChat.Client.Forms.Call
 
         // ── Telegram brand colours ────────────────────────────────────────────────
         private static readonly Color TgBlue = Color.FromArgb(0x2C, 0xA5, 0xE0); // #2CA5E0
-        private static readonly Color TgBg = Color.FromArgb(0x17, 0x21, 0x2E); // #17212E
-        private static readonly Color TgBgLight = Color.FromArgb(0x22, 0x30, 0x3F);
+        private static readonly Color TgBg = Color.White;
+        private static readonly Color TgBgLight = Color.FromArgb(0xF4, 0xF6, 0xF8);
         private static readonly Color TgRed = Color.FromArgb(0xE5, 0x35, 0x3B);
         private static readonly Color TgGreen = Color.FromArgb(0x21, 0xA1, 0x66);
-        private static readonly Color TgTextMain = Color.FromArgb(0xFF, 0xFF, 0xFF);
-        private static readonly Color TgTextSub = Color.FromArgb(0xAA, 0xBC, 0xC8);
+        private static readonly Color TgTextMain = Color.FromArgb(0x1F, 0x2D, 0x3D);
+        private static readonly Color TgTextSub = Color.FromArgb(0x7D, 0x8B, 0x98);
 
         // ─────────────────────────────────────────────────────────────────────────
         public frmVideoCall(string friendName = "Friend")
