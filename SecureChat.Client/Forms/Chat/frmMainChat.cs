@@ -478,7 +478,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                AutoEllipsis = true,  
+                AutoEllipsis = true,
                 Height = 22,
                 Location = new Point(66, 10),
                 BackColor = Color.Transparent,
@@ -941,16 +941,20 @@ namespace SecureChat.Client
                 if (res.IsSuccessStatusCode)
                 {
                     var json = await res.Content.ReadAsStringAsync();
-                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var opts = new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
                     var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(json, opts);
                     if (list != null)
                         members = list.Select(m => new SecureChat.Client.Forms.Chat.MemberModel(
-            m.User?.DisplayName ?? m.Nickname ?? "Unknown",
-            m.User?.ShowOnlineStatus == true ? "online" : "last seen recently",
-            m.Role.ToString(),
-            null,
-            System.Drawing.Color.Gray
-        )).ToList();
+    m.User?.DisplayName ?? m.Nickname ?? "Unknown",
+    "last seen recently",
+    m.Role.ToString(),
+    null,
+    TG.GetAvatarColor(m.User?.DisplayName ?? "?")
+)).ToList();
                 }
             }
             catch { }
