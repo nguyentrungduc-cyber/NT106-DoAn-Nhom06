@@ -168,7 +168,11 @@ namespace SecureChat.Client
                 if (!response.IsSuccessStatusCode) return;
 
                 var json = await response.Content.ReadAsStringAsync();
-                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                };
                 var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.ConversationResponse>>(json, options);
                 if (list == null) return;
 
@@ -209,7 +213,11 @@ namespace SecureChat.Client
                 if (!response.IsSuccessStatusCode) return;
 
                 var json = await response.Content.ReadAsStringAsync();
-                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                };
                 var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MessageResponse>>(json, options);
                 if (list == null) return;
 
@@ -331,7 +339,7 @@ namespace SecureChat.Client
         private void AdjustLayout()
         {
             // Khai báo các hằng số kích thước
-            int sw = 280;                        // Sidebar Width
+            int sw = 300;                        // Sidebar Width
             int smw = 260;                       // Settings Menu Width
 
             // Thiết lập vị trí và kích thước cho Sidebar và Khung Chat
@@ -470,7 +478,8 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 20,
+                AutoEllipsis = true,  
+                Height = 22,
                 Location = new Point(66, 10),
                 BackColor = Color.Transparent,
             };
@@ -497,7 +506,6 @@ namespace SecureChat.Client
                 ForeColor = TG.TextTime,
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             // Nhãn hiển thị số lượng tin nhắn chưa đọc.
             // Nó chỉ hiện lên khi unread > 0.
@@ -551,7 +559,7 @@ namespace SecureChat.Client
             // Resize child layout when row width changes
             pnl.Resize += (s, e) =>
             {
-                lblName.Width = Math.Max(0, pnl.Width - 66 - 70); // 70px là trừ hao cho phần hiển thị thời gian
+                lblName.Width = Math.Max(0, pnl.Width - 66 - 80);
 
                 // NẾU CÓ TIN NHẮN CHƯA ĐỌC: Trừ đi độ rộng của Badge (khoảng 35-40px tính cả lề)
                 // NẾU KHÔNG CÓ: Chỉ trừ lề phải 12px
@@ -580,6 +588,13 @@ namespace SecureChat.Client
 
                 lblUnread.BringToFront(); // đảm bảo 99+ không bị đè
             };
+
+            // Set width ngay lần đầu render
+            int initWidth = _pnlConvList.ClientSize.Width > 0 ? _pnlConvList.ClientSize.Width : 280;
+            lblTime.Location = new Point(Math.Max(0, initWidth - lblTime.Width - 12), 12); // thêm dòng này
+            lblName.Width = Math.Max(0, initWidth - 66 - 80);
+            int initPreviewMargin = (unread > 0) ? 40 : 12;
+            lblPreview.Width = Math.Max(0, initWidth - 66 - initPreviewMargin);
 
             // Truyền sự kiện (Event Propagation)/hover for child controls
             // Trong WinForms, khi bạn click vào một Label nằm bên trong Panel, sự kiện Click của Panel sẽ không tự kích hoạt.
@@ -1332,7 +1347,11 @@ namespace SecureChat.Client
                         }
 
                         // Parse response JSON
-                        var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var opts = new System.Text.Json.JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                        };
                         var doc = System.Text.Json.JsonDocument.Parse(respStr);
                         var root = doc.RootElement;
                         string url = root.GetProperty("url").GetString() ?? string.Empty;
@@ -1479,7 +1498,11 @@ namespace SecureChat.Client
                                 }
 
                                 // Parse response JSON
-                                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                                var opts = new System.Text.Json.JsonSerializerOptions
+                                {
+                                    PropertyNameCaseInsensitive = true,
+                                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                                };
                                 var doc = System.Text.Json.JsonDocument.Parse(respStr);
                                 var root = doc.RootElement;
                                 string url = root.GetProperty("url").GetString() ?? string.Empty;
@@ -1910,7 +1933,7 @@ namespace SecureChat.Client
             return pnl;
         }
 
-        private void OnSettingsMenuClick(string label)
+        private async void OnSettingsMenuClick(string label)
         {
             HideSettingsMenu();
             switch (label)
@@ -1963,6 +1986,19 @@ namespace SecureChat.Client
                             using var contacts = new frmContacts();
                             contacts.StartPosition = FormStartPosition.CenterParent;
                             contacts.ShowDialog(this);
+
+                            // Nếu user bấm 💬 mở chat với bạn bè
+                            if (!string.IsNullOrEmpty(contacts.PendingOpenConversationId))
+                            {
+                                var convId = contacts.PendingOpenConversationId;
+                                if (!_convs.Any(c => c.Id == convId))
+                                    await LoadConversationsAsync();
+
+                                _activeConvId = convId;
+                                BuildConvList();
+                                _ = LoadMessagesAsync(convId);
+                                LoadConversation(convId);
+                            }
                         }
                         catch (Exception ex)
                         {

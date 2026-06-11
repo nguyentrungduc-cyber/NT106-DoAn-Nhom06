@@ -104,6 +104,7 @@ namespace SecureChat.Client
 
         // Đếm số những lời mời bạn đã nhận được (Incoming) (để hiển thị badge đỏ trên tab "Lời mời").
         private int _incomingCount = 0;
+        public string? PendingOpenConversationId { get; private set; }
 
         private List<ContactItem> _friends = new List<ContactItem>();
         private List<ContactItem> _groups = new List<ContactItem>();
@@ -583,7 +584,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 20,
+                Height = 22,
                 Location = new Point(62, 12),
                 BackColor = Color.Transparent,
                 AutoEllipsis = true // Tự động thêm "..." nếu tên quá dài
@@ -617,12 +618,58 @@ namespace SecureChat.Client
                 Cursor = Cursors.Hand
             };
 
-            btnMsg.Click += (s, e) =>
+            btnMsg.Click += async (s, e) =>
             {
-                var mainForm = Application.OpenForms["MainForm"] as frmMainChat ?? new frmMainChat();
-                mainForm.Show();
-                mainForm.BringToFront();
+                btnMsg.Enabled = false;
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var opts = new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
+
+                    // Lấy current user ID
+                    var meRes = await http.GetAsync("api/users/me");
+                    if (!meRes.IsSuccessStatusCode) { btnMsg.Enabled = true; return; }
+                    var me = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.UserResponse>(
+                        await meRes.Content.ReadAsStringAsync(), opts);
+                    if (me == null) { btnMsg.Enabled = true; return; }
+
+                    // Tạo hoặc lấy conversation direct
+                    var reqBody = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        Type = 0, // ConversationType.Direct
+                        Name = (string?)null,
+                        AvatarUrl = (string?)null,
+                        Members = new[]
+                        {
+                new { UserID = me.UserID, EncryptedKey = "TBD" },
+                new { UserID = c.UserId,  EncryptedKey = "TBD" }
+            }
+                    });
+                    var res = await http.PostAsync("api/conversations",
+                        new StringContent(reqBody, System.Text.Encoding.UTF8, "application/json"));
+                    if (!res.IsSuccessStatusCode) { btnMsg.Enabled = true; return; }
+
+                    var conv = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.ConversationResponse>(
+                        await res.Content.ReadAsStringAsync(), opts);
+                    if (conv == null) { btnMsg.Enabled = true; return; }
+
+                    PendingOpenConversationId = conv.ConversationID;
+                    Close();
+                }
+                catch { btnMsg.Enabled = true; }
             };
+
+            int initRightMargin = 15;
+            btnMsg.Location = new Point(
+                initialWidth - btnMsg.Width - initRightMargin,
+                (62 - btnMsg.Height) / 2);
+            int initTextWidth = btnMsg.Left - 62 - 10;
+            lblName.Width = Math.Max(0, initTextWidth);
+            lblSub.Width = Math.Max(0, initTextWidth);
 
             // 5. Thêm các control vào panel
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
@@ -738,12 +785,16 @@ namespace SecureChat.Client
                 TextColor = TG.Blue,
                 Location = new Point(initialWidth - 46, 17),
             };
-            btnMsg.Click += (s, e) =>
+            btnMsg.Click += async (s, e) =>
             {
-                var mainForm = Application.OpenForms["MainForm"] as frmMainChat ?? new frmMainChat();
-                mainForm.Show();
+                btnMsg.Enabled = false;
+                try
+                {
+                    PendingOpenConversationId = c.ConversationId;
+                    Close();
+                }
+                catch { btnMsg.Enabled = true; }
             };
-
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
             pnl.Paint += (s, e) => e.Graphics.DrawLine(new Pen(TG.DividerLight), 62, 61, pnl.Width, 61);
 
