@@ -40,6 +40,7 @@ namespace SecureChat.Client.Services
 
         /// <summary>UserID của user đang đăng nhập. Bắt buộc set trước khi xử lý.</summary>
         public string CurrentUserId { get; set; } = string.Empty;
+        public string CurrentUsername { get; set; } = string.Empty;
 
         /// <summary>
         /// Lấy / cache conversation AES key cho user hiện tại.
@@ -133,7 +134,8 @@ namespace SecureChat.Client.Services
             bool isOut = !string.IsNullOrWhiteSpace(myMemberId)
                 ? string.Equals(message.SenderID, myMemberId, StringComparison.Ordinal)
                 : !string.IsNullOrWhiteSpace(message.SenderUsername)
-                    && string.Equals(message.SenderUsername, CurrentUserId, StringComparison.Ordinal);
+                    && string.Equals(message.SenderUsername, CurrentUsername, // ← đổi CurrentUserId → CurrentUsername
+                        StringComparison.Ordinal);
 
             return new DecryptedMessage(
                 message.MessageID,

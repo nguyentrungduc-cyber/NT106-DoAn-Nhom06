@@ -173,7 +173,8 @@ namespace SecureChat.Client
                         _currentDisplayName = me.DisplayName;
                         _currentUsername = me.Username;
                         _currentEmail = me.Email;
-                        _decryptor.CurrentUserId = me.UserID;;
+                        _decryptor.CurrentUserId = me.UserID;
+                        _decryptor.CurrentUsername = me.Username;
                     }
                 }
             }
@@ -599,7 +600,20 @@ namespace SecureChat.Client
             dlg.StartPosition = FormStartPosition.CenterParent;
             dlg.ShowDialog(this);
 
+            var targetConvId = dlg.PendingOpenConversationId; // lưu trước khi dlg bị dispose
+
             await SyncConversationsAsync();
+
+            // Sau khi sync xong, mở đúng conversation vừa chọn
+            if (!string.IsNullOrEmpty(targetConvId))
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    _activeConvId = targetConvId;
+                    BuildConvList();
+                    LoadConversation(targetConvId);
+                }));
+            }
         }
 
         private Panel BuildConvRow(string id, string name, string preview, string time, int unread, bool isGroup)
@@ -2430,12 +2444,11 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             {
                                 var convId = contacts.PendingOpenConversationId;
                                 if (!_convs.Any(c => c.Id == convId))
-                                    await LoadConversationsAsync();
+                                    await SyncConversationsAsync(); 
 
                                 _activeConvId = convId;
                                 BuildConvList();
-                                _ = LoadMessagesAsync(convId);
-                                LoadConversation(convId);
+                                LoadConversation(convId);        
                             }
                         }
                         catch (Exception ex)
@@ -3831,6 +3844,14 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 }
 
                 // ─────────────────────────────────────────────────────────────────
+                // TRACKING: Đánh dấu message đã xử lý để tránh duplicate
+                // ─────────────────────────────────────────────────────────────────
+                lock (_processedMessageIdsLock)
+                {
+                    _processedMessageIds.Add(messageResponse.MessageID);
+                }
+
+                // ─────────────────────────────────────────────────────────────────
                 // SIGNALR BROADCAST: Phát tin nhắn qua SignalR để realtime
                 // ─────────────────────────────────────────────────────────────────
                 if (_signalRClient is not null && _signalRClient.IsConnected)
@@ -3861,14 +3882,6 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         ""
                     );
                     BuildMessages();
-                }
-
-                // ─────────────────────────────────────────────────────────────────
-                // TRACKING: Đánh dấu message đã xử lý để tránh duplicate
-                // ─────────────────────────────────────────────────────────────────
-                lock (_processedMessageIdsLock)
-                {
-                    _processedMessageIds.Add(messageResponse.MessageID);
                 }
 
                 // ─────────────────────────────────────────────────────────────────
