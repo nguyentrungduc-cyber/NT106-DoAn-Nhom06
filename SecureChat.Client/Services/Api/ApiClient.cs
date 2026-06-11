@@ -209,28 +209,5 @@ namespace SecureChat.Client.Services
                 return (false, $"Không thể kết nối máy chủ: {ex.Message}");
             }
         }
-
-        // Base hàm GET có deserialize JSON
-        public async Task<(bool IsSuccess, TResponse? Data, string ErrorMessage)> GetAsync<TResponse>(string endpoint)
-        {
-            try
-            {
-                var response = await _httpClient.GetAsync(endpoint);
-                var responseStr = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
-                    return (true, data, string.Empty);
-                }
-
-                return (false, default, $"Lỗi server: {responseStr}");
-            }
-            catch (Exception ex)
-            {
-                return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
-            }
-        }
     }
 }

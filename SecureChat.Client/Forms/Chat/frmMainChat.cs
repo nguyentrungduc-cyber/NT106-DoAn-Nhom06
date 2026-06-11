@@ -14,6 +14,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;       // Task.Delay (dùng cho wallpaper reload)
 using System.Windows.Forms;         // Form, Panel, Button, Label, ...
+using SecureChat.Client.Forms.Chat;
 
 namespace SecureChat.Client
 {
