@@ -600,20 +600,31 @@ namespace SecureChat.Client
             dlg.StartPosition = FormStartPosition.CenterParent;
             dlg.ShowDialog(this);
 
-            var targetConvId = dlg.PendingOpenConversationId; // lưu trước khi dlg bị dispose
+            var targetConvId = dlg.PendingOpenConversationId;
+            if (string.IsNullOrEmpty(targetConvId)) return;
 
-            await SyncConversationsAsync();
+            // Fetch trực tiếp conversation vừa tạo, không cần sync toàn bộ
+            var (ok, conv, _) = await _messageService.GetConversationAsync(targetConvId);
+            if (!ok || conv == null) return;
 
-            // Sau khi sync xong, mở đúng conversation vừa chọn
-            if (!string.IsNullOrEmpty(targetConvId))
+            BeginInvoke(new Action(() =>
             {
-                BeginInvoke(new Action(() =>
+                // Thêm vào sidebar nếu chưa có
+                if (!_convs.Any(c => c.Id == targetConvId))
                 {
-                    _activeConvId = targetConvId;
-                    BuildConvList();
-                    LoadConversation(targetConvId);
-                }));
-            }
+                    bool isGroup = conv.Type == ConversationType.Group;
+                    string display = !string.IsNullOrWhiteSpace(conv.Name)
+                        ? conv.Name!
+                        : "Direct chat";
+                    string time = conv.LastActivityAt?.ToLocalTime().ToString("h:mm tt")
+                        ?? string.Empty;
+                    _convs.Insert(0, (conv.ConversationID, display, string.Empty, time, 0, isGroup));
+                }
+
+                _activeConvId = targetConvId;
+                BuildConvList();
+                LoadConversation(targetConvId);
+            }));
         }
 
         private Panel BuildConvRow(string id, string name, string preview, string time, int unread, bool isGroup)

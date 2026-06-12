@@ -670,6 +670,17 @@ namespace SecureChat.Client
             lblName.Width = Math.Max(0, initTextWidth);
             lblSub.Width = Math.Max(0, initTextWidth);
 
+            EventHandler rowClick = (s, e) =>
+            {
+                if (btnMsg.Enabled) btnMsg.PerformClick();
+            };
+            pnl.Click += rowClick;
+            avatar.Click += rowClick;
+            lblName.Click += rowClick;
+            lblSub.Click += rowClick;
+            pnl.Cursor = Cursors.Hand;
+
+
             // 5. Thêm các control vào panel
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
             // 6. Vẽ đường kẻ chia hàng (Divider)
@@ -777,7 +788,12 @@ namespace SecureChat.Client
                     PendingOpenConversationId = c.ConversationId;
                     Close();
                 }
-                catch { btnMsg.Enabled = true; }
+                catch (Exception ex)
+                {
+                    btnMsg.Enabled = true;
+                    MessageBox.Show($"Không thể mở cuộc trò chuyện:\n{ex.Message}",
+                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             };
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
             pnl.Paint += (s, e) => e.Graphics.DrawLine(new Pen(TG.DividerLight), 62, 61, pnl.Width, 61);
