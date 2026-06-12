@@ -2454,12 +2454,15 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             if (!string.IsNullOrEmpty(contacts.PendingOpenConversationId))
                             {
                                 var convId = contacts.PendingOpenConversationId;
-                                if (!_convs.Any(c => c.Id == convId))
-                                    await SyncConversationsAsync(); 
+
+                                // Dùng LoadConversationsAsync thay vì SyncConversationsAsync
+                                // vì Sync populate _convs bên trong BeginInvoke (async), không kịp cho code bên dưới
+                                await LoadConversationsAsync();
 
                                 _activeConvId = convId;
                                 BuildConvList();
-                                LoadConversation(convId);        
+                                UpdateEmptyStateUI();    // show pnlConvList, ẩn pnlEmptyState
+                                LoadConversation(convId);
                             }
                         }
                         catch (Exception ex)
