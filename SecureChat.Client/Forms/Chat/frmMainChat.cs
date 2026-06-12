@@ -2564,10 +2564,9 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             var conv = _convs.Find(c => c.Id == convId);
             if (conv == default)
                 return;
-
+            _activeConvId = convId;
             UpdateChatEmptyStateUI();
 
-            _activeConvId = convId;
             _chatAvatar.SetName(conv.Name);
             _lblChatName.Text = conv.Name;
             _lblChatStatus.Text = conv.IsGroup
