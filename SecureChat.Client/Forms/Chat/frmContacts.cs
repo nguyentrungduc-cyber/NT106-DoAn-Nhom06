@@ -659,7 +659,12 @@ namespace SecureChat.Client
                     PendingOpenConversationId = conv.ConversationID;
                     Close();
                 }
-                catch { btnMsg.Enabled = true; }
+                catch (Exception ex)
+                {
+                    btnMsg.Enabled = true;
+                    MessageBox.Show($"Không thể mở cuộc trò chuyện:\n{ex.Message}",
+                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             };
 
             int initRightMargin = 15;
