@@ -156,7 +156,11 @@ namespace SecureChat.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
                     var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
                     return (true, data, string.Empty);
                 }
@@ -179,7 +183,11 @@ namespace SecureChat.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
                     var data = JsonSerializer.Deserialize<T>(responseStr, options);
                     return (true, data, string.Empty);
                 }

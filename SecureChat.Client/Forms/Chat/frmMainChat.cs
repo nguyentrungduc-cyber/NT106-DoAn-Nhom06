@@ -221,7 +221,7 @@ namespace SecureChat.Client
             _countdownRefreshTimer.Start();
             
             // Load danh sách hội thoại từ API thật
-            // await LoadConversationsAsync();
+            await LoadConversationsAsync();
         }
 
         private async Task LoadConversationsAsync()
