@@ -87,5 +87,17 @@ namespace SecureChat.Client.Services
                 return _outputPath ?? string.Empty;
             }
         }
+        public static int GetDurationSeconds(string wavPath)
+        {
+            try
+            {
+                using var wav = new WaveFileReader(wavPath);
+                return (int)wav.TotalTime.TotalSeconds;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
     }
 }

@@ -427,3 +427,6 @@ SecureChat.Server/appsettings*.json
 
 # Không có ví dụ thì chỉnh kiểu sao?
 !SecureChat.Server/appsettings.example.json
+
+# Uploaded files (test artifacts)
+SecureChat.Server/wwwroot/uploads/
