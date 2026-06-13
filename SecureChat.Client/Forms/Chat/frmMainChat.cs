@@ -1799,7 +1799,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             ReplyToID: null,
                             OriginalSenderID: null,
                             Attachments: new List<CreateAttachmentRequest> { attachment },
-                            MentionedMemberIDs: null);
+                            MentionedMemberIDs: null,
+                            ExpiresAfterSeconds: _selfDestructSeconds);
 
                         var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<SendMessageRequest, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
                         if (!okMsg || msgRes == null)
@@ -1819,6 +1820,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                     SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, aesKey, aesIv);
                                     string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
                                     _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                    if (msgRes.ExpiresAt.HasValue)
+                                        _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
                                     this.BeginInvoke(new Action(() => BuildMessages()));
                                 }
                             }
@@ -2012,7 +2015,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                     ReplyToID: null,
                                     OriginalSenderID: null,
                                     Attachments: new List<CreateAttachmentRequest> { attachment },
-                                    MentionedMemberIDs: null);
+                                    MentionedMemberIDs: null,
+                                    ExpiresAfterSeconds: _selfDestructSeconds);
 
                                 var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<SendMessageRequest, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
                                 if (!okMsg || msgRes == null)
@@ -2031,6 +2035,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                             SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, key, iv);
                                             string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
                                             _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                            if (msgRes.ExpiresAt.HasValue)
+                                                _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
                                             this.BeginInvoke(new Action(() => BuildMessages()));
                                         }
                                     }
@@ -2181,7 +2187,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 86400}d";
                 
                 btnTimer.ForeColor = Color.FromArgb(255, 87, 34); // Orange color for active timer
-                btnTimer.Font = TG.FontSemiBold(10f);
+                btnTimer.Font = new Font("Segoe UI Emoji", 10f);
             }
             else
             {
@@ -4273,6 +4279,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             // Xóa message khỏi UI (thread-safe)
             BeginInvoke(new Action(() =>
             {
+                _hiddenMessageIds.Add(messageId);
                 var index = _currentMsgs.FindIndex(m => m.Id == messageId);
                 if (index >= 0)
                 {
