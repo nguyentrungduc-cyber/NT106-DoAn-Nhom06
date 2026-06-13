@@ -74,6 +74,13 @@ namespace SecureChat.Client
         private readonly object _processedMessageIdsLock = new();
         private readonly HashSet<string> _hiddenMessageIds = new();
 
+        // Typing indicator state
+        private System.Windows.Forms.Timer? _typingDebounceTimer;
+        private string? _typingDebounceConvId;
+        private DateTime _lastTypingSent = DateTime.MinValue;
+        private readonly Dictionary<string, HashSet<string>> _typingUsernames = new();
+        private readonly object _typingLock = new();
+
         // Sidebar header controls (updated after user data loads)
         private AvatarControl _settingsAvatar;
         private Label _lblSettingsUserName;
@@ -2067,7 +2074,50 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             var btnSend = new TelegramButton { Text = "↑", Height = 36, Width = 36, Font = TG.FontSemiBold(14f), Radius = 18, Visible = false };
             btnSend.Click += (s, e) => SendMessage();
 
-            _tbMessage.TextChanged += (s, e) => { bool hasText = !string.IsNullOrWhiteSpace(_tbMessage.Text); btnSend.Visible = hasText; btnMic.Visible = !hasText; };
+            _tbMessage.TextChanged += (s, e) =>
+            {
+                bool hasText = !string.IsNullOrWhiteSpace(_tbMessage.Text);
+                btnSend.Visible = hasText;
+                btnMic.Visible = !hasText;
+
+                if (string.IsNullOrWhiteSpace(_activeConvId) || _signalRClient == null || !_signalRClient.IsConnected)
+                    return;
+
+                var currentConv = _activeConvId;
+                if (hasText)
+                {
+                    var now = DateTime.UtcNow;
+                    if ((now - _lastTypingSent).TotalSeconds >= 3)
+                    {
+                        _lastTypingSent = now;
+                        _ = _signalRClient.NotifyTypingAsync(currentConv);
+                    }
+
+                    if (_typingDebounceTimer == null)
+                    {
+                        _typingDebounceTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+                        _typingDebounceTimer.Tick += (_, __) =>
+                        {
+                            _typingDebounceTimer.Stop();
+                            var targetConv = _typingDebounceConvId;
+                            if (!string.IsNullOrWhiteSpace(targetConv))
+                                _ = _signalRClient?.NotifyStoppedTypingAsync(targetConv);
+                        };
+                    }
+                    _typingDebounceConvId = currentConv;
+                    _typingDebounceTimer.Stop();
+                    _typingDebounceTimer.Start();
+                }
+                else
+                {
+                    if (_typingDebounceTimer != null)
+                    {
+                        _typingDebounceTimer.Stop();
+                    }
+                    _typingDebounceConvId = null;
+                    _ = _signalRClient.NotifyStoppedTypingAsync(currentConv);
+                }
+            };
 
             // Gom nhóm ô nhập liệu vào một Panel dưới cùng
             var pnlInputControls = new Panel { Dock = DockStyle.Bottom, Height = 56, BackColor = Color.Transparent };
@@ -2549,7 +2599,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             {
                                 // 1. Xóa Access Token để không gọi API được nữa
                                 ApiClient.Instance.SetAccessToken(null);
-                                SecureChat.Shared.Security.KeyManager.Clear();
+                                SecureChat.Shared.Security.KeyManager.Purge();
                                 lock (_processedMessageIdsLock)
                                 {
                                     _processedMessageIds.Clear();
@@ -2631,14 +2681,22 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             var conv = _convs.Find(c => c.Id == convId);
             if (conv == default)
                 return;
+
+            // Cleanup typing state from previous conversation
+            var prevConv = _activeConvId;
+            if (!string.IsNullOrWhiteSpace(prevConv) && prevConv != convId)
+            {
+                _typingDebounceTimer?.Stop();
+                _typingDebounceConvId = null;
+                _ = _signalRClient?.NotifyStoppedTypingAsync(prevConv);
+            }
+
             _activeConvId = convId;
             UpdateChatEmptyStateUI();
 
             _chatAvatar.SetName(conv.Name);
             _lblChatName.Text = conv.Name;
-            _lblChatStatus.Text = conv.IsGroup
-                ? $"{conv.Name}"
-                : "last seen recently";
+            RestoreChatStatus();
 
             // Đảm bảo có list (rỗng nếu chưa sync) trước khi vẽ.
             BuildMessages();
@@ -3544,6 +3602,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             _signalRClient.MessageReceived += HandleSignalRMessageAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
+            _signalRClient.UserTyping += HandleUserTypingAsync;
+            _signalRClient.UserStoppedTyping += HandleUserStoppedTypingAsync;
             _signalRClient.Reconnected += async _ =>
             {
                 await ReRegisterPublicKeyAsync();
@@ -3706,6 +3766,78 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             {
                 BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
             }
+        }
+
+        private Task HandleUserTypingAsync(string conversationId, string username)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId) || string.IsNullOrWhiteSpace(username))
+                return Task.CompletedTask;
+
+            lock (_typingLock)
+            {
+                if (!_typingUsernames.TryGetValue(conversationId, out var set))
+                {
+                    set = new HashSet<string>();
+                    _typingUsernames[conversationId] = set;
+                }
+                set.Add(username);
+            }
+
+            if (conversationId == _activeConvId)
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (_lblChatStatus != null)
+                        _lblChatStatus.Text = $"{username} đang gõ...";
+                }));
+            }
+
+            return Task.CompletedTask;
+        }
+
+        private Task HandleUserStoppedTypingAsync(string conversationId, string username)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId) || string.IsNullOrWhiteSpace(username))
+                return Task.CompletedTask;
+
+            bool shouldUpdate = false;
+            lock (_typingLock)
+            {
+                if (_typingUsernames.TryGetValue(conversationId, out var set))
+                {
+                    if (set.Remove(username) && set.Count == 0)
+                    {
+                        _typingUsernames.Remove(conversationId);
+                        shouldUpdate = true;
+                    }
+                }
+            }
+
+            if (shouldUpdate && conversationId == _activeConvId)
+            {
+                BeginInvoke(new Action(() => RestoreChatStatus()));
+            }
+
+            return Task.CompletedTask;
+        }
+
+        private void RestoreChatStatus()
+        {
+            if (_lblChatStatus == null || string.IsNullOrWhiteSpace(_activeConvId))
+                return;
+
+            lock (_typingLock)
+            {
+                if (_typingUsernames.TryGetValue(_activeConvId, out var set) && set.Count > 0)
+                {
+                    var first = set.First();
+                    _lblChatStatus.Text = $"{first} đang gõ...";
+                    return;
+                }
+            }
+
+            var conv = _convs.Find(c => c.Id == _activeConvId);
+            _lblChatStatus.Text = conv == default ? "" : conv.IsGroup ? $"{conv.Name}" : "last seen recently";
         }
 
         private bool TryTrackMessageId(string messageId)
