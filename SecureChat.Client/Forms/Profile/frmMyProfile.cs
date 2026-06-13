@@ -108,7 +108,7 @@ namespace SecureChat.Client.Forms.Profile
                 Font = new Font("Segoe UI", 9.5f, GraphicsUnit.Point),
                 ForeColor = C_SUB,
                 BackColor = Color.Transparent,
-                Text = "Mobile",
+                Text = "Email",
             };
 
             Controls.AddRange(new Control[]
@@ -123,7 +123,7 @@ namespace SecureChat.Client.Forms.Profile
         {
             _lblName.Text = profile.FullName;
             _lblStatus.Text = profile.StatusText;
-            _lblPhone.Text = profile.PhoneNumber;
+            _lblPhone.Text = profile.Email;
             _lblInitial.Text = GetInitials(profile.FullName);
             _avatar.BackColor = TG.GetAvatarColor(profile.FullName);
             ApplyAvatarImage();

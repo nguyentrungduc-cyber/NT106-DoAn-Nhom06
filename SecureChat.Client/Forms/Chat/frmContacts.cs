@@ -693,13 +693,38 @@ namespace SecureChat.Client
                             new { UserID = c.UserId,  EncryptedKey = encryptedKeyForOther }
                         }
                     });
+
+                    
                     var res = await http.PostAsync("api/conversations",
                         new StringContent(reqBody, System.Text.Encoding.UTF8, "application/json"));
+
+                    /*
                     if (!res.IsSuccessStatusCode) { btnMsg.Enabled = true; return; }
 
                     var conv = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.ConversationResponse>(
                         await res.Content.ReadAsStringAsync(), opts);
                     if (conv == null) { btnMsg.Enabled = true; return; }
+                    */
+
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var errBody = await res.Content.ReadAsStringAsync();
+                        btnMsg.Enabled = true;
+                        MessageBox.Show($"Lỗi {(int)res.StatusCode}: {errBody}", "Debug");
+                        return;
+                    }
+
+                    var resBody = await res.Content.ReadAsStringAsync();
+                    var conv = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.ConversationResponse>(resBody, opts);
+                    if (conv == null)
+                    {
+                        btnMsg.Enabled = true;
+                        MessageBox.Show($"conv null, body: {resBody}", "Debug");
+                        return;
+                    }
+
+
+
 
                     PendingOpenConversationId = conv.ConversationID;
                     Close();

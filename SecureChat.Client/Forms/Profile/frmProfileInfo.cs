@@ -120,7 +120,7 @@ namespace SecureChat.Client.Forms.Profile
             int fieldTop = 240;
             var nameField = InputField("Name", fieldTop);
             fieldTop += 74;
-            var phoneField = InputField("Phone number", fieldTop);
+            var phoneField = InputField("Email", fieldTop);
             fieldTop += 74;
             var userField = InputField("t.me/username", fieldTop);
             fieldTop += 74;
@@ -226,7 +226,7 @@ namespace SecureChat.Client.Forms.Profile
         private void LoadProfile(ProfileModel profile)
         {
             _txtName.Text = profile.FullName;
-            _txtPhone.Text = profile.PhoneNumber;
+            _txtPhone.Text = profile.Email;
             _txtUsername.Text = profile.Username;
             if (profile.Birthday.HasValue)
                 _dtBirthday.Value = profile.Birthday.Value;
@@ -270,7 +270,7 @@ namespace SecureChat.Client.Forms.Profile
                     throw new InvalidOperationException("Username must be 5-32 chars [a-zA-Z0-9_].");
 
                 _profile.FullName = name;
-                _profile.PhoneNumber = phone;
+                _profile.Email = phone;
                 _profile.Username = username;
                 _profile.Birthday = _dtBirthday.Value;
 

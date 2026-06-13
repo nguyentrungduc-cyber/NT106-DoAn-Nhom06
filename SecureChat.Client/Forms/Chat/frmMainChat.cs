@@ -251,17 +251,14 @@ namespace SecureChat.Client
                         : c.CreatedAt.ToLocalTime().ToString("h:mm tt");
                     _convs.Add((c.ConversationID, c.Name ?? "Conversation", preview, time, 0, isGroup));
                 }
-
-                BeginInvoke(new Action(() =>
+                BuildConvList();
+                UpdateEmptyStateUI();
+                if (_convs.Count > 0 && string.IsNullOrEmpty(_activeConvId))
                 {
-                    BuildConvList();
-                    if (_convs.Count > 0)
-                    {
-                        _activeConvId = _convs[0].Id;
-                        _ = LoadMessagesAsync(_activeConvId);
-                        LoadConversation(_activeConvId);
-                    }
-                }));
+                    _activeConvId = _convs[0].Id;
+                    _ = LoadMessagesAsync(_activeConvId);
+                    LoadConversation(_activeConvId);
+                }
             }
             catch (Exception ex)
             {
