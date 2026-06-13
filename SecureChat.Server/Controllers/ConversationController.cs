@@ -129,10 +129,14 @@ namespace SecureChat.Controllers
 				return NotFound();
 
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
-			if (member is null || member.Role != MemberRole.Owner)
+			if (member is null || member.LeftAt is not null)
 				return Forbid();
-			await conversations.DeleteAsync(conversationID);
 
+			// Group: only Owner can delete. Direct: any active member can delete.
+			if (conv.Type != ConversationType.Direct && member.Role != MemberRole.Owner)
+				return Forbid();
+
+			await conversations.DeleteAsync(conversationID);
 			return NoContent();
 		}
 

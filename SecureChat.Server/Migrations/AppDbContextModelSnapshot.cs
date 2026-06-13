@@ -227,8 +227,7 @@ namespace SecureChat.Server.Migrations
 
                     b.Property<string>("Name")
                         .HasMaxLength(64)
-                        .HasColumnType("varchar(64)")
-                        .HasColumnName("name");
+                        .HasColumnType("varchar(64)");
 
                     b.Property<byte>("Type")
                         .HasColumnType("tinyint unsigned")
