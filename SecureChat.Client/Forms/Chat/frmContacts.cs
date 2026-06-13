@@ -636,7 +636,52 @@ namespace SecureChat.Client
                         await meRes.Content.ReadAsStringAsync(), opts);
                     if (me == null) { btnMsg.Enabled = true; return; }
 
-                    // Tạo hoặc lấy conversation direct
+                    // Tạo AES conversation key và mã hóa cho mỗi member
+                    var (convKey, convIv) = SecureChat.Shared.Security.AesEncryption.GenerateKeyAndIv();
+                    string encryptedKeyForMe, encryptedKeyForOther;
+
+                    try
+                    {
+                        // Lấy public key của chính mình
+                        var (pub, _) = SecureChat.Shared.Security.KeyManager.GetKeyPair();
+                        if (string.IsNullOrWhiteSpace(pub))
+                        {
+                            var newKeys = SecureChat.Shared.Security.RSAEncryption.GenerateKeyPair();
+                            SecureChat.Shared.Security.KeyManager.SetKeyPair(newKeys.publicKeyPem, newKeys.privateKeyPem);
+                            pub = newKeys.publicKeyPem;
+                        }
+
+                        // Mã hóa AES key với public key của mình
+                        byte[] encKeyMe = SecureChat.Shared.Security.RSAEncryption.Encrypt(convKey, pub);
+                        encryptedKeyForMe = Convert.ToBase64String(encKeyMe);
+
+                        // Lấy public key của người kia
+                        var otherUserRes = await http.GetAsync($"api/users/{c.UserId}");
+                        if (!otherUserRes.IsSuccessStatusCode)
+                        {
+                            btnMsg.Enabled = true;
+                            MessageBox.Show("Không thể lấy thông tin người dùng.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+                        var otherUser = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.UserResponse>(
+                            await otherUserRes.Content.ReadAsStringAsync(), opts);
+                        if (otherUser == null || string.IsNullOrWhiteSpace(otherUser.PublicKey))
+                        {
+                            btnMsg.Enabled = true;
+                            MessageBox.Show("Người dùng chưa thiết lập khóa mã hóa.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
+                        byte[] encKeyOther = SecureChat.Shared.Security.RSAEncryption.Encrypt(convKey, otherUser.PublicKey);
+                        encryptedKeyForOther = Convert.ToBase64String(encKeyOther);
+                    }
+                    catch (Exception ex)
+                    {
+                        btnMsg.Enabled = true;
+                        MessageBox.Show($"Không thể tạo khóa mã hóa: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
                     var reqBody = System.Text.Json.JsonSerializer.Serialize(new
                     {
                         Type = 0, // ConversationType.Direct
@@ -644,9 +689,9 @@ namespace SecureChat.Client
                         AvatarUrl = (string?)null,
                         Members = new[]
                         {
-                new { UserID = me.UserID, EncryptedKey = "TBD" },
-                new { UserID = c.UserId,  EncryptedKey = "TBD" }
-            }
+                            new { UserID = me.UserID, EncryptedKey = encryptedKeyForMe },
+                            new { UserID = c.UserId,  EncryptedKey = encryptedKeyForOther }
+                        }
                     });
                     var res = await http.PostAsync("api/conversations",
                         new StringContent(reqBody, System.Text.Encoding.UTF8, "application/json"));
@@ -675,14 +720,35 @@ namespace SecureChat.Client
             lblName.Width = Math.Max(0, initTextWidth);
             lblSub.Width = Math.Max(0, initTextWidth);
 
-            EventHandler rowClick = (s, e) =>
+            // Xử lý sự kiện click cho toàn bộ dòng
+            pnl.Click += (s, e) =>
             {
-                if (btnMsg.Enabled) btnMsg.PerformClick();
+                if (c.Status == FriendStatus.Friend || c.Status == FriendStatus.None)
+                {
+                    btnMsg.PerformClick();
+                }
             };
-            pnl.Click += rowClick;
-            avatar.Click += rowClick;
-            lblName.Click += rowClick;
-            lblSub.Click += rowClick;
+            avatar.Click += (s, e) =>
+            {
+                if (c.Status == FriendStatus.Friend || c.Status == FriendStatus.None)
+                {
+                    btnMsg.PerformClick();
+                }
+            };
+            lblName.Click += (s, e) =>
+            {
+                if (c.Status == FriendStatus.Friend || c.Status == FriendStatus.None)
+                {
+                    btnMsg.PerformClick();
+                }
+            };
+            lblSub.Click += (s, e) =>
+            {
+                if (c.Status == FriendStatus.Friend || c.Status == FriendStatus.None)
+                {
+                    btnMsg.PerformClick();
+                }
+            };
             pnl.Cursor = Cursors.Hand;
 
 
@@ -799,6 +865,19 @@ namespace SecureChat.Client
                     MessageBox.Show($"Không thể mở cuộc trò chuyện:\n{ex.Message}",
                         "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
+            };
+            // Khi click vào avatar hoặc tên người dùng, tự động kích hoạt nút tin nhắn
+            avatar.Click += (s, e) =>
+            {
+                btnMsg.PerformClick();
+            };
+            lblName.Click += (s, e) =>
+            {
+                btnMsg.PerformClick();
+            };
+            lblSub.Click += (s, e) =>
+            {
+                btnMsg.PerformClick();
             };
             pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
             pnl.Paint += (s, e) => e.Graphics.DrawLine(new Pen(TG.DividerLight), 62, 61, pnl.Width, 61);

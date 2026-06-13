@@ -2408,7 +2408,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             var profile = new SecureChat.Client.Models.ProfileModel
                             {
                                 FullName = _currentDisplayName,
-                                PhoneNumber = _currentEmail,
+                                Email = _currentEmail,
                                 Username = _currentUsername,
                                 AvatarPath = string.Empty,
                                 StatusText = "online"
@@ -2789,10 +2789,13 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             int y = 8;
 
+            // Get current date for separator
+            string currentDate = DateTime.Now.ToString("MMMM dd");
+
             // Date separator (docked to top so it resizes/centers automatically)
             var sep = new Label
             {
-                Text = "March 10",
+                Text = currentDate,
                 Font = TG.FontRegular(8.5f),
                 ForeColor = Color.White,
                 AutoSize = false,
@@ -3631,7 +3634,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
         }
 
         private async Task<CreateAttachmentRequest> CreateHybridEncryptedAttachmentAsync(
-            string receiverId,
+            string conversationId,
             string fileUrl,
             string fileName,
             string fileNameInStorage,
@@ -3647,8 +3650,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             byte[] aesKey,
             byte[] aesIv)
         {
-            if (string.IsNullOrWhiteSpace(receiverId))
-                throw new InvalidOperationException("Receiver id is required.");
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new InvalidOperationException("Conversation id is required.");
             if (string.IsNullOrWhiteSpace(fileUrl))
                 throw new InvalidOperationException("File URL is required.");
             if (string.IsNullOrWhiteSpace(fileName))
@@ -3662,12 +3665,45 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             if (aesIv.Length == 0)
                 throw new InvalidOperationException("AES IV is required.");
 
-            var receiverPublicKey = await ApiClient.Instance.GetPublicKeyAsync(receiverId);
-            if (string.IsNullOrWhiteSpace(receiverPublicKey))
-                throw new InvalidOperationException("Receiver public key not available.");
+            // ─────────────────────────────────────────────────────────────────
+            // Lấy danh sách members của conversation
+            // ─────────────────────────────────────────────────────────────────
+            var convService = new SecureChat.Client.Services.ConversationService();
+            var (ok, members, err) = await convService.GetConversationMembersAsync(conversationId);
 
-            byte[] encryptedAesKey = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesKey, receiverPublicKey);
-            byte[] encryptedAesIv = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesIv, receiverPublicKey);
+            if (!ok || members is null || members.Count == 0)
+                throw new InvalidOperationException($"Failed to get conversation members: {err}");
+
+            // ─────────────────────────────────────────────────────────────────
+            // Encrypt AES key cho mỗi member
+            // ─────────────────────────────────────────────────────────────────
+            var recipientEncryptions = new List<SecureChat.DTOs.RecipientEncryption>();
+
+            foreach (var member in members)
+            {
+                if (member.User is null)
+                    continue;
+
+                try
+                {
+                    byte[] encryptedAesKey = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesKey, member.User.PublicKey);
+                    byte[] encryptedAesIv = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesIv, member.User.PublicKey);
+
+                    recipientEncryptions.Add(new SecureChat.DTOs.RecipientEncryption(
+                        member.UserID,
+                        Convert.ToBase64String(encryptedAesKey),
+                        Convert.ToBase64String(encryptedAesIv)
+                    ));
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to encrypt AES key for recipient {member.UserID}: {ex.Message}", ex);
+                }
+            }
+
+            if (recipientEncryptions.Count == 0)
+                throw new InvalidOperationException("No recipients with valid public keys found.");
 
             return new CreateAttachmentRequest(
                 fileUrl,
@@ -3682,9 +3718,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 durationSecs,
                 fileIv,
                 thumbnailIv,
-                Convert.ToBase64String(encryptedAesKey),
-                Convert.ToBase64String(encryptedAesIv),
-                receiverId);
+                null,
+                null,
+                null,
+                recipientEncryptions);
         }
 
         private void HandleHybridEncryptedAttachment(string messageId, AttachmentResponse attachment)

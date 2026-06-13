@@ -14,10 +14,30 @@ namespace SecureChat.Shared.Security
             return (publicKey, privateKey);
         }
 
-        public static byte[] Encrypt(byte[] data, string publicKeyPem)
+        public static byte[] Encrypt(byte[] data, string publicKeyString)
         {
             using var rsa = RSA.Create();
-            rsa.ImportFromPem(publicKeyPem);
+
+            if (publicKeyString.Contains("-----BEGIN"))
+            {
+                // PEM format (new code)
+                rsa.ImportFromPem(publicKeyString);
+            }
+            else
+            {
+                // Raw base64 DER — try SubjectPublicKeyInfo (SPKI) first,
+                // then fall back to PKCS#1 RSAPublicKey (old registration code).
+                byte[] der = Convert.FromBase64String(publicKeyString);
+                try
+                {
+                    rsa.ImportSubjectPublicKeyInfo(der, out _);
+                }
+                catch
+                {
+                    rsa.ImportRSAPublicKey(der, out _);
+                }
+            }
+
             return rsa.Encrypt(data, RSAEncryptionPadding.OaepSHA256);
         }
 
