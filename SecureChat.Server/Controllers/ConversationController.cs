@@ -35,7 +35,7 @@ namespace SecureChat.Controllers
             return Ok(result);
         }
 
-        [HttpGet("{conversationID}")]
+	[HttpGet("{conversationID}")]
 		public async Task<IActionResult> GetConversation(string conversationID)
 		{
 			var conv = await conversations.GetByIdWithMembersAsync(conversationID);
@@ -44,7 +44,15 @@ namespace SecureChat.Controllers
 			var member = conv.Members.FirstOrDefault(m => m.UserID == Me && m.LeftAt == null);
 			if (member is null)
 				return Forbid();
-			return Ok(ConversationResponse.From(conv));
+
+			var res = ConversationResponse.From(conv);
+			if (conv.Type == ConversationType.Direct && string.IsNullOrEmpty(res.Name))
+			{
+				var other = conv.Members.FirstOrDefault(m => m.UserID != Me && m.LeftAt == null);
+				if (other?.User != null)
+					res = res with { Name = other.User.DisplayName };
+			}
+			return Ok(res);
 		}
 
 		[HttpPost]

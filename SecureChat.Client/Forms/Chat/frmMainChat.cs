@@ -72,6 +72,11 @@ namespace SecureChat.Client
 
         private readonly HashSet<string> _processedMessageIds = new();
         private readonly object _processedMessageIdsLock = new();
+        private readonly HashSet<string> _hiddenMessageIds = new();
+
+        // Sidebar header controls (updated after user data loads)
+        private AvatarControl _settingsAvatar;
+        private Label _lblSettingsUserName;
 
         // Sync tin nhắn từ MariaDB (server) -> Client
         private readonly SecureChat.Client.Services.Api.MessageService _messageService = new();
@@ -182,6 +187,8 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
             }
+
+            UpdateSettingsHeaderUI();
 
             // Only generate and register if not already present
             var (pub, priv) = SecureChat.Shared.Security.KeyManager.GetKeyPair();
@@ -1015,7 +1022,6 @@ namespace SecureChat.Client
 
             var mnuViewInfo = CreateChatMenuItem("ℹ️  View group info", (_, __) => OpenGroupInfo());
             var mnuManageGroup = CreateChatMenuItem("🎛️  Manage group", (_, __) => OpenEditGroupFromChat());
-            var mnuCreatePoll = CreateChatMenuItem("📊  Create poll", (_, __) => CreatePoll());
             var mnuClearHistory = CreateChatMenuItem("🧹  Clear history", (_, __) => ClearHistory());
             var mnuDeleteLeave = CreateChatMenuItem("🚪  Delete and leave", (_, __) => DeleteAndLeave(), Color.FromArgb(0xE2, 0x4B, 0x4A));
 
@@ -1023,7 +1029,6 @@ namespace SecureChat.Client
             _chatMoreMenu.Items.Add(new ToolStripSeparator());
             _chatMoreMenu.Items.Add(mnuViewInfo);
             _chatMoreMenu.Items.Add(mnuManageGroup);
-            _chatMoreMenu.Items.Add(mnuCreatePoll);
             _chatMoreMenu.Items.Add(mnuClearHistory);
             _chatMoreMenu.Items.Add(new ToolStripSeparator());
             _chatMoreMenu.Items.Add(mnuDeleteLeave);
@@ -1211,24 +1216,6 @@ namespace SecureChat.Client
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
             _lblChatName.Text = dlg.GroupName;
-        }
-
-        private void CreatePoll()
-        {
-            using var dlg = new SecureChat.Client.Forms.Chat.frmCreatePoll();
-            if (dlg.ShowDialog(this) != DialogResult.OK)
-                return;
-
-            var pollText = $"📊 {dlg.PollQuestion}";
-            if (!string.IsNullOrWhiteSpace(dlg.PollDescription))
-                pollText += $"\n{dlg.PollDescription}";
-
-            for (var i = 0; i < dlg.PollOptions.Count; i++)
-                pollText += $"\n{i + 1}. {dlg.PollOptions[i]}";
-
-            // Thêm Guid.NewGuid().ToString() vào đầu để làm ID cho tin nhắn chứa Poll
-            _currentMsgs.Add((Guid.NewGuid().ToString(), pollText, true, DateTime.Now.ToString("h:mm tt"), ""));
-            BuildMessages();
         }
 
         private async void ClearHistory()
@@ -1822,6 +1809,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                 if (TryTrackMessageId(msgRes.MessageID))
                                 {
                                     HandleHybridEncryptedAttachment(msgRes.MessageID, att);
+                                    SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, aesKey, aesIv);
                                     string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
                                     _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
                                     this.BeginInvoke(new Action(() => BuildMessages()));
@@ -1969,8 +1957,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                 long fileSize = root.GetProperty("fileSize").GetInt64();
                                 string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
 
-                                // Duration is not computed here; set to 0 for now (can be improved later)
-                                string duration = "0";
+                                // Calculate actual WAV duration
+                                string duration = SecureChat.Client.Services.AudioRecorderService.GetDurationSeconds(wavPath).ToString();
                                 var fileNameInStorage = Path.GetFileName(url);
                                 var encodedFileName = Uri.EscapeDataString(fileName);
                                 var fileType = Path.GetExtension(fileName)?.TrimStart('.').ToLowerInvariant();
@@ -2226,10 +2214,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             btnClose.FlatAppearance.BorderSize = 0;
             btnClose.Click += (s, e) => HideSettingsMenu();
 
-            var userAvatar = new AvatarControl { Size = new Size(56, 56), Location = new Point(14, 52) };
-            userAvatar.SetName(_currentDisplayName);
+            _settingsAvatar = new AvatarControl { Size = new Size(56, 56), Location = new Point(14, 52) };
+            _settingsAvatar.SetName(_currentDisplayName);
 
-            var lblUserName = new Label
+            _lblSettingsUserName = new Label
             {
                 Text = _currentDisplayName,
                 Font = TG.FontSemiBold(11f),
@@ -2311,13 +2299,13 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 btnChevron.Text = pnlAddAccount.Visible ? "▲" : "▾";
             };
             btnChevron.Click += (s, e) => toggleAccountPanel();
-            userAvatar.Click += (s, e) => toggleAccountPanel();
-            lblUserName.Click += (s, e) => toggleAccountPanel();
+            _settingsAvatar.Click += (s, e) => toggleAccountPanel();
+            _lblSettingsUserName.Click += (s, e) => toggleAccountPanel();
 
-            _pnlSettingsHeader.Controls.AddRange(new Control[] { btnClose, userAvatar, lblUserName, lblEmojiStatus, btnChevron });
+            _pnlSettingsHeader.Controls.AddRange(new Control[] { btnClose, _settingsAvatar, _lblSettingsUserName, lblEmojiStatus, btnChevron });
             _pnlSettingsHeader.Resize += (s, e) =>
             {
-                lblUserName.Width = _pnlSettingsHeader.Width - 84 - 36;
+                _lblSettingsUserName.Width = _pnlSettingsHeader.Width - 84 - 36;
                 lblEmojiStatus.Width = _pnlSettingsHeader.Width - 84 - 36;
                 btnChevron.Location = new Point(_pnlSettingsHeader.Width - 36, 52);
             };
@@ -2327,7 +2315,6 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 {
     ("👤", "My Profile",      false),
     ("👥", "New Group",       false),
-    ("📣", "New Channel",     false),
     ("🪪", "Contacts",        false),
     ("📞", "Calls",           false),
     ("🔖", "Saved Messages",  false),
@@ -2461,7 +2448,21 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             };
                             using var myprofile = new SecureChat.Client.Forms.Profile.frmMyProfile(profile);
                             myprofile.StartPosition = FormStartPosition.CenterParent;
-                            myprofile.ShowDialog(this);
+                            if (myprofile.ShowDialog(this) == DialogResult.OK)
+                            {
+                                var http = ApiClient.Instance.GetHttpClient();
+                                var req = new { displayName = profile.FullName };
+                                var json = System.Text.Json.JsonSerializer.Serialize(req);
+                                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                                var res = await http.PatchAsync("api/users/me", content);
+                                if (res.IsSuccessStatusCode)
+                                {
+                                    _currentDisplayName = profile.FullName;
+                                    _currentUsername = profile.Username;
+                                    _currentEmail = profile.Email;
+                                    UpdateSettingsHeaderUI();
+                                }
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -2481,11 +2482,6 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         {
                             MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         }
-                        break;
-                    }
-                case "New Channel":
-                    {
-                        MessageBox.Show(this, "Create Channel feature coming soon.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         break;
                     }
                 case "Contacts":
@@ -2531,11 +2527,25 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     {
                         try
                         {
-                            var profile = new SecureChat.Client.Models.ProfileModel { FullName = _currentDisplayName };
+                            var profile = new SecureChat.Client.Models.ProfileModel
+                            {
+                                FullName = _currentDisplayName,
+                                Email = _currentEmail,
+                                Username = _currentUsername,
+                                AvatarPath = string.Empty,
+                                StatusText = "online"
+                            };
                             using var settings = new SecureChat.Client.Forms.Settings.frmSettings(profile);
                             settings.StartPosition = FormStartPosition.CenterParent;
                             var dr = settings.ShowDialog(this);
-                            if (dr == DialogResult.No)
+                            if (dr == DialogResult.OK)
+                            {
+                                _currentDisplayName = profile.FullName;
+                                _currentUsername = profile.Username;
+                                _currentEmail = profile.Email;
+                                UpdateSettingsHeaderUI();
+                            }
+                            else if (dr == DialogResult.No)
                             {
                                 // 1. Xóa Access Token để không gọi API được nữa
                                 ApiClient.Instance.SetAccessToken(null);
@@ -2568,6 +2578,14 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
                         }*/
             }
+        }
+
+        private void UpdateSettingsHeaderUI()
+        {
+            if (_settingsAvatar != null)
+                _settingsAvatar.SetName(_currentDisplayName);
+            if (_lblSettingsUserName != null)
+                _lblSettingsUserName.Text = _currentDisplayName;
         }
 
         // ════════════════════════════════════════════
@@ -2744,6 +2762,9 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     _allMsgs[convId] = existing;
                 }
 
+                // Bỏ qua tin nhắn đã xóa local
+                decrypted.RemoveAll(d => _hiddenMessageIds.Contains(d.Id));
+
                 // Prepend phần đã sync (giữ thứ tự cũ -> mới) lên các tin đã add cục bộ.
                 if (existing.Count == 0)
                 {
@@ -2756,7 +2777,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     foreach (var dm in decrypted)
                         merged.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
                     foreach (var m in existing)
-                        if (!decrypted.Exists(d => d.Id == m.Id))
+                        if (!decrypted.Exists(d => d.Id == m.Id) && !_hiddenMessageIds.Contains(m.Id))
                             merged.Add(m);
                     _allMsgs[convId] = merged;
                 }
@@ -2860,9 +2881,11 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             var bubbles = new List<Control>();
 
-            // Iterate with index to support actions that modify a specific message
+            // Bỏ qua tin nhắn đã xóa local
             for (int i = 0; i < _currentMsgs.Count; i++)
             {
+                if (_hiddenMessageIds.Contains(_currentMsgs[i].Id))
+                    continue;
                 var msg = _currentMsgs[i];
                 bool isGroup = _convs.Find(c => c.Id == _activeConvId).IsGroup;
                 var bubble = BuildBubble(msg.Text, msg.Out, msg.Time, msg.Sender, isGroup, msg.Id);
@@ -2889,10 +2912,12 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             _pnlChatHeader.Visible = hasActiveConversation;
             _pnlInputBar.Visible = hasActiveConversation;
+            _pnlMessages.Visible = hasActiveConversation;
             _pnlChatEmpty.Visible = !hasActiveConversation;
 
             if (_pnlChatEmpty.Visible)
             {
+                _pnlMessages.Controls.Clear();
                 var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
                 _lblChatEmpty.Text = resources.GetString("ChatEmptySelectMessage")
                     ?? "Select a chat to start messaging";
@@ -3038,60 +3063,55 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
                     try
                     {
-                        await fileCtrl.StartDownloadAsync(async progress =>
+                        string encryptedTemp = Path.Combine(Path.GetTempPath(), $"file_dl_{Guid.NewGuid():N}.dat");
+                        try
                         {
-                            await _fileTransfer.DownloadAsync(url, destination, progress, cts.Token).ConfigureAwait(false);
-                        }).ConfigureAwait(false);
-
-                        // After successful download, if server provided expected sha256, verify integrity via FileTransferService
-                        if (!string.IsNullOrWhiteSpace(expectedSha256))
-                        {
-                            try
+                            await fileCtrl.StartDownloadAsync(async progress =>
                             {
-                                bool ok = await _fileTransfer.VerifyAsync(destination, expectedSha256).ConfigureAwait(false);
-                                if (ok)
+                                await _fileTransfer.DownloadAsync(url, encryptedTemp, progress, cts.Token).ConfigureAwait(false);
+                            }).ConfigureAwait(false);
+
+                            // After successful download, verify SHA-256 integrity
+                            if (!string.IsNullOrWhiteSpace(expectedSha256))
+                            {
+                                try
                                 {
-                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, "Tải xuống hoàn tất.", "Downloaded", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                                    bool ok = await _fileTransfer.VerifyAsync(encryptedTemp, expectedSha256).ConfigureAwait(false);
+                                    if (!ok)
+                                    {
+                                        this.BeginInvoke(new Action(() => MessageBox.Show(this, "File tải về không khớp hash kiểm tra. File có thể đã bị thay đổi hoặc lỗi truyền tải.", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                        return;
+                                    }
                                 }
-                                else
+                                catch (Exception ex)
                                 {
-                                    // Integrity check failed - attempt to remove the downloaded file
-                                    try
-                                    {
-                                        if (File.Exists(destination))
-                                        {
-                                            try
-                                            {
-                                                File.Delete(destination);
-                                                this.BeginInvoke(new Action(() => MessageBox.Show(this, "File tải về không khớp hash kiểm tra. File có thể đã bị thay đổi hoặc lỗi truyền tải. File đã được xóa.", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
-                                            }
-                                            catch (Exception delEx)
-                                            {
-                                                this.BeginInvoke(new Action(() => MessageBox.Show(this, $"File tải về không khớp hash kiểm tra. Không thể xóa file: {delEx.Message}", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
-                                            }
-                                        }
-                                        else
-                                        {
-                                            this.BeginInvoke(new Action(() => MessageBox.Show(this, "File tải về không khớp hash kiểm tra. File có thể đã bị thay đổi hoặc lỗi truyền tải.", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        // If anything unexpected happens, show integrity warning and include exception info
-                                        this.BeginInvoke(new Action(() => MessageBox.Show(this, $"File tải về không khớp hash kiểm tra. Lỗi khi xử lý file: {ex.Message}", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
-                                    }
+                                    this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Không thể kiểm tra hash: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                    return;
                                 }
                             }
-                            catch (Exception ex)
+
+                            // Decrypt file using cached AES key
+                            if (SecureChat.Shared.Security.KeyManager.TryGetAesKey(messageId, out var key, out var iv))
                             {
-                                // Hash computation failed — notify user but keep file
-                                this.BeginInvoke(new Action(() => MessageBox.Show(this, $"Không thể kiểm tra hash: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                                string decrypted = await SecureChat.Client.Services.VoiceEncryptionService.DecryptAsync(encryptedTemp, key, iv).ConfigureAwait(false);
+                                if (File.Exists(destination))
+                                    File.Delete(destination);
+                                File.Move(decrypted, destination);
+                                this.BeginInvoke(new Action(() => MessageBox.Show(this, "Tải xuống hoàn tất.", "Downloaded", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                            }
+                            else
+                            {
+                                // No AES key found — save encrypted file as-is
+                                if (File.Exists(destination))
+                                    File.Delete(destination);
+                                File.Move(encryptedTemp, destination);
+                                this.BeginInvoke(new Action(() => MessageBox.Show(this, "Tải xuống hoàn tất (không thể giải mã).", "Downloaded", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
                             }
                         }
-                        else
+                        finally
                         {
-                            // No expected hash provided — notify download completed
-                            this.BeginInvoke(new Action(() => MessageBox.Show(this, "Tải xuống hoàn tất.", "Downloaded", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                            if (File.Exists(encryptedTemp))
+                                try { File.Delete(encryptedTemp); } catch { }
                         }
                     }
                     catch (OperationCanceledException)
@@ -3477,6 +3497,13 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     return;
                 }
             }
+            else
+            {
+                // Track local delete để filter khi re-sync
+                _hiddenMessageIds.Add(messageId);
+                lock (_processedMessageIdsLock)
+                    _processedMessageIds.Add(messageId);
+            }
 
             _currentMsgs.RemoveAt(msgIndex);
             BuildMessages();
@@ -3517,7 +3544,12 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             _signalRClient.MessageReceived += HandleSignalRMessageAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
-            _signalRClient.Reconnected += async _ => await ReRegisterPublicKeyAsync();
+            _signalRClient.Reconnected += async _ =>
+            {
+                await ReRegisterPublicKeyAsync();
+                if (!string.IsNullOrWhiteSpace(_activeConvId))
+                    await _signalRClient.JoinConversationAsync(_activeConvId);
+            };
 
             try
             {
@@ -4142,6 +4174,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             _decryptor.ForgetAll();
             _myMemberIdByConv.Clear();
             _syncedConversations.Clear();
+            _hiddenMessageIds.Clear();
             lock (_processedMessageIdsLock)
             {
                 _processedMessageIds.Clear();

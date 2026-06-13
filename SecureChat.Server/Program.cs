@@ -116,7 +116,10 @@ if (app.Environment.IsDevelopment()) {
 }
 
 // Serve static files from wwwroot (uploads will be available under /uploads)
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    ServeUnknownFileTypes = true
+});
 
 app.UseCors();
 app.UseAuthentication();
