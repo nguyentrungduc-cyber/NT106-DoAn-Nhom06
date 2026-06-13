@@ -19,6 +19,12 @@ namespace SecureChat.DTOs
 		[Required] string ContentIV
 	);
 
+   public record RecipientEncryption(
+	   [Required] string RecipientUserId,
+	   [Required] string EncryptedAesKey,
+	   [Required] string EncryptedAesIv
+   );
+
    public record CreateAttachmentRequest(
 	   [Required] string FileURL,
 	   [Required, MaxLength(64)] string FileName,
@@ -34,7 +40,8 @@ namespace SecureChat.DTOs
 	   string? ThumbnailIV,
 	   string? EncryptedAesKey = null,
 	   string? EncryptedAesIv = null,
-	   string? ReceiverId = null
+	   string? ReceiverId = null,
+	   List<RecipientEncryption>? RecipientEncryptions = null
    );
 
 	public record AddReactionRequest([Required, MaxLength(8)] string Reaction);

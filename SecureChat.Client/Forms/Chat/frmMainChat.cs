@@ -14,6 +14,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;       // Task.Delay (dùng cho wallpaper reload)
 using System.Windows.Forms;         // Form, Panel, Button, Label, ...
+using SecureChat.Client.Forms.Chat;
 
 namespace SecureChat.Client
 {
@@ -172,7 +173,8 @@ namespace SecureChat.Client
                         _currentDisplayName = me.DisplayName;
                         _currentUsername = me.Username;
                         _currentEmail = me.Email;
-                        _decryptor.CurrentUserId = me.UserID;;
+                        _decryptor.CurrentUserId = me.UserID;
+                        _decryptor.CurrentUsername = me.Username;
                     }
                 }
             }
@@ -219,7 +221,7 @@ namespace SecureChat.Client
             _countdownRefreshTimer.Start();
             
             // Load danh sách hội thoại từ API thật
-            // await LoadConversationsAsync();
+            await LoadConversationsAsync();
         }
 
         private async Task LoadConversationsAsync()
@@ -598,7 +600,31 @@ namespace SecureChat.Client
             dlg.StartPosition = FormStartPosition.CenterParent;
             dlg.ShowDialog(this);
 
-            await SyncConversationsAsync();
+            var targetConvId = dlg.PendingOpenConversationId;
+            if (string.IsNullOrEmpty(targetConvId)) return;
+
+            // Fetch trực tiếp conversation vừa tạo, không cần sync toàn bộ
+            var (ok, conv, _) = await _messageService.GetConversationAsync(targetConvId);
+            if (!ok || conv == null) return;
+
+            BeginInvoke(new Action(() =>
+            {
+                // Thêm vào sidebar nếu chưa có
+                if (!_convs.Any(c => c.Id == targetConvId))
+                {
+                    bool isGroup = conv.Type == ConversationType.Group;
+                    string display = !string.IsNullOrWhiteSpace(conv.Name)
+                        ? conv.Name!
+                        : "Direct chat";
+                    string time = conv.LastActivityAt?.ToLocalTime().ToString("h:mm tt")
+                        ?? string.Empty;
+                    _convs.Insert(0, (conv.ConversationID, display, string.Empty, time, 0, isGroup));
+                }
+
+                _activeConvId = targetConvId;
+                BuildConvList();
+                LoadConversation(targetConvId);
+            }));
         }
 
         private Panel BuildConvRow(string id, string name, string preview, string time, int unread, bool isGroup)
@@ -802,6 +828,52 @@ namespace SecureChat.Client
             // Right buttons: search, video call, more
             var btnSearch = MakeChatHeaderBtn("🔍");
             var btnVideo = MakeChatHeaderBtn("📹");
+            btnVideo.Click += async (s, e) =>
+            {
+                if (string.IsNullOrWhiteSpace(_activeConvId))
+                {
+                    MessageBox.Show("Please select a conversation first.", "Video Call", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (_signalRClient == null || !_signalRClient.IsConnected)
+                {
+                    MessageBox.Show("SignalR is not connected. Please wait...", "Video Call", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                try
+                {
+                    var createPayload = new { type = 1 };
+                    var json = System.Text.Json.JsonSerializer.Serialize(createPayload);
+                    var http = ApiClient.Instance.GetHttpClient();
+                    var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                    var response = await http.PostAsync($"api/conversations/{_activeConvId}/calls", content);
+                    var responseStr = await response.Content.ReadAsStringAsync();
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        MessageBox.Show($"Cannot start call: {responseStr}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var callData = System.Text.Json.JsonSerializer.Deserialize<CallResponse>(responseStr, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
+                    if (callData == null)
+                    {
+                        MessageBox.Show("Invalid server response.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    await _signalRClient.NotifyCallIncomingAsync(_activeConvId, callData.CallID, _currentDisplayName, 1);
+
+                    var callForm = new Forms.Call.frmVideoCall(_lblChatName.Text, callData.CallID, _activeConvId, _signalRClient);
+                    callForm.Show();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Cannot start call: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
             var btnMore = MakeChatHeaderBtn("⋮");
             btnMore.Click += (s, e) =>
             {
@@ -2382,7 +2454,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             var profile = new SecureChat.Client.Models.ProfileModel
                             {
                                 FullName = _currentDisplayName,
-                                PhoneNumber = _currentEmail,
+                                Email = _currentEmail,
                                 Username = _currentUsername,
                                 AvatarPath = string.Empty,
                                 StatusText = "online"
@@ -2428,12 +2500,14 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             if (!string.IsNullOrEmpty(contacts.PendingOpenConversationId))
                             {
                                 var convId = contacts.PendingOpenConversationId;
-                                if (!_convs.Any(c => c.Id == convId))
-                                    await LoadConversationsAsync();
+
+                                // Dùng LoadConversationsAsync thay vì SyncConversationsAsync
+                                // vì Sync populate _convs bên trong BeginInvoke (async), không kịp cho code bên dưới
+                                await LoadConversationsAsync();
 
                                 _activeConvId = convId;
                                 BuildConvList();
-                                _ = LoadMessagesAsync(convId);
+                                UpdateEmptyStateUI();    // show pnlConvList, ẩn pnlEmptyState
                                 LoadConversation(convId);
                             }
                         }
@@ -2539,10 +2613,9 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             var conv = _convs.Find(c => c.Id == convId);
             if (conv == default)
                 return;
-
+            _activeConvId = convId;
             UpdateChatEmptyStateUI();
 
-            _activeConvId = convId;
             _chatAvatar.SetName(conv.Name);
             _lblChatName.Text = conv.Name;
             _lblChatStatus.Text = conv.IsGroup
@@ -2762,10 +2835,13 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             int y = 8;
 
+            // Get current date for separator
+            string currentDate = DateTime.Now.ToString("MMMM dd");
+
             // Date separator (docked to top so it resizes/centers automatically)
             var sep = new Label
             {
-                Text = "March 10",
+                Text = currentDate,
                 Font = TG.FontRegular(8.5f),
                 ForeColor = Color.White,
                 AutoSize = false,
@@ -3440,6 +3516,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             _signalRClient.MessageReceived += HandleSignalRMessageAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
+            _signalRClient.CallIncoming += HandleCallIncomingAsync;
             _signalRClient.Reconnected += async _ => await ReRegisterPublicKeyAsync();
 
             try
@@ -3522,8 +3599,61 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
         private Task HandleSignalRCallSignalAsync(string callId, string signal)
         {
-            // Call signaling is handled by call UI components; no direct UI update needed here.
             return Task.CompletedTask;
+        }
+
+        private async Task HandleCallIncomingAsync(string callId, string callerName, int callType, string conversationId)
+        {
+            if (IsDisposed) return;
+
+            bool accepted = false;
+            if (InvokeRequired)
+                accepted = (bool)Invoke(new Func<bool>(() =>
+                {
+                    var form = new Forms.Call.frmIncomingCall(callerName, callType);
+                    form.ShowDialog(this);
+                    return form.Accepted;
+                }));
+            else
+            {
+                var form = new Forms.Call.frmIncomingCall(callerName, callType);
+                form.ShowDialog(this);
+                accepted = form.Accepted;
+            }
+
+            if (!accepted)
+            {
+                try
+                {
+                    if (_signalRClient != null)
+                        await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED");
+                }
+                catch { }
+                return;
+            }
+
+            try
+            {
+                var http = ApiClient.Instance.GetHttpClient();
+                var joinResponse = await http.PostAsync($"api/conversations/{conversationId}/calls/{callId}/join", null);
+                if (!joinResponse.IsSuccessStatusCode) return;
+            }
+            catch { return; }
+
+            try
+            {
+                if (_signalRClient != null)
+                    await _signalRClient.SendCallSignalAsync(callId, "CALL_JOINED");
+            }
+            catch { }
+
+            if (IsDisposed) return;
+
+            BeginInvoke(new Action(() =>
+            {
+                var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!);
+                callForm.Show();
+            }));
         }
 
         private async Task ReRegisterPublicKeyAsync()
@@ -3604,7 +3734,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
         }
 
         private async Task<CreateAttachmentRequest> CreateHybridEncryptedAttachmentAsync(
-            string receiverId,
+            string conversationId,
             string fileUrl,
             string fileName,
             string fileNameInStorage,
@@ -3620,8 +3750,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             byte[] aesKey,
             byte[] aesIv)
         {
-            if (string.IsNullOrWhiteSpace(receiverId))
-                throw new InvalidOperationException("Receiver id is required.");
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new InvalidOperationException("Conversation id is required.");
             if (string.IsNullOrWhiteSpace(fileUrl))
                 throw new InvalidOperationException("File URL is required.");
             if (string.IsNullOrWhiteSpace(fileName))
@@ -3635,12 +3765,45 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             if (aesIv.Length == 0)
                 throw new InvalidOperationException("AES IV is required.");
 
-            var receiverPublicKey = await ApiClient.Instance.GetPublicKeyAsync(receiverId);
-            if (string.IsNullOrWhiteSpace(receiverPublicKey))
-                throw new InvalidOperationException("Receiver public key not available.");
+            // ─────────────────────────────────────────────────────────────────
+            // Lấy danh sách members của conversation
+            // ─────────────────────────────────────────────────────────────────
+            var convService = new SecureChat.Client.Services.ConversationService();
+            var (ok, members, err) = await convService.GetConversationMembersAsync(conversationId);
 
-            byte[] encryptedAesKey = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesKey, receiverPublicKey);
-            byte[] encryptedAesIv = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesIv, receiverPublicKey);
+            if (!ok || members is null || members.Count == 0)
+                throw new InvalidOperationException($"Failed to get conversation members: {err}");
+
+            // ─────────────────────────────────────────────────────────────────
+            // Encrypt AES key cho mỗi member
+            // ─────────────────────────────────────────────────────────────────
+            var recipientEncryptions = new List<SecureChat.DTOs.RecipientEncryption>();
+
+            foreach (var member in members)
+            {
+                if (member.User is null)
+                    continue;
+
+                try
+                {
+                    byte[] encryptedAesKey = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesKey, member.User.PublicKey);
+                    byte[] encryptedAesIv = SecureChat.Shared.Security.RSAEncryption.Encrypt(aesIv, member.User.PublicKey);
+
+                    recipientEncryptions.Add(new SecureChat.DTOs.RecipientEncryption(
+                        member.UserID,
+                        Convert.ToBase64String(encryptedAesKey),
+                        Convert.ToBase64String(encryptedAesIv)
+                    ));
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to encrypt AES key for recipient {member.UserID}: {ex.Message}", ex);
+                }
+            }
+
+            if (recipientEncryptions.Count == 0)
+                throw new InvalidOperationException("No recipients with valid public keys found.");
 
             return new CreateAttachmentRequest(
                 fileUrl,
@@ -3655,9 +3818,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 durationSecs,
                 fileIv,
                 thumbnailIv,
-                Convert.ToBase64String(encryptedAesKey),
-                Convert.ToBase64String(encryptedAesIv),
-                receiverId);
+                null,
+                null,
+                null,
+                recipientEncryptions);
         }
 
         private void HandleHybridEncryptedAttachment(string messageId, AttachmentResponse attachment)
@@ -3830,6 +3994,14 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 }
 
                 // ─────────────────────────────────────────────────────────────────
+                // TRACKING: Đánh dấu message đã xử lý để tránh duplicate
+                // ─────────────────────────────────────────────────────────────────
+                lock (_processedMessageIdsLock)
+                {
+                    _processedMessageIds.Add(messageResponse.MessageID);
+                }
+
+                // ─────────────────────────────────────────────────────────────────
                 // SIGNALR BROADCAST: Phát tin nhắn qua SignalR để realtime
                 // ─────────────────────────────────────────────────────────────────
                 if (_signalRClient is not null && _signalRClient.IsConnected)
@@ -3860,14 +4032,6 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         ""
                     );
                     BuildMessages();
-                }
-
-                // ─────────────────────────────────────────────────────────────────
-                // TRACKING: Đánh dấu message đã xử lý để tránh duplicate
-                // ─────────────────────────────────────────────────────────────────
-                lock (_processedMessageIdsLock)
-                {
-                    _processedMessageIds.Add(messageResponse.MessageID);
                 }
 
                 // ─────────────────────────────────────────────────────────────────

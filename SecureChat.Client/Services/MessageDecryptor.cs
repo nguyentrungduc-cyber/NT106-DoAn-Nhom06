@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading.Tasks;
 using SecureChat.Client.Services.Api;
 using SecureChat.DTOs;
@@ -40,11 +41,13 @@ namespace SecureChat.Client.Services
 
         /// <summary>UserID của user đang đăng nhập. Bắt buộc set trước khi xử lý.</summary>
         public string CurrentUserId { get; set; } = string.Empty;
+        public string CurrentUsername { get; set; } = string.Empty;
 
         /// <summary>
         /// Lấy / cache conversation AES key cho user hiện tại.
-        /// Trả về null nếu server chưa có key hợp lệ (legacy data) — caller
-        /// sẽ fallback sang plaintext content.
+        /// Nếu server chưa có key hợp lệ (legacy "TBD") hoặc key cũ không giải
+        /// mã được với key pair hiện tại, tự động rekey toàn bộ conversation:
+        /// sinh AES key mới, mã hoá RSA cho từng member, PATCH lên server.
         /// </summary>
         public async Task<byte[]?> EnsureConversationKeyAsync(string conversationId)
         {
@@ -54,8 +57,29 @@ namespace SecureChat.Client.Services
             if (_conversationKeys.TryGetValue(conversationId, out var cached))
                 return cached;
 
-            var (ok, me, _) = await _messageService.GetMyMembershipAsync(conversationId).ConfigureAwait(false);
-            if (!ok || me is null || string.IsNullOrWhiteSpace(me.EncryptedKey))
+            // Get current user's member info with encrypted conversation key
+            var (ok, me, err) = await _messageService.GetMyMembershipAsync(conversationId).ConfigureAwait(false);
+            if (!ok || me is null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Failed to get my membership for {conversationId}: {err}");
+                return null;
+            }
+
+            // Try to decrypt existing key; if it fails, trigger rekey
+            byte[]? key = TryDecryptKey(me.EncryptedKey);
+            if (key is not null)
+            {
+                _conversationKeys[conversationId] = key;
+                return key;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Existing key invalid for {conversationId}, triggering rekey...");
+            return await RekeyConversationAsync(conversationId).ConfigureAwait(false);
+        }
+
+        private byte[]? TryDecryptKey(string? encryptedKeyBase64)
+        {
+            if (string.IsNullOrWhiteSpace(encryptedKeyBase64))
                 return null;
 
             var (_, privateKeyPem) = KeyManager.GetKeyPair();
@@ -64,22 +88,102 @@ namespace SecureChat.Client.Services
 
             try
             {
-                byte[] cipher = Convert.FromBase64String(me.EncryptedKey);
+                byte[] cipher = Convert.FromBase64String(encryptedKeyBase64);
                 byte[] key = RSAEncryption.Decrypt(cipher, privateKeyPem);
-                if (key.Length != AesEncryption.KeySize)
-                    return null;
 
-                _conversationKeys[conversationId] = key;
+                if (key.Length != AesEncryption.KeySize)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Decrypted key wrong size: {key.Length} vs {AesEncryption.KeySize}");
+                    return null;
+                }
+
                 return key;
             }
-            catch (FormatException)
+            catch (FormatException ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Base64 decode failed: {ex.Message}");
                 return null;
             }
-            catch (System.Security.Cryptography.CryptographicException)
+            catch (System.Security.Cryptography.CryptographicException ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] RSA decryption failed: {ex.Message}");
                 return null;
             }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Unexpected error: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Sinh AES key mới, RSA-encrypt cho từng active member, PATCH lên server.
+        /// Cache key local rồi trả về.
+        /// </summary>
+        private async Task<byte[]?> RekeyConversationAsync(string conversationId)
+        {
+            var (ok, members, err) = await _messageService.GetMembersAsync(conversationId).ConfigureAwait(false);
+            if (!ok || members is null || members.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: failed to get members: {err}");
+                return null;
+            }
+
+            // Only active members with valid public keys
+            var active = members
+                .Where(m => m.LeftAt is null && m.User?.PublicKey is not null)
+                .ToList();
+
+            if (active.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("[MessageDecryptor] Rekey: no active members with public keys");
+                return null;
+            }
+
+            // Generate new AES-256 key
+            byte[] newKey = new byte[AesEncryption.KeySize];
+            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(newKey);
+            }
+
+            // RSA-encrypt the key for each member
+            var updates = new System.Collections.Generic.List<(string MemberId, string EncryptedB64)>();
+            foreach (var member in active)
+            {
+                try
+                {
+                    byte[] enc = RSAEncryption.Encrypt(newKey, member.User!.PublicKey);
+                    updates.Add((member.MemberID, Convert.ToBase64String(enc)));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: failed to encrypt for member {member.MemberID}: {ex.Message}");
+                }
+            }
+
+            if (updates.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("[MessageDecryptor] Rekey: no members could be encrypted for");
+                return null;
+            }
+
+            // PATCH each member's encrypted key
+            var api = ApiClient.Instance;
+            foreach (var (memberId, encryptedB64) in updates)
+            {
+                var req = new UpdateMemberRequest(null, null, null, null, encryptedB64);
+                var (patchOk, _, patchErr) = await api.PatchAsync<UpdateMemberRequest, MemberResponse>(
+                    $"api/conversations/{conversationId}/members/{memberId}", req).ConfigureAwait(false);
+                if (!patchOk)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: failed PATCH for member {memberId}: {patchErr}");
+                }
+            }
+
+            _conversationKeys[conversationId] = newKey;
+            System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey complete for conversation {conversationId}");
+            return newKey;
         }
 
         /// <summary>
@@ -125,7 +229,23 @@ namespace SecureChat.Client.Services
                     }
                     catch (System.Security.Cryptography.CryptographicException)
                     {
-                        // Sai key/iv -> giữ nguyên (UI sẽ hiển thị placeholder)
+                        // Key mismatch — maybe a rekey happened since we last fetched.
+                        // Forget cache, force re-fetch (which triggers rekey if needed), retry.
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[MessageDecryptor] Decrypt failed for {message.MessageID}, re-fetching key...");
+                        ForgetConversation(message.ConversationID);
+                        var freshKey = await EnsureConversationKeyAsync(message.ConversationID).ConfigureAwait(false);
+                        if (freshKey is not null)
+                        {
+                            try
+                            {
+                                content = AesEncryption.DecryptText(content, message.ContentIV!, freshKey);
+                            }
+                            catch
+                            {
+                                // Still failed — show encrypted content as-is
+                            }
+                        }
                     }
                 }
             }
@@ -133,7 +253,8 @@ namespace SecureChat.Client.Services
             bool isOut = !string.IsNullOrWhiteSpace(myMemberId)
                 ? string.Equals(message.SenderID, myMemberId, StringComparison.Ordinal)
                 : !string.IsNullOrWhiteSpace(message.SenderUsername)
-                    && string.Equals(message.SenderUsername, CurrentUserId, StringComparison.Ordinal);
+                    && string.Equals(message.SenderUsername, CurrentUsername, // ← đổi CurrentUserId → CurrentUsername
+                        StringComparison.Ordinal);
 
             return new DecryptedMessage(
                 message.MessageID,

@@ -181,5 +181,15 @@ namespace SecureChat.Repositories
 			db.ConversationMembers.Remove(member);
 			await db.SaveChangesAsync();
 		}
+
+		public async Task<ConversationMember> UpdateEncryptedKeyAsync(string memberID, string encryptedKey)
+		{
+			var member = await db.ConversationMembers.FindAsync(memberID)
+				?? throw new KeyNotFoundException($"Không tìm thấy thành viên {memberID}.");
+
+			member.EncryptedKey = encryptedKey;
+			await db.SaveChangesAsync();
+			return member;
+		}
 	}
 }

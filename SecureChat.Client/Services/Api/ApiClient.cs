@@ -156,7 +156,11 @@ namespace SecureChat.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
                     var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
                     return (true, data, string.Empty);
                 }
@@ -179,7 +183,11 @@ namespace SecureChat.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
                     var data = JsonSerializer.Deserialize<T>(responseStr, options);
                     return (true, data, string.Empty);
                 }
@@ -210,17 +218,28 @@ namespace SecureChat.Client.Services
             }
         }
 
-        // Base hàm GET có deserialize JSON
-        public async Task<(bool IsSuccess, TResponse? Data, string ErrorMessage)> GetAsync<TResponse>(string endpoint)
+        public async Task<(bool IsSuccess, TResponse? Data, string ErrorMessage)> PatchAsync<TRequest, TResponse>(string endpoint, TRequest payload)
         {
             try
             {
-                var response = await _httpClient.GetAsync(endpoint);
+                var json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var request = new HttpRequestMessage(HttpMethod.Patch, endpoint)
+                {
+                    Content = content
+                };
+
+                var response = await _httpClient.SendAsync(request);
                 var responseStr = await response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
                     var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
                     return (true, data, string.Empty);
                 }

@@ -7,17 +7,14 @@ namespace SecureChat.Client.Security
     {
         /// <summary>
         /// Sinh ra cặp khóa: Public (đưa cho Server) và Private (Giữ lại máy Client)
+        /// Dùng chuẩn PEM để tương thích với RSAEncryption trong Shared.Security
         /// </summary>
         public static (string PublicKey, string PrivateKey) GenerateRSAKeys()
         {
             using (var rsa = RSA.Create(2048))
             {
-                // Export khóa Public (Dùng để người khác mã hóa tin nhắn gửi cho mình)
-                string publicKey = Convert.ToBase64String(rsa.ExportRSAPublicKey());
-
-                // Export khóa Private (Dùng để tự mình giải mã tin nhắn - TUYỆT ĐỐI KHÔNG GỬI LÊN MẠNG)
-                string privateKey = Convert.ToBase64String(rsa.ExportRSAPrivateKey());
-
+                string publicKey = rsa.ExportSubjectPublicKeyInfoPem();
+                string privateKey = rsa.ExportPkcs8PrivateKeyPem();
                 return (publicKey, privateKey);
             }
         }

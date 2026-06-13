@@ -1,11 +1,17 @@
 ﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
+using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using OpenCvSharp;
+using SecureChat.Client.Media;
+using SecureChat.Client.Services;
+using SecureChat.Client.Services.RealTime;
+using SecureChat.Models;
 using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
 
@@ -48,18 +54,24 @@ namespace SecureChat.Client.Forms.Call
         private bool isMuted;
         private bool isCameraOn = true;
 
-        private VideoCapture? localCapture;
-        private readonly object captureLock = new();
+        private VideoHandler? _videoHandler;
         private readonly object remoteLock = new();
         private readonly object latestLocalFrameLock = new();
-        private readonly CancellationTokenSource cts = new();
+        private readonly CancellationTokenSource _cts = new();
+        private DateTime _lastFrameSendUtc = DateTime.MinValue;
+        private static readonly TimeSpan FrameSendInterval = TimeSpan.FromMilliseconds(80);
+        private static readonly ImageCodecInfo JpegCodec = GetJpegCodec();
+        private static readonly EncoderParameters JpegParams = new(1);
 
         private Bitmap? latestLocalFrame;
-        private Task? localCaptureLoopTask;
         private bool hasRemoteVideo;
         private DateTime lastRemoteFrameUtc = DateTime.MinValue;
         private bool isFormActive = true;
         private bool allowCapture = true;
+
+        private string _callId = string.Empty;
+        private string _conversationId = string.Empty;
+        private SignalRClient? _signalRClient;
 
         // drag state for local preview
         private bool isDragging;
@@ -101,8 +113,33 @@ namespace SecureChat.Client.Forms.Call
             callStart = DateTime.UtcNow;
             clockTimer.Start();
 
-            Shown += (_, __) => _ = StartLocalCameraAsync();
+            _videoHandler = new VideoHandler();
+            _videoHandler.FrameCaptured += OnVideoHandlerFrame;
+            _videoHandler.CameraError += OnVideoHandlerError;
+
+            Shown += (_, __) => _ = _videoHandler.StartAsync();
             FormClosed += (_, __) => Cleanup();
+        }
+
+        public frmVideoCall(string friendName, string callId, string conversationId, SignalRClient signalRClient) : this(friendName)
+        {
+            _callId = callId;
+            _conversationId = conversationId;
+            _signalRClient = signalRClient;
+
+            _signalRClient.CallSignalReceived += OnRemoteCallSignal;
+            _signalRClient.VideoFrameReceived += OnVideoFrameReceived;
+
+            Shown += (_, __) => _ = JoinCallGroupAsync();
+            FormClosing += async (_, __) => await LeaveCallAsync();
+            FormClosed += (_, __) =>
+            {
+                if (_signalRClient != null)
+                {
+                    _signalRClient.CallSignalReceived -= OnRemoteCallSignal;
+                    _signalRClient.VideoFrameReceived -= OnVideoFrameReceived;
+                }
+            };
         }
 
         // ═════════════════════════════════════════════════════════════════════════
@@ -245,9 +282,9 @@ namespace SecureChat.Client.Forms.Call
             pnlGradientBot.Controls.Add(pnlActionDock);
 
             // Five buttons: Mic | Camera | HangUp | Speaker | Switch
-            btnMic = new CallButton(CallIconType.Mic, TgBgLight) { Size = new Size(66, 66) };
-            btnCamera = new CallButton(CallIconType.Camera, TgBgLight) { Size = new Size(66, 66) };
-            btnHangUp = new CallButton(CallIconType.HangUp, TgRed) { Size = new Size(78, 78) };
+            btnMic = new CallButton(CallIconType.Mic) { Size = new Size(66, 66) };
+            btnCamera = new CallButton(CallIconType.Camera) { Size = new Size(66, 66) };
+            btnHangUp = new CallButton(CallIconType.HangUp) { Size = new Size(78, 78) };
 
             var lblMic = BotLabel("Mute");
             var lblCamera = BotLabel("Camera");
@@ -255,7 +292,11 @@ namespace SecureChat.Client.Forms.Call
 
             btnMic.Click += (_, __) => ToggleMic();
             btnCamera.Click += (_, __) => ToggleCamera();
-            btnHangUp.Click += (_, __) => Close();
+            btnHangUp.Click += async (_, __) =>
+            {
+                await LeaveCallAsync();
+                Close();
+            };
 
             pnlActionDock.Controls.AddRange(new Control[]
             { btnMic, btnCamera, btnHangUp,
@@ -338,7 +379,7 @@ namespace SecureChat.Client.Forms.Call
             {
                 isFormActive = true;
                 allowCapture = isCameraOn && WindowState != FormWindowState.Minimized;
-                if (allowCapture && localCapture?.IsOpened() == true)
+                if (allowCapture && _videoHandler?.IsRunning == true)
                     frameTimer.Start();
             };
             Deactivate += (_, __) =>
@@ -351,7 +392,7 @@ namespace SecureChat.Client.Forms.Call
             {
                 allowCapture = isCameraOn && isFormActive && WindowState != FormWindowState.Minimized;
                 if (!allowCapture) frameTimer.Stop();
-                else if (localCapture?.IsOpened() == true) frameTimer.Start();
+                else if (_videoHandler?.IsRunning == true) frameTimer.Start();
             };
 
             MouseMove += (_, __) => NotifyUserInteraction();
@@ -468,72 +509,52 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         //  CAMERA / FRAMES
         // ═════════════════════════════════════════════════════════════════════════
-        private async Task StartLocalCameraAsync()
+        private void OnVideoHandlerFrame(object? sender, Bitmap frame)
+        {
+            if (!isCameraOn || !allowCapture) return;
+
+            lock (latestLocalFrameLock)
+            {
+                latestLocalFrame?.Dispose();
+                latestLocalFrame = new Bitmap(frame);
+            }
+
+            DateTime now = DateTime.UtcNow;
+            if (now - _lastFrameSendUtc < FrameSendInterval) return;
+            _lastFrameSendUtc = now;
+
+            if (_signalRClient == null || string.IsNullOrWhiteSpace(_callId)) return;
+
+            ThreadPool.QueueUserWorkItem(_ => CompressAndSendFrame(frame));
+        }
+
+        private void CompressAndSendFrame(Bitmap frame)
         {
             try
             {
-                await Task.Run(() =>
-                {
-                    if (cts.IsCancellationRequested) return;
-                    var cap = new VideoCapture(0);
-                    if (!cap.Open(0) || !cap.IsOpened()) { cap.Dispose(); return; }
-                    cap.Set(VideoCaptureProperties.FrameWidth, 480);
-                    cap.Set(VideoCaptureProperties.FrameHeight, 270);
-                    cap.Set(VideoCaptureProperties.Fps, 24);
-                    lock (captureLock)
-                    {
-                        localCapture?.Release();
-                        localCapture?.Dispose();
-                        localCapture = cap;
-                    }
-                }, cts.Token).ConfigureAwait(false);
-
-                if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(new Action(() =>
-                    {
-                        if (isCameraOn)
-                        {
-                            allowCapture = isFormActive && WindowState != FormWindowState.Minimized;
-                            if (localCaptureLoopTask == null || localCaptureLoopTask.IsCompleted)
-                                localCaptureLoopTask = Task.Run(LocalCaptureLoop, cts.Token);
-                            frameTimer.Start();
-                        }
-                        ApplyRoundedRegion(pnlLocalWrap, 14);
-                    }));
+                using var ms = new MemoryStream();
+                using var kval = new EncoderParameters(1);
+                kval.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 55L);
+                frame.Save(ms, JpegCodec, kval);
+                byte[] data = ms.ToArray();
+                _ = _signalRClient?.SendVideoFrameAsync(_callId, data);
             }
-            catch
-            {
-                if (IsHandleCreated && !IsDisposed)
-                    BeginInvoke(new Action(() =>
-                    {
-                        lblCamOff.Visible = true;
-                        picLocal.Visible = false;
-                    }));
-            }
+            catch { }
         }
 
-        private async Task LocalCaptureLoop()
+        private void OnVideoHandlerError(object? sender, Exception ex)
         {
-            while (!cts.IsCancellationRequested)
+            if (IsDisposed || !IsHandleCreated) return;
+            try
             {
-                if (!isCameraOn || !allowCapture)
+                BeginInvoke(new Action(() =>
                 {
-                    await Task.Delay(80, cts.Token).ConfigureAwait(false);
-                    continue;
-                }
-
-                var frame = GrabLocalFrame();
-                if (frame != null)
-                {
-                    lock (latestLocalFrameLock)
-                    {
-                        latestLocalFrame?.Dispose();
-                        latestLocalFrame = frame;
-                    }
-                }
-
-                await Task.Delay(33, cts.Token).ConfigureAwait(false);
+                    lblCamOff.Visible = true;
+                    picLocal.Visible = false;
+                    frameTimer.Stop();
+                }));
             }
+            catch { }
         }
 
         private void FrameTimer_Tick(object? s, EventArgs e)
@@ -556,26 +577,6 @@ namespace SecureChat.Client.Forms.Call
             picLocal.Image = next;
             old?.Dispose();
             lblCamOff.Visible = false;
-        }
-
-        private Bitmap? GrabLocalFrame()
-        {
-            try
-            {
-                using var mat = new Mat();
-                lock (captureLock)
-                {
-                    if (localCapture == null || !localCapture.IsOpened()) return null;
-                    if (!localCapture.Read(mat) || mat.Empty()) return null;
-                }
-                using var rgb = new Mat();
-                // Keep native BGR pipeline when encoding to BMP to avoid color tint.
-                mat.CopyTo(rgb);
-                using var ms = new MemoryStream(rgb.ToBytes(".bmp"));
-                using var tmp = new Bitmap(ms);
-                return new Bitmap(tmp);         // detach from MemoryStream
-            }
-            catch { return null; }
         }
 
         // ── Public API ────────────────────────────────────────────────────────────
@@ -642,9 +643,12 @@ namespace SecureChat.Client.Forms.Call
             btnCamera.Invalidate();
             allowCapture = isCameraOn && isFormActive && WindowState != FormWindowState.Minimized;
 
+            if (_videoHandler == null) return;
+
             if (!isCameraOn)
             {
                 frameTimer.Stop();
+                _ = _videoHandler.SetEnabledAsync(false);
                 var old = picLocal.Image;
                 picLocal.Image = null;
                 old?.Dispose();
@@ -655,10 +659,11 @@ namespace SecureChat.Client.Forms.Call
             {
                 lblCamOff.Visible = false;
                 picLocal.Visible = true;
-                if (localCapture?.IsOpened() == true)
+                _ = _videoHandler.SetEnabledAsync(true);
+                if (_videoHandler.IsRunning)
                     frameTimer.Start();
                 else
-                    _ = StartLocalCameraAsync();
+                    _ = _videoHandler.StartAsync();
             }
         }
 
@@ -828,22 +833,98 @@ namespace SecureChat.Client.Forms.Call
         }
 
         // ═════════════════════════════════════════════════════════════════════════
+        //  SIGNALING
+        // ═════════════════════════════════════════════════════════════════════════
+        private Task OnVideoFrameReceived(string callId, byte[] frameData)
+        {
+            if (callId != _callId || IsDisposed || frameData == null || frameData.Length == 0)
+                return Task.CompletedTask;
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    using var ms = new MemoryStream(frameData);
+                    using var bmp = new Bitmap(ms);
+                    UpdateRemoteFrame(bmp);
+                }
+                catch { }
+            });
+            return Task.CompletedTask;
+        }
+
+        private Task OnRemoteCallSignal(string callId, string signal)
+        {
+            if (callId != _callId || IsDisposed) return Task.CompletedTask;
+            if (signal == "CALL_ENDED" || signal == "CALL_REJECTED")
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    MessageBox.Show("Cuộc gọi đã kết thúc từ phía đối phương.", "Call ended", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    Close();
+                }));
+            }
+            else if (signal == "CALL_JOINED")
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    lblStatus.Text = "Video call";
+                    hasRemoteVideo = false;
+                    pnlAvatar.Visible = true;
+                }));
+            }
+            return Task.CompletedTask;
+        }
+
+        private async Task JoinCallGroupAsync()
+        {
+            try
+            {
+                if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
+                    await _signalRClient.JoinCallAsync(_callId);
+            }
+            catch { }
+        }
+
+        private async Task LeaveCallAsync()
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_callId) && !string.IsNullOrWhiteSpace(_conversationId))
+                {
+                    var http = ApiClient.Instance.GetHttpClient();
+                    await http.PostAsync($"api/conversations/{_conversationId}/calls/{_callId}/leave", null);
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
+                {
+                    await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED");
+                    await _signalRClient.LeaveCallAsync(_callId);
+                }
+            }
+            catch { }
+        }
+
+        // ═════════════════════════════════════════════════════════════════════════
         //  CLEANUP
         // ═════════════════════════════════════════════════════════════════════════
         private void Cleanup()
         {
-            cts.Cancel();
+            _cts.Cancel();
             frameTimer.Stop();
             clockTimer.Stop();
             overlayTimer.Stop();
 
-            try { localCaptureLoopTask?.Wait(120); } catch { }
-
-            lock (captureLock)
+            if (_videoHandler != null)
             {
-                localCapture?.Release();
-                localCapture?.Dispose();
-                localCapture = null;
+                _videoHandler.FrameCaptured -= OnVideoHandlerFrame;
+                _videoHandler.CameraError -= OnVideoHandlerError;
+                _videoHandler.Dispose();
+                _videoHandler = null;
             }
 
             lock (latestLocalFrameLock)
@@ -861,7 +942,7 @@ namespace SecureChat.Client.Forms.Call
             clockTimer.Dispose();
             overlayTimer.Dispose();
             previewSnapTimer.Dispose();
-            cts.Dispose();
+            _cts.Dispose();
         }
 
         private void NotifyUserInteraction()
@@ -972,6 +1053,17 @@ namespace SecureChat.Client.Forms.Call
         };
 
         // ═════════════════════════════════════════════════════════════════════════
+        //  JPEG ENCODER
+        // ═════════════════════════════════════════════════════════════════════════
+        private static ImageCodecInfo GetJpegCodec()
+        {
+            foreach (var codec in ImageCodecInfo.GetImageEncoders())
+                if (codec.FormatID == ImageFormat.Jpeg.Guid)
+                    return codec;
+            return ImageCodecInfo.GetImageEncoders()[0];
+        }
+
+        // ═════════════════════════════════════════════════════════════════════════
         //  DOUBLE-BUFFER
         // ═════════════════════════════════════════════════════════════════════════
         private static void EnableDoubleBuffer(Control c)
@@ -989,23 +1081,32 @@ namespace SecureChat.Client.Forms.Call
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    //  CallButton  –  custom round button drawn entirely with GDI (no font/emoji)
+    //  CallButton  –  Discord/Zoom-style call button (GDI, no font/emoji)
     // ─────────────────────────────────────────────────────────────────────────────
     internal enum CallIconType { Mic, Camera, HangUp, Speaker, Switch }
 
     internal sealed class CallButton : Control
     {
+        private static readonly Color EndCallRed = Color.FromArgb(0xE0, 0x24, 0x24);
+        private static readonly Color ToggleRed = Color.FromArgb(0xE0, 0x24, 0x24);
+        private static readonly Color NormalBg = Color.FromArgb(55, 255, 255, 255);
+        private static readonly Color HoverBg = Color.FromArgb(80, 255, 255, 255);
+        private static readonly Color PressedBg = Color.FromArgb(100, 255, 255, 255);
+        private static readonly Color EndCallHover = Color.FromArgb(0xC0, 0x1E, 0x1E);
+        private static readonly Color EndCallPressed = Color.FromArgb(0xA0, 0x18, 0x18);
+
         public CallIconType Icon { get; }
-        public Color BaseColor { get; }
-        public bool IsActive { get; set; }   // "active" = warning state (red tint)
+        public bool IsActive { get; set; }
 
         private bool _hover;
         private bool _pressed;
+        private float _animProgress;
+        private float _animTarget;
+        private readonly System.Windows.Forms.Timer _animTimer;
 
-        public CallButton(CallIconType icon, Color baseColor)
+        public CallButton(CallIconType icon)
         {
             Icon = icon;
-            BaseColor = baseColor;
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.UserPaint |
                      ControlStyles.OptimizedDoubleBuffer |
@@ -1014,10 +1115,45 @@ namespace SecureChat.Client.Forms.Call
             BackColor = Color.Transparent;
             Cursor = Cursors.Hand;
             TabStop = false;
+
+            _animTimer = new System.Windows.Forms.Timer { Interval = 15 };
+            _animTimer.Tick += (_, __) =>
+            {
+                const float step = 0.12f;
+                if (Math.Abs(_animProgress - _animTarget) < 0.01f)
+                {
+                    _animProgress = _animTarget;
+                    _animTimer.Stop();
+                    Invalidate();
+                    return;
+                }
+                _animProgress += _animProgress < _animTarget ? step : -step;
+                _animProgress = Math.Clamp(_animProgress, 0f, 1f);
+                Invalidate();
+            };
+
+            Disposed += (_, __) =>
+            {
+                _animTimer.Stop();
+                _animTimer.Dispose();
+            };
         }
 
-        protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
-        protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            _hover = true;
+            _animTarget = 1f;
+            _animTimer.Start();
+            base.OnMouseEnter(e);
+        }
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            _hover = false;
+            _pressed = false;
+            _animTarget = 0f;
+            _animTimer.Start();
+            base.OnMouseLeave(e);
+        }
         protected override void OnMouseDown(MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) { _pressed = true; Invalidate(); }
@@ -1043,6 +1179,7 @@ namespace SecureChat.Client.Forms.Call
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.CompositingQuality = CompositingQuality.HighQuality;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
             var r = ClientRectangle;
             int w = r.Width;
@@ -1050,33 +1187,48 @@ namespace SecureChat.Client.Forms.Call
             int cx = w / 2;
             int cy = h / 2;
 
-            // Background
-            Color bg = IsActive ? Color.FromArgb(0xE5, 0x35, 0x3B) : BaseColor;
-            if (_pressed) bg = ControlPaint.Dark(bg, 0.10f);
-            else if (_hover) bg = ControlPaint.Light(bg, 0.08f);
+            Color bg = ResolveBackground();
+            float scale = _pressed ? 0.93f : 1f;
+
+            g.TranslateTransform(cx, cy);
+            g.ScaleTransform(scale, scale);
+            g.TranslateTransform(-cx, -cy);
 
             using (var br = new SolidBrush(bg))
                 g.FillEllipse(br, 1, 1, w - 2, h - 2);
 
-            using (var edge = new Pen(Color.FromArgb(110, 255, 255, 255), 1.1f))
+            if (Icon == CallIconType.HangUp || IsActive)
+            {
+                using var glow = new Pen(Color.FromArgb(40, 255, 255, 255), 2.5f);
+                g.DrawEllipse(glow, 1, 1, w - 3, h - 3);
+            }
+            else
+            {
+                using var edge = new Pen(Color.FromArgb(50, 255, 255, 255), 1.2f);
                 g.DrawEllipse(edge, 1, 1, w - 3, h - 3);
+            }
 
-            // Icon (slightly bolder and cleaner)
-            using var pen = new Pen(Color.White, 2.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-            using var penW = new Pen(Color.White, 3.0f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+            bool active = IsActive && Icon != CallIconType.HangUp;
+            float iconAlpha = active ? 0.9f : 0.95f;
+            float iconThickness = Icon == CallIconType.HangUp ? 3.2f : 2.8f;
+
+            using var pen = new Pen(Color.FromArgb((int)(255 * iconAlpha), Color.White), iconThickness)
+            { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+            using var penThick = new Pen(Color.FromArgb((int)(255 * iconAlpha), Color.White), 3.4f)
+            { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
 
             switch (Icon)
             {
                 case CallIconType.Mic:
-                    DrawRoundedRectangle(g, pen, cx - 6, cy - 12, 12, 16, 6);
+                    DrawRoundedRect(g, pen, cx - 6, cy - 12, 12, 16, 6);
                     g.DrawLine(pen, cx, cy + 4, cx, cy + 12);
                     g.DrawArc(pen, cx - 10, cy + 0, 20, 14, 15, 150);
                     g.DrawLine(pen, cx - 6, cy + 12, cx + 6, cy + 12);
-                    if (IsActive) DrawSlash(g, penW, cx, cy);
+                    if (active) DrawSlash(g, penThick, cx, cy);
                     break;
 
                 case CallIconType.Camera:
-                    DrawRoundedRectangle(g, pen, cx - 14, cy - 8, 18, 14, 4);
+                    DrawRoundedRect(g, pen, cx - 14, cy - 8, 18, 14, 4);
                     g.DrawEllipse(pen, cx - 9, cy - 4, 8, 8);
                     g.FillPolygon(Brushes.White, new[]
                     {
@@ -1085,20 +1237,16 @@ namespace SecureChat.Client.Forms.Call
                         new PointF(cx + 13, cy + 7),
                         new PointF(cx + 4,  cy + 3)
                     });
-                    if (IsActive) DrawSlash(g, penW, cx, cy);
+                    if (active) DrawSlash(g, penThick, cx, cy);
                     break;
 
                 case CallIconType.HangUp:
-                    using (var p2 = new Pen(Color.White, 3f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
-                    {
-                        g.DrawArc(p2, cx - 16, cy - 10, 32, 22, 200, 140);
-                        g.DrawLine(p2, cx - 12, cy + 5, cx - 6, cy + 1);
-                        g.DrawLine(p2, cx + 12, cy + 5, cx + 6, cy + 1);
-                    }
+                    g.DrawArc(penThick, cx - 16, cy - 10, 32, 22, 200, 140);
+                    g.DrawLine(penThick, cx - 12, cy + 5, cx - 6, cy + 1);
+                    g.DrawLine(penThick, cx + 12, cy + 5, cx + 6, cy + 1);
                     break;
 
                 case CallIconType.Speaker:
-                    // speaker cone
                     g.DrawPolygon(pen, new[]
                     {
                         new Point(cx - 9,  cy - 6),
@@ -1108,20 +1256,18 @@ namespace SecureChat.Client.Forms.Call
                         new Point(cx - 3,  cy + 6),
                         new Point(cx - 9,  cy + 6)
                     });
-                    if (!IsActive)
+                    if (!active)
                     {
-                        g.DrawArc(pen, cx + 4, cy - 7, 8, 14, -60, 120);   // inner arc
-                        g.DrawArc(pen, cx + 6, cy - 11, 12, 22, -60, 120);  // outer arc
+                        g.DrawArc(pen, cx + 4, cy - 7, 8, 14, -60, 120);
+                        g.DrawArc(pen, cx + 6, cy - 11, 12, 22, -60, 120);
                     }
                     else
-                        DrawSlash(g, penW, cx, cy);
+                        DrawSlash(g, penThick, cx, cy);
                     break;
 
                 case CallIconType.Switch:
-                    // two circular arrows (flip camera icon)
                     g.DrawArc(pen, cx - 11, cy - 9, 14, 14, 180, 270);
                     g.DrawArc(pen, cx - 3, cy - 5, 14, 14, 0, 270);
-                    // arrowheads
                     g.DrawLine(pen, cx - 11, cy - 2, cx - 7, cy + 2);
                     g.DrawLine(pen, cx - 11, cy - 2, cx - 15, cy + 2);
                     g.DrawLine(pen, cx + 11, cy + 2, cx + 7, cy - 2);
@@ -1130,14 +1276,44 @@ namespace SecureChat.Client.Forms.Call
             }
         }
 
-        private static void DrawSlash(Graphics g, Pen pen, int cx, int cy)
+        private Color ResolveBackground()
         {
-            using var slash = new Pen(Color.White, 2.8f)
-            { StartCap = LineCap.Round, EndCap = LineCap.Round };
-            g.DrawLine(slash, cx - 13, cy + 11, cx + 13, cy - 11);
+            if (Icon == CallIconType.HangUp)
+            {
+                if (_pressed) return EndCallPressed;
+                if (_hover) return Lerp(EndCallRed, EndCallHover, _animProgress);
+                return EndCallRed;
+            }
+
+            if (IsActive)
+            {
+                Color baseColor = ToggleRed;
+                if (_pressed) return ControlPaint.Dark(baseColor, 0.15f);
+                if (_hover) return Lerp(baseColor, ControlPaint.Light(baseColor, 0.1f), _animProgress);
+                return baseColor;
+            }
+
+            if (_pressed) return PressedBg;
+            if (_hover) return Lerp(NormalBg, HoverBg, _animProgress);
+            return NormalBg;
         }
 
-        private static void DrawRoundedRectangle(Graphics g, Pen p, int x, int y, int w, int h, int radius)
+        private static Color Lerp(Color from, Color to, float t)
+        {
+            t = Math.Clamp(t, 0f, 1f);
+            return Color.FromArgb(
+                from.A + (int)((to.A - from.A) * t),
+                from.R + (int)((to.R - from.R) * t),
+                from.G + (int)((to.G - from.G) * t),
+                from.B + (int)((to.B - from.B) * t));
+        }
+
+        private static void DrawSlash(Graphics g, Pen pen, int cx, int cy)
+        {
+            g.DrawLine(pen, cx - 13, cy + 11, cx + 13, cy - 11);
+        }
+
+        private static void DrawRoundedRect(Graphics g, Pen p, int x, int y, int w, int h, int radius)
         {
             using var path = new GraphicsPath();
             int d = radius * 2;
