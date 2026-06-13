@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Net.Mail;
+using SecureChat.Client.Forms.Shared;
 using SecureChat.Client.Services;
 using SecureChat.Client.Security;
 using SecureChat.DTOs;
@@ -171,7 +172,7 @@ namespace SecureChat.Client
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Unable to open Forgot Password: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                frmError.ShowError(this, "Không thể mở Quên mật khẩu", ex.Message);
             }
         }
 
@@ -249,7 +250,7 @@ namespace SecureChat.Client
             }
             catch (Exception ex)
             {
-                ShowError("Lỗi kết nối: " + ex.Message);
+                frmError.ShowError(this, "Lỗi kết nối", ex.Message);
             }
             finally
             {
@@ -295,10 +296,13 @@ namespace SecureChat.Client
             var (ok, _, err) = await ApiClient.Instance.PostAsync<RegisterRequest, object>("api/auth/register", req);
             if (ok)
             {
-                MessageBox.Show("Đăng ký thành công!", "Thông báo");
+                frmError.ShowSuccess(this, "Đăng ký thành công", "Tài khoản của bạn đã sẵn sàng. Hãy đăng nhập để bắt đầu.");
                 SetLoginMode();
             }
-            else ShowError(err);
+            else
+            {
+                frmError.ShowApi(this, err, "Không thể tạo tài khoản. Vui lòng thử lại.");
+            }
         }
 
         private string GenerateRandomUsername()
@@ -317,7 +321,7 @@ namespace SecureChat.Client
 
             if (!ok)
             {
-                ShowError(err);
+                frmError.ShowApi(this, err, "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.");
                 return;
             }
 
@@ -353,11 +357,11 @@ namespace SecureChat.Client
                     return;
                 }
 
-                ShowError("Đăng nhập thất bại.");
+                frmError.ShowError(this, "Đăng nhập thất bại", "Phản hồi từ máy chủ không hợp lệ.");
             }
             catch (Exception ex)
             {
-                ShowError("Lỗi xử lý phản hồi đăng nhập: " + ex.Message);
+                frmError.ShowError(this, "Lỗi xử lý phản hồi", ex.Message);
             }
         }
 

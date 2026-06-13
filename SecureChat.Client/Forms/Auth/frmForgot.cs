@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
+using SecureChat.Client.Forms.Shared;
 using SecureChat.Client.Helpers;
 using SecureChat.Client.Services;
 using SecureChat.Client.Services.Api;
@@ -442,7 +443,7 @@ namespace SecureChat.Client
             catch (Exception ex)
             {
                 Debug.WriteLine($"[frmForgot] Unexpected UI error: {ex}");
-                ShowError("An unexpected error occurred. Please try again.");
+                frmError.ShowError(this, "Đã xảy ra lỗi", ex.Message);
             }
             finally
             {
@@ -455,20 +456,20 @@ namespace SecureChat.Client
             var email = _tbEmail.Text.Trim();
             if (string.IsNullOrWhiteSpace(email))
             {
-                ShowError("Please enter your email.");
+                ShowError("Vui lòng nhập email.");
                 return;
             }
 
             if (!ValidationHelper.IsValidEmail(email))
             {
-                ShowError("Email is not in a valid format.");
+                ShowError("Email không đúng định dạng.");
                 return;
             }
 
             var result = await _authService.RequestPasswordOtpAsync(email);
             if (!result.Success)
             {
-                ShowError(result.Message);
+                frmError.ShowApi(this, result.Message, "Không thể gửi OTP. Vui lòng thử lại.");
                 return;
             }
 
@@ -476,7 +477,10 @@ namespace SecureChat.Client
             _lblEmailHint.Visible = true;
             DoLayout(_pnlMain);
 
-            MessageBox.Show(result.Message, "SecureChat", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            frmError.ShowSuccess(this, "Đã gửi OTP",
+                string.IsNullOrWhiteSpace(result.Message)
+                    ? "Vui lòng kiểm tra email để lấy mã xác nhận."
+                    : result.Message);
             ShowStep(2);
         }
 
@@ -485,14 +489,14 @@ namespace SecureChat.Client
             var otp = string.Concat(Array.ConvertAll(_otpBoxes, b => b.Text)).Trim();
             if (otp.Length != 6)
             {
-                ShowError("Please enter the full 6-digit OTP.");
+                ShowError("Vui lòng nhập đủ 6 chữ số.");
                 return;
             }
 
             var result = await _authService.VerifyPasswordOtpAsync(_tbEmail.Text.Trim(), otp);
             if (!result.Success || result.Data is null)
             {
-                ShowError(result.Message);
+                frmError.ShowApi(this, result.Message, "Không thể xác thực OTP.");
                 if (!string.IsNullOrWhiteSpace(result.ErrorCode) && result.ErrorCode.Contains("EXPIRED"))
                 {
                     foreach (var otpBox in _otpBoxes)
@@ -515,7 +519,7 @@ namespace SecureChat.Client
         {
             if (_tbNewPass.Text != _tbConfirmPass.Text)
             {
-                ShowError("Password confirmation does not match.");
+                ShowError("Mật khẩu xác nhận không khớp.");
                 return;
             }
 
@@ -528,7 +532,7 @@ namespace SecureChat.Client
             var result = await _authService.ResetPasswordAsync(_resetToken ?? string.Empty, _tbNewPass.Text);
             if (!result.Success)
             {
-                ShowError(result.Message);
+                frmError.ShowApi(this, result.Message, "Không thể đặt lại mật khẩu.");
                 if (result.ErrorCode is not null && result.ErrorCode.Contains("TOKEN"))
                 {
                     ShowStep(1);
@@ -536,7 +540,8 @@ namespace SecureChat.Client
                 return;
             }
 
-            MessageBox.Show("Password reset successful. Please sign in again.", "SecureChat", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            frmError.ShowSuccess(this, "Đặt lại mật khẩu thành công",
+                "Mật khẩu của bạn đã được cập nhật. Vui lòng đăng nhập lại.");
             Close();
         }
 
@@ -551,7 +556,7 @@ namespace SecureChat.Client
             var email = _tbEmail.Text.Trim();
             if (!ValidationHelper.IsValidEmail(email))
             {
-                ShowError("Email is not in a valid format.");
+                ShowError("Email không đúng định dạng.");
                 return;
             }
 
@@ -561,7 +566,7 @@ namespace SecureChat.Client
                 var result = await _authService.RequestPasswordOtpAsync(email);
                 if (!result.Success)
                 {
-                    ShowError(result.Message);
+                    frmError.ShowApi(this, result.Message, "Không thể gửi lại OTP.");
                     return;
                 }
 
@@ -574,12 +579,12 @@ namespace SecureChat.Client
                 _timer.Start();
                 UpdateCountdown();
                 _otpBoxes[0].Focus();
-                MessageBox.Show("A new OTP has been sent.", "SecureChat", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                frmError.ShowSuccess(this, "Đã gửi lại OTP", "Mã xác nhận mới đã được gửi đến email của bạn.");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[frmForgot] Resend OTP failed: {ex}");
-                ShowError("Unable to resend OTP. Please try again.");
+                frmError.ShowError(this, "Không thể gửi lại OTP", ex.Message);
             }
             finally
             {

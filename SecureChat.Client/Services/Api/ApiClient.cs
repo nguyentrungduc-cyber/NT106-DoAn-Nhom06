@@ -12,6 +12,7 @@ namespace SecureChat.Client.Services
         private const string DefaultBaseUrl = "http://localhost:5097/";
         private readonly HttpClient _httpClient;
         private static ApiClient _instance;
+        private string? _accessToken;
 
         // Singleton Pattern: Đảm bảo toàn bộ App chỉ dùng chung 1 instance HttpClient
         public static ApiClient Instance => _instance ??= new ApiClient();
@@ -65,12 +66,19 @@ namespace SecureChat.Client.Services
         public void SetAccessToken(string token)
         {
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            _accessToken = token;
         }
 
         public void ClearToken()
         {
             _httpClient.DefaultRequestHeaders.Authorization = null;
+            _accessToken = null;
         }
+
+        /// <summary>
+        /// Gets the current JWT access token, if set.
+        /// </summary>
+        public string? CurrentAccessToken => _accessToken;
 
         // Hybrid encryption: Register public key to server
         public async Task RegisterPublicKeyAsync(string publicKeyPem)
@@ -148,7 +156,11 @@ namespace SecureChat.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
                     var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
                     return (true, data, string.Empty);
                 }
@@ -171,7 +183,11 @@ namespace SecureChat.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
                     var data = JsonSerializer.Deserialize<T>(responseStr, options);
                     return (true, data, string.Empty);
                 }
@@ -199,6 +215,40 @@ namespace SecureChat.Client.Services
             catch (Exception ex)
             {
                 return (false, $"Không thể kết nối máy chủ: {ex.Message}");
+            }
+        }
+
+        public async Task<(bool IsSuccess, TResponse? Data, string ErrorMessage)> PatchAsync<TRequest, TResponse>(string endpoint, TRequest payload)
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var request = new HttpRequestMessage(HttpMethod.Patch, endpoint)
+                {
+                    Content = content
+                };
+
+                var response = await _httpClient.SendAsync(request);
+                var responseStr = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                    };
+                    var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
+                    return (true, data, string.Empty);
+                }
+
+                return (false, default, $"Lỗi server: {responseStr}");
+            }
+            catch (Exception ex)
+            {
+                return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
             }
         }
     }
