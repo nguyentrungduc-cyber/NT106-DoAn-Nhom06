@@ -27,6 +27,7 @@ namespace SecureChat.Models
 			ConfigureRelationships(modelBuilder);
 			ConfigureUniqueIndexes(modelBuilder);
 			ConfigureNonUniqueIndexes(modelBuilder);
+			ConfigureCheckConstraints(modelBuilder);
 			ConfigureDefaultValues(modelBuilder);
 		}
 
@@ -136,6 +137,13 @@ namespace SecureChat.Models
 				.WithMany(msg => msg.Attachments)
 				.HasForeignKey(a => a.MessageID)
 				.OnDelete(DeleteBehavior.Cascade);
+
+			m.Entity<MessageAttachment>()
+				.HasOne(a => a.Receiver)
+				.WithMany()
+				.HasForeignKey(a => a.ReceiverId)
+				.OnDelete(DeleteBehavior.SetNull)
+				.IsRequired(false);
 
 			m.Entity<MessagePin>()
 				.HasOne(p => p.Message)
@@ -328,6 +336,33 @@ namespace SecureChat.Models
 				.HasDatabaseName("idx_message_pins_conv");
 		}
 
+		private static void ConfigureCheckConstraints(ModelBuilder m)
+		{
+			m.Entity<Conversation>()
+				.ToTable(t => t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1)"));
+
+			m.Entity<ConversationMember>()
+				.ToTable(t => t.HasCheckConstraint("chk_convmems_role", "role between 0 and 2"));
+
+			m.Entity<ConversationMember>()
+				.ToTable(t => t.HasCheckConstraint("chk_convmems_notif", "show_notifications between 0 and 2"));
+
+			m.Entity<FriendRequest>()
+				.ToTable(t => t.HasCheckConstraint("chk_friendreq_status", "status between 0 and 3"));
+
+			m.Entity<Message>()
+				.ToTable(t => t.HasCheckConstraint("chk_message_type", "message_type between 0 and 7"));
+
+			m.Entity<CallLog>()
+				.ToTable(t => t.HasCheckConstraint("chk_call_type", "call_type in (0, 1)"));
+
+			m.Entity<CallLog>()
+				.ToTable(t => t.HasCheckConstraint("chk_call_status", "status between 0 and 3"));
+
+			m.Entity<CallParticipant>()
+				.ToTable(t => t.HasCheckConstraint("chk_participant_status", "status between 0 and 4"));
+		}
+
 		private static void ConfigureDefaultValues(ModelBuilder m)
 		{
 			m.Entity<User>()
@@ -365,6 +400,10 @@ namespace SecureChat.Models
 			m.Entity<ConversationMember>()
 				.Property(u => u.JoinedAt)
 				.HasDefaultValueSql("current_timestamp");
+
+			m.Entity<ConversationMember>()
+				.Property(u => u.ShowNotifications)
+				.HasDefaultValueSql("2");
 
 			m.Entity<Message>()
 				.Property(u => u.SentAt)

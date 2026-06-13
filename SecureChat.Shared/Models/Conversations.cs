@@ -13,7 +13,7 @@ namespace SecureChat.Models
 		[Column("conversation_type")]
 		public ConversationType Type { get; set; } = ConversationType.Direct;
 
-		[MaxLength(64)]
+		[Column("name"), MaxLength(64)]
 		public string? Name { get; set; }
 
 		[Column("avatar_url")]
