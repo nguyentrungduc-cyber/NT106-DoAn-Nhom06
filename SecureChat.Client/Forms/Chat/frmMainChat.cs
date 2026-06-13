@@ -828,6 +828,52 @@ namespace SecureChat.Client
             // Right buttons: search, video call, more
             var btnSearch = MakeChatHeaderBtn("🔍");
             var btnVideo = MakeChatHeaderBtn("📹");
+            btnVideo.Click += async (s, e) =>
+            {
+                if (string.IsNullOrWhiteSpace(_activeConvId))
+                {
+                    MessageBox.Show("Please select a conversation first.", "Video Call", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (_signalRClient == null || !_signalRClient.IsConnected)
+                {
+                    MessageBox.Show("SignalR is not connected. Please wait...", "Video Call", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                try
+                {
+                    var createPayload = new { type = 1 };
+                    var json = System.Text.Json.JsonSerializer.Serialize(createPayload);
+                    var http = ApiClient.Instance.GetHttpClient();
+                    var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                    var response = await http.PostAsync($"api/conversations/{_activeConvId}/calls", content);
+                    var responseStr = await response.Content.ReadAsStringAsync();
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        MessageBox.Show($"Cannot start call: {responseStr}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var callData = System.Text.Json.JsonSerializer.Deserialize<CallResponse>(responseStr, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
+                    if (callData == null)
+                    {
+                        MessageBox.Show("Invalid server response.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    await _signalRClient.NotifyCallIncomingAsync(_activeConvId, callData.CallID, _currentDisplayName, 1);
+
+                    var callForm = new Forms.Call.frmVideoCall(_lblChatName.Text, callData.CallID, _activeConvId, _signalRClient);
+                    callForm.Show();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Cannot start call: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
             var btnMore = MakeChatHeaderBtn("⋮");
             btnMore.Click += (s, e) =>
             {
@@ -3470,6 +3516,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             _signalRClient.MessageReceived += HandleSignalRMessageAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
+            _signalRClient.CallIncoming += HandleCallIncomingAsync;
             _signalRClient.Reconnected += async _ => await ReRegisterPublicKeyAsync();
 
             try
@@ -3552,8 +3599,61 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
         private Task HandleSignalRCallSignalAsync(string callId, string signal)
         {
-            // Call signaling is handled by call UI components; no direct UI update needed here.
             return Task.CompletedTask;
+        }
+
+        private async Task HandleCallIncomingAsync(string callId, string callerName, int callType, string conversationId)
+        {
+            if (IsDisposed) return;
+
+            bool accepted = false;
+            if (InvokeRequired)
+                accepted = (bool)Invoke(new Func<bool>(() =>
+                {
+                    var form = new Forms.Call.frmIncomingCall(callerName, callType);
+                    form.ShowDialog(this);
+                    return form.Accepted;
+                }));
+            else
+            {
+                var form = new Forms.Call.frmIncomingCall(callerName, callType);
+                form.ShowDialog(this);
+                accepted = form.Accepted;
+            }
+
+            if (!accepted)
+            {
+                try
+                {
+                    if (_signalRClient != null)
+                        await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED");
+                }
+                catch { }
+                return;
+            }
+
+            try
+            {
+                var http = ApiClient.Instance.GetHttpClient();
+                var joinResponse = await http.PostAsync($"api/conversations/{conversationId}/calls/{callId}/join", null);
+                if (!joinResponse.IsSuccessStatusCode) return;
+            }
+            catch { return; }
+
+            try
+            {
+                if (_signalRClient != null)
+                    await _signalRClient.SendCallSignalAsync(callId, "CALL_JOINED");
+            }
+            catch { }
+
+            if (IsDisposed) return;
+
+            BeginInvoke(new Action(() =>
+            {
+                var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!);
+                callForm.Show();
+            }));
         }
 
         private async Task ReRegisterPublicKeyAsync()
