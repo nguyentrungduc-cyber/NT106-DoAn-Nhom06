@@ -14,6 +14,8 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, string, Task>? CallSignalReceived;
         public event Func<string, string, int, string, Task>? CallIncoming;
         public event Func<string, byte[], Task>? VideoFrameReceived;
+        public event Func<string, string, Task>? UserTyping;
+        public event Func<string, string, Task>? UserStoppedTyping;
         public event Func<Exception?, Task>? Closed;
         public event Func<Exception?, Task>? Reconnecting;
         public event Func<string?, Task>? Reconnected;
@@ -74,6 +76,18 @@ namespace SecureChat.Client.Services.RealTime
                 if (VideoFrameReceived is not null)
                     await VideoFrameReceived.Invoke(callId, frameData);
             });
+
+            _connection.On<string, string>("UserTyping", async (conversationId, username) =>
+            {
+                if (UserTyping is not null)
+                    await UserTyping.Invoke(conversationId, username);
+            });
+
+            _connection.On<string, string>("UserStoppedTyping", async (conversationId, username) =>
+            {
+                if (UserStoppedTyping is not null)
+                    await UserStoppedTyping.Invoke(conversationId, username);
+            });
         }
 
         public Task StartAsync() => _connection.StartAsync();
@@ -94,6 +108,22 @@ namespace SecureChat.Client.Services.RealTime
                 throw new ArgumentException("ConversationId is required.", nameof(conversationId));
 
             return _connection.InvokeAsync("LeaveConversation", conversationId);
+        }
+
+        public Task NotifyTypingAsync(string conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new ArgumentException("ConversationId is required.", nameof(conversationId));
+
+            return _connection.InvokeAsync("UserTyping", conversationId);
+        }
+
+        public Task NotifyStoppedTypingAsync(string conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new ArgumentException("ConversationId is required.", nameof(conversationId));
+
+            return _connection.InvokeAsync("UserStoppedTyping", conversationId);
         }
 
         public Task SendMessageAsync(string conversationId, MessageResponse message)

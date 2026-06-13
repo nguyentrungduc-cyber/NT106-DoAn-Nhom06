@@ -71,6 +71,38 @@ namespace SecureChat.Server.Hubs
         }
 
         /// <summary>
+        /// Notify group that the current user is typing.
+        /// </summary>
+        public async Task UserTyping(string conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new HubException("ConversationId is required.");
+
+            var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+            if (member is null || member.LeftAt is not null)
+                throw new HubException("You are not a member of this conversation.");
+
+            await Clients.GroupExcept(conversationId, Context.ConnectionId)
+                .SendAsync("UserTyping", conversationId, member.User?.DisplayName ?? member.User?.Username ?? "Unknown");
+        }
+
+        /// <summary>
+        /// Notify group that the current user stopped typing.
+        /// </summary>
+        public async Task UserStoppedTyping(string conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new HubException("ConversationId is required.");
+
+            var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+            if (member is null || member.LeftAt is not null)
+                throw new HubException("You are not a member of this conversation.");
+
+            await Clients.GroupExcept(conversationId, Context.ConnectionId)
+                .SendAsync("UserStoppedTyping", conversationId, member.User?.DisplayName ?? member.User?.Username ?? "Unknown");
+        }
+
+        /// <summary>
         /// Join a call group for signaling events.
         /// </summary>
         public async Task JoinCall(string callId)
