@@ -1705,6 +1705,11 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         var doc = System.Text.Json.JsonDocument.Parse(respStr);
                         var root = doc.RootElement;
                         string url = root.GetProperty("url").GetString() ?? string.Empty;
+
+                        // Ghép baseUrl để lưu absolute URL vào DB
+                        if (!string.IsNullOrEmpty(url) && !url.StartsWith("http"))
+                            url = SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl() + url;
+
                         string fileName = Path.GetFileName(path);
 
                         // Truncate tên file nếu quá 64 ký tự (giới hạn server)
@@ -1925,6 +1930,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                 var doc = System.Text.Json.JsonDocument.Parse(respStr);
                                 var root = doc.RootElement;
                                 string url = root.GetProperty("url").GetString() ?? string.Empty;
+
                                 string fileName = root.GetProperty("fileName").GetString() ?? Path.GetFileName(encryptedPath);
 
                                 // Truncate
@@ -2954,10 +2960,6 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 var parts = payload.Split(new[] { "::" }, StringSplitOptions.None);
 
                 string url = parts.Length > 0 ? parts[0] : "";
-                // Thêm BaseAddress nếu url là relative
-                if (!string.IsNullOrEmpty(url) && !url.StartsWith("http"))
-                    url = SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl() + url;
-
 
                 string fileName = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "";
                 string fileSize = parts.Length > 2 ? parts[2] : "";
