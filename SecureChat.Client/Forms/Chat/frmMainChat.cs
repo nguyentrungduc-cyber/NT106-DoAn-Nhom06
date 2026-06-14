@@ -2958,8 +2958,17 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 string url = parts.Length > 0 ? parts[0] : "";
 
                 // Ghép baseUrl nếu URL là relative (mỗi client tự ghép theo server của họ)
-                if (!string.IsNullOrEmpty(url) && !url.StartsWith("http"))
+                // Nếu URL chứa localhost, replace bằng server thật của client này
+                if (!string.IsNullOrEmpty(url) && url.Contains("://localhost"))
+                {
+                    var uri = new Uri(url);
+                    var baseUri = new Uri(SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl());
+                    url = baseUri.Scheme + "://" + baseUri.Host + ":" + baseUri.Port + uri.PathAndQuery;
+                }
+                else if (!string.IsNullOrEmpty(url) && !url.StartsWith("http"))
+                {
                     url = SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl() + url;
+                }
 
                 string fileName = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "";
                 string fileSize = parts.Length > 2 ? parts[2] : "";
