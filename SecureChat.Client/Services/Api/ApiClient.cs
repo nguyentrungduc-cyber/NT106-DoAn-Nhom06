@@ -251,5 +251,6 @@ namespace SecureChat.Client.Services
                 return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
             }
         }
+        public string GetBaseUrl() => _httpClient.BaseAddress?.ToString().TrimEnd('/') ?? "";
     }
 }

@@ -1706,6 +1706,15 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         var root = doc.RootElement;
                         string url = root.GetProperty("url").GetString() ?? string.Empty;
                         string fileName = Path.GetFileName(path);
+
+                        // Truncate tên file nếu quá 64 ký tự (giới hạn server)
+                        if (fileName.Length > 64)
+                        {
+                            string ext = Path.GetExtension(fileName);           // ví dụ ".docx"
+                            string nameOnly = Path.GetFileNameWithoutExtension(fileName);
+                            fileName = nameOnly.Substring(0, 64 - ext.Length) + ext;
+                        }
+
                         long fileSize = root.GetProperty("fileSize").GetInt64();
                         string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
 
@@ -1917,6 +1926,15 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                 var root = doc.RootElement;
                                 string url = root.GetProperty("url").GetString() ?? string.Empty;
                                 string fileName = root.GetProperty("fileName").GetString() ?? Path.GetFileName(encryptedPath);
+
+                                // Truncate
+                                if (fileName.Length > 64)
+                                {
+                                    string ext = Path.GetExtension(fileName);
+                                    string nameOnly = Path.GetFileNameWithoutExtension(fileName);
+                                    fileName = nameOnly.Substring(0, 64 - ext.Length) + ext;
+                                }
+
                                 long fileSize = root.GetProperty("fileSize").GetInt64();
                                 string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
 
@@ -2934,7 +2952,13 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             {
                 var payload = text.Substring(filePrefix.Length);
                 var parts = payload.Split(new[] { "::" }, StringSplitOptions.None);
+
                 string url = parts.Length > 0 ? parts[0] : "";
+                // Thêm BaseAddress nếu url là relative
+                if (!string.IsNullOrEmpty(url) && !url.StartsWith("http"))
+                    url = SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl() + url;
+
+
                 string fileName = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "";
                 string fileSize = parts.Length > 2 ? parts[2] : "";
                 // optional expected sha256 provided by server: url|fileName|fileSize|sha256
