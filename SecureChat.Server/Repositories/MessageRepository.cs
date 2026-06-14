@@ -35,7 +35,7 @@ namespace SecureChat.Repositories
 					.ThenInclude(s => s!.User)
 				.Include(m => m.Attachments)
 				.Include(m => m.Reactions)
-				.Where(m => m.ConversationID == conversationID && m.DeletedAt == null);
+				.Where(m => m.ConversationID == conversationID && m.DeletedAt == null && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
 			if (before.HasValue)
 				query = query.Where(m => m.SentAt < before.Value);
@@ -241,7 +241,7 @@ namespace SecureChat.Repositories
 			if (member is null)
 				return 0;
 
-			var query = db.Messages.Where(m => m.ConversationID == conversationID && m.DeletedAt == null && m.SenderID != memberID);
+			var query = db.Messages.Where(m => m.ConversationID == conversationID && m.DeletedAt == null && m.SenderID != memberID && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
 			if (member.LastReadMessage is not null)
 				query = query.Where(m => m.SentAt > member.LastReadMessage.SentAt);

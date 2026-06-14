@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;       // Task.Delay (dùng cho wallpaper reload)
 using System.Windows.Forms;         // Form, Panel, Button, Label, ...
 using SecureChat.Client.Forms.Chat;
+using SecureChat.Client.Components.Group;
 
 namespace SecureChat.Client
 {
@@ -395,8 +396,9 @@ namespace SecureChat.Client
             BuildChatArea();
             BuildSettingsMenu();
 
-            // Thứ tự add: sidebar → chat → settings (settings ở trên cùng)
+            // Thứ tự add: chat → right sidebar → sidebar → settings (settings ở trên cùng)
             Controls.Add(_pnlChat);
+            Controls.Add(_pnlRightSidebar);
             Controls.Add(_pnlSidebar);
             Controls.Add(_pnlSettingsMenu);  // add cuối = hiện trên cùng
 
@@ -425,25 +427,28 @@ namespace SecureChat.Client
 
         private void AdjustLayout()
         {
-            // Khai báo các hằng số kích thước
             int sw = 300;                        // Sidebar Width
             int smw = 260;                       // Settings Menu Width
+            int rsw = _isSidebarOpen ? 300 : 0;  // Right Sidebar Width
 
-            // Thiết lập vị trí và kích thước cho Sidebar và Khung Chat
-            // .SetBounds(x, y, rộng, cao)
-            // ClientSize.Height: Chiều cao kéo dài bằng toàn bộ chiều cao vùng làm việc của cửa sổ.
             _pnlSidebar.SetBounds(0, 0, sw, ClientSize.Height);
-            _pnlChat.SetBounds(sw, 0, ClientSize.Width - sw, ClientSize.Height);
+            _pnlChat.SetBounds(sw, 0, ClientSize.Width - sw - rsw, ClientSize.Height);
 
-            // Xử lý hiệu ứng trượt (Slide) của Menu Cài đặt
-            // Settings menu: slide overlay từ bên TRÁI
-            int visibleX = 0; // Khai báo tọa độ X khi menu cài đặt hiển thị là 0 (nằm sát mép trái màn hình).
-            int hiddenX = -smw; // Khai báo tọa độ X khi menu cài đặt ẩn đi là -260 (đẩy toàn bộ menu ra ngoài phạm vi nhìn thấy về phía bên trái).
-            // Kiểm tra nếu biến trạng thái _settingsVisible đang là false (người dùng không mở menu cài đặt).
-            if (!_settingsVisible)
-                _pnlSettingsMenu.SetBounds(hiddenX, 0, smw, ClientSize.Height);
+            if (_isSidebarOpen)
+            {
+                _pnlRightSidebar.SetBounds(
+                    ClientSize.Width - 300, 0, 300, ClientSize.Height);
+                _pnlRightSidebar.Visible = true;
+            }
             else
-                _pnlSettingsMenu.SetBounds(visibleX, 0, smw, ClientSize.Height);
+            {
+                _pnlRightSidebar.Visible = false;
+            }
+
+            if (!_settingsVisible)
+                _pnlSettingsMenu.SetBounds(-smw, 0, smw, ClientSize.Height);
+            else
+                _pnlSettingsMenu.SetBounds(0, 0, smw, ClientSize.Height);
         }
 
         // ════════════════════════════════════════════
@@ -806,6 +811,7 @@ namespace SecureChat.Client
         // Mới thêm
         private Button _btnToggleSidebar;
         private Panel _pnlRightSidebar;
+        private Panel _sbBody;
         private bool _isSidebarOpen = false; // Biến phụ để theo dõi trạng thái
 
         private void BuildChatArea()
@@ -904,18 +910,13 @@ namespace SecureChat.Client
 
             _btnToggleSidebar.Click += (s, e) =>
             {
-                /*
-                if (_pnlRightSidebar.Visible)
-                {
-                    _pnlRightSidebar.Visible = false;
-                    _btnToggleSidebar.Text = "⏪"; // Đóng rồi thì hiện mũi tên hướng trái để mở lại
-                }
-                else
-                {
-                    _pnlRightSidebar.Visible = true;
-                    _btnToggleSidebar.Text = "⏩"; // Mở rồi thì hiện mũi tên hướng phải để đóng
-                }
-                */
+                _isSidebarOpen = !_isSidebarOpen;
+                _btnToggleSidebar.Text = _isSidebarOpen ? "⏩" : "⏪";
+
+                if (_isSidebarOpen)
+                    _ = LoadRightSidebarContentAsync();
+
+                AdjustLayout();
             };
 
             /* _pnlChatHeader.Resize += (s, e) =>
@@ -983,6 +984,47 @@ namespace SecureChat.Client
             _pnlChat.Controls.Add(_pnlChatEmpty);
             _pnlChat.Controls.Add(_pnlInputBar);
             _pnlChat.Controls.Add(_pnlChatHeader);
+
+            // ── Right Sidebar (profile / group info) ────────
+            _pnlRightSidebar = new Panel { Width = 300, BackColor = Color.White, Visible = false };
+
+            var sbHeader = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = Color.White };
+            sbHeader.Paint += (_, e) => e.Graphics.DrawLine(new Pen(TG.Divider), 0, 51, sbHeader.Width, 51);
+
+            var sbClose = new Button
+            {
+                Text = "⏩",
+                Font = new Font("Segoe UI Emoji", 13f),
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(36, 36),
+                BackColor = Color.Transparent,
+                ForeColor = TG.TextSecondary,
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(252, 8)
+            };
+            sbClose.FlatAppearance.BorderSize = 0;
+            sbClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 0, 0, 0);
+            sbClose.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 0, 0, 0);
+            sbClose.Click += (_, _) => { _isSidebarOpen = false; _btnToggleSidebar.Text = "⏪"; AdjustLayout(); };
+
+            sbHeader.Controls.Add(new Label
+            {
+                Text = "Info",
+                Font = TG.FontSemiBold(10f),
+                ForeColor = TG.TextPrimary,
+                AutoSize = false,
+                Height = 22,
+                Width = 230,
+                Location = new Point(12, 14),
+                BackColor = Color.Transparent
+            });
+            sbHeader.Controls.Add(sbClose);
+
+            _sbBody = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+
+            _pnlRightSidebar.Controls.Add(_sbBody);
+            _pnlRightSidebar.Controls.Add(sbHeader);
 
             // _pnlMessages.Resize += (s, e) => _pnlMessages.Invalidate(); // bỏ vì đã có PaintChatBackground tự xử lý.
             _pnlMessages.Resize += (s, e) => UpdateCachedBackground();
@@ -1799,7 +1841,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             ReplyToID: null,
                             OriginalSenderID: null,
                             Attachments: new List<CreateAttachmentRequest> { attachment },
-                            MentionedMemberIDs: null);
+                            MentionedMemberIDs: null,
+                            ExpiresAfterSeconds: _selfDestructSeconds);
 
                         var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<SendMessageRequest, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
                         if (!okMsg || msgRes == null)
@@ -1819,6 +1862,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                     SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, aesKey, aesIv);
                                     string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
                                     _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                    if (msgRes.ExpiresAt.HasValue)
+                                        _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
                                     this.BeginInvoke(new Action(() => BuildMessages()));
                                 }
                             }
@@ -2012,7 +2057,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                     ReplyToID: null,
                                     OriginalSenderID: null,
                                     Attachments: new List<CreateAttachmentRequest> { attachment },
-                                    MentionedMemberIDs: null);
+                                    MentionedMemberIDs: null,
+                                    ExpiresAfterSeconds: _selfDestructSeconds);
 
                                 var (okMsg, msgRes, msgErr) = await ApiClient.Instance.PostAsync<SendMessageRequest, SecureChat.DTOs.MessageResponse>($"api/conversations/{_activeConvId}/messages", sendReq);
                                 if (!okMsg || msgRes == null)
@@ -2031,6 +2077,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                             SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, key, iv);
                                             string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
                                             _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                            if (msgRes.ExpiresAt.HasValue)
+                                                _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
                                             this.BeginInvoke(new Action(() => BuildMessages()));
                                         }
                                     }
@@ -2181,7 +2229,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 86400}d";
                 
                 btnTimer.ForeColor = Color.FromArgb(255, 87, 34); // Orange color for active timer
-                btnTimer.Font = TG.FontSemiBold(10f);
+                btnTimer.Font = new Font("Segoe UI Emoji", 10f);
             }
             else
             {
@@ -2599,7 +2647,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             {
                                 // 1. Xóa Access Token để không gọi API được nữa
                                 ApiClient.Instance.SetAccessToken(null);
-                                SecureChat.Shared.Security.KeyManager.Purge();
+                                SecureChat.Shared.Security.KeyManager.Clear();
                                 lock (_processedMessageIdsLock)
                                 {
                                     _processedMessageIds.Clear();
@@ -2691,6 +2739,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 _ = _signalRClient?.NotifyStoppedTypingAsync(prevConv);
             }
 
+            // Close right sidebar when switching conversation
+            if (_isSidebarOpen)
+                CloseRightSidebar();
+
             _activeConvId = convId;
             UpdateChatEmptyStateUI();
 
@@ -2705,6 +2757,227 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             // để nhận realtime cho các tin sau đó.
             await SyncMessagesForActiveConversationAsync(convId);
             await JoinConversationSignalRAsync(convId);
+        }
+
+        // ════════════════════════════════════════════
+        //  RIGHT SIDEBAR
+        // ════════════════════════════════════════════
+
+        private void CloseRightSidebar()
+        {
+            _isSidebarOpen = false;
+            _btnToggleSidebar.Text = "⏪";
+            AdjustLayout();
+        }
+
+        private async Task LoadRightSidebarContentAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_activeConvId))
+                return;
+
+            var conv = _convs.Find(c => c.Id == _activeConvId);
+            if (conv == default)
+                return;
+
+            try
+            {
+                var http = ApiClient.Instance.GetHttpClient();
+                var response = await http.GetAsync($"api/conversations/{_activeConvId}/members");
+
+                if (!response.IsSuccessStatusCode)
+                    return;
+
+                var json = await response.Content.ReadAsStringAsync();
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                };
+                var members = System.Text.Json.JsonSerializer.Deserialize<List<MemberResponse>>(json, options);
+
+                if (members == null || members.Count == 0)
+                    return;
+
+                var isGroup = conv.IsGroup;
+
+                BeginInvoke(new Action(() =>
+                {
+                    _sbBody.SuspendLayout();
+                    _sbBody.Controls.Clear();
+
+                    if (isGroup)
+                        BuildGroupSidebar(_sbBody, members);
+                    else
+                        BuildDirectSidebar(_sbBody, members);
+
+                    _sbBody.ResumeLayout();
+                }));
+            }
+            catch { }
+        }
+
+        private void BuildDirectSidebar(Panel body, List<MemberResponse> members)
+        {
+            var other = members.FirstOrDefault(m => m.UserID != _currentUserId)?.User;
+            if (other == null)
+            {
+                if (members.Count > 0)
+                    other = members[0].User;
+                if (other == null) return;
+            }
+
+            int y = 24;
+
+            // Large avatar (centered)
+            var avatar = new AvatarControl
+            {
+                Size = new Size(100, 100),
+                Location = new Point(100, y)
+            };
+            avatar.SetName(other.DisplayName ?? other.Username);
+            body.Controls.Add(avatar);
+            y += 118;
+
+            // Display name (centered, fixed width)
+            AppendCenteredLabel(body, other.DisplayName ?? other.Username,
+                TG.FontSemiBold(16f), TG.TextPrimary, ref y);
+            y += 6;
+
+            // Username (centered, fixed width)
+            AppendCenteredLabel(body, $"@{other.Username}",
+                TG.FontRegular(12f), TG.TextSecondary, ref y);
+            y += 24;
+
+            // Divider
+            AppendDivider(body, ref y);
+            y += 8;
+
+            // Email
+            if (!string.IsNullOrWhiteSpace(other.Email))
+                AppendInfoRow(body, "📧", other.Email, ref y);
+
+            // Bio
+            if (!string.IsNullOrWhiteSpace(other.BioText))
+                AppendInfoRow(body, "ℹ️", other.BioText, ref y);
+
+            body.AutoScrollMinSize = new Size(0, y + 20);
+        }
+
+        private void BuildGroupSidebar(Panel body, List<MemberResponse> members)
+        {
+            var conv = _convs.Find(c => c.Id == _activeConvId);
+
+            int y = 24;
+
+            // Large group avatar (centered)
+            var avatar = new AvatarControl
+            {
+                Size = new Size(100, 100),
+                Location = new Point(100, y)
+            };
+            avatar.SetName(conv.Name);
+            body.Controls.Add(avatar);
+            y += 118;
+
+            // Group name (centered, fixed width)
+            AppendCenteredLabel(body, conv.Name,
+                TG.FontSemiBold(16f), TG.TextPrimary, ref y);
+            y += 6;
+
+            // Member count (centered, fixed width)
+            AppendCenteredLabel(body, $"{members.Count} member{(members.Count != 1 ? "s" : "")}",
+                TG.FontRegular(12f), TG.TextSecondary, ref y);
+            y += 24;
+
+            // Divider
+            AppendDivider(body, ref y);
+            y += 8;
+
+            // "Members" section title
+            body.Controls.Add(new Label
+            {
+                Text = "MEMBERS",
+                Font = TG.FontSemiBold(9f),
+                ForeColor = TG.TextSecondary,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Size = new Size(260, 14),
+                Location = new Point(20, y)
+            });
+            y += 22;
+
+            // Member list
+            foreach (var m in members)
+            {
+                var displayName = m.User?.DisplayName ?? m.Nickname ?? "Unknown";
+                var status = m.User?.ShowOnlineStatus == true ? "online" : "offline";
+                var role = m.Role.ToString();
+
+                var item = new ucGroupMemberItem
+                {
+                    Dock = DockStyle.None,
+                    Width = 300,
+                    Margin = Padding.Empty,
+                    Location = new Point(0, y),
+                    BackColor = Color.Transparent
+                };
+                item.DisplayName = displayName;
+                item.Status = status;
+                item.Role = role;
+                item.SetInitial(displayName.Length > 0
+                    ? displayName[0].ToString().ToUpperInvariant()
+                    : "?");
+                body.Controls.Add(item);
+                y += item.Height;
+            }
+
+            body.AutoScrollMinSize = new Size(0, y + 20);
+        }
+
+        private static void AppendCenteredLabel(Panel body, string text, Font font, Color color, ref int y)
+        {
+            var lbl = new Label
+            {
+                Text = text,
+                Font = font,
+                ForeColor = color,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(280, 0),
+                AutoSize = true,
+                BackColor = Color.Transparent,
+                MaximumSize = new Size(280, 0)
+            };
+            if (lbl.Height < 24) lbl.Height = 24;
+            lbl.Location = new Point(10, y);
+            body.Controls.Add(lbl);
+            y += lbl.Height;
+        }
+
+        private static void AppendDivider(Panel body, ref int y)
+        {
+            body.Controls.Add(new Panel
+            {
+                Height = 1,
+                Width = 260,
+                BackColor = TG.Divider,
+                Location = new Point(20, y)
+            });
+            y += 1;
+        }
+
+        private static void AppendInfoRow(Panel body, string icon, string text, ref int y)
+        {
+            var lbl = new Label
+            {
+                Text = $"{icon}  {text}",
+                Font = TG.FontRegular(11f),
+                ForeColor = TG.TextPrimary,
+                AutoSize = true,
+                MaximumSize = new Size(260, 0),
+                BackColor = Color.Transparent,
+                Location = new Point(24, y)
+            };
+            body.Controls.Add(lbl);
+            y += lbl.Height + 10;
         }
 
         /// <summary>
@@ -4273,6 +4546,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             // Xóa message khỏi UI (thread-safe)
             BeginInvoke(new Action(() =>
             {
+                _hiddenMessageIds.Add(messageId);
                 var index = _currentMsgs.FindIndex(m => m.Id == messageId);
                 if (index >= 0)
                 {
