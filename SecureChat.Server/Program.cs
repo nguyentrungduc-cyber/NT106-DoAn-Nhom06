@@ -127,7 +127,13 @@ if (app.Environment.IsDevelopment()) {
 }
 
 // Serve static files from wwwroot (uploads will be available under /uploads)
-app.UseStaticFiles();
+
+// With this:
+app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+{
+    ServeUnknownFileTypes = true,
+    DefaultContentType = "application/octet-stream"
+});
 
 app.UseCors();
 app.UseAuthentication();
