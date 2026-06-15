@@ -326,10 +326,13 @@ namespace SecureChat.Client.Forms.Chat
             _lblCount.Text = $"{members.Count} members";
             _lblMembersTitle.Text = $"{members.Count} MEMBERS";
 
+            var oldAvatar = _pbAvatar.Image;
             _pbAvatar.Image = avatar;
+            oldAvatar?.Dispose();
             _pbAvatar.BackColor = avatar == null ? Color.FromArgb(0xF4, 0xA4, 0x44) : Color.Transparent;
 
             _pnlList.SuspendLayout();
+            DisposeOldMemberItems();
             _pnlList.Controls.Clear();
             int y = 0;
             foreach (var m in members)
@@ -353,6 +356,18 @@ namespace SecureChat.Client.Forms.Chat
             _pnlList.AutoScrollMinSize = new Size(0, y);
             _pnlList.ResumeLayout();
             LayoutMemberItems();
+        }
+
+        private void DisposeOldMemberItems()
+        {
+            foreach (Control c in _pnlList.Controls)
+            {
+                if (c is ucGroupMemberItem item)
+                {
+                    item.AvatarImage = null;
+                }
+                c.Dispose();
+            }
         }
 
         private void LayoutMemberItems()
