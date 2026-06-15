@@ -3593,7 +3593,6 @@ namespace SecureChat.Client
                 var parts = payload.Split(new[] { "::" }, StringSplitOptions.None);
 
                 string url = parts.Length > 0 ? parts[0] : "";
-                MessageBox.Show($"URL từ message: {url}", "Debug"); // thêm tạm
                 // Ghép baseUrl nếu URL là relative (mỗi client tự ghép theo server của họ)
                 // Nếu URL chứa localhost, replace bằng server thật của client này
                 if (!string.IsNullOrEmpty(url) && url.Contains("://localhost"))
@@ -5239,6 +5238,7 @@ namespace SecureChat.Client
             // Stop and dispose expiration service
             _expirationService?.Stop();
             _expirationService?.Dispose();
+
 
             // Stop and dispose SignalR client
             if (_signalRClient is not null)

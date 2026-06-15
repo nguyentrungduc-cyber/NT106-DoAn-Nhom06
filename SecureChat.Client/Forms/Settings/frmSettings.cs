@@ -430,7 +430,7 @@ namespace SecureChat.Client.Forms.Settings
         private void RefreshHeader()
         {
             _lblName.Text = string.IsNullOrWhiteSpace(_profile.FullName) ? "Unknown User" : _profile.FullName;
-            _lblPhone.Text = string.IsNullOrWhiteSpace(_profile.Email) ? "---" : _profile.Email;
+            _lblEmail.Text = string.IsNullOrWhiteSpace(_profile.Email) ? "---" : _profile.Email;
             _avatarPanel.BackColor = TG.GetAvatarColor(_profile.FullName);
 
             _lblUsername.Text = string.IsNullOrWhiteSpace(_profile.Username) ? "Add username" : _profile.Username;
