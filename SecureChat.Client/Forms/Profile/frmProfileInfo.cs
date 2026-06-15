@@ -26,7 +26,6 @@ namespace SecureChat.Client.Forms.Profile
         private Label _lblName = null!;
         private Label _lblStatus = null!;
         private TextBox _txtName = null!;
-        private TextBox _txtPhone = null!;
         private TextBox _txtUsername = null!;
         private Button _btnAvatar = null!;
         private DateTimePicker _dtBirthday = null!;
@@ -120,8 +119,6 @@ namespace SecureChat.Client.Forms.Profile
             int fieldTop = 240;
             var nameField = InputField("Name", fieldTop);
             fieldTop += 74;
-            var phoneField = InputField("Phone number", fieldTop);
-            fieldTop += 74;
             var userField = InputField("t.me/username", fieldTop);
             fieldTop += 74;
 
@@ -178,13 +175,11 @@ namespace SecureChat.Client.Forms.Profile
             {
                 _btnBack, _btnClose, _avatar, _btnAvatar, _lblName, _lblStatus,
                 nameField.Label, nameField.TextBox, nameField.Underline,
-                phoneField.Label, phoneField.TextBox, phoneField.Underline,
                 userField.Label, userField.TextBox, userField.Underline,
                 lblBirth, _dtBirthday, _lblError, btnSave,
             });
 
             _txtName = nameField.TextBox;
-            _txtPhone = phoneField.TextBox;
             _txtUsername = userField.TextBox;
         }
 
@@ -226,7 +221,6 @@ namespace SecureChat.Client.Forms.Profile
         private void LoadProfile(ProfileModel profile)
         {
             _txtName.Text = profile.FullName;
-            _txtPhone.Text = profile.PhoneNumber;
             _txtUsername.Text = profile.Username;
             if (profile.Birthday.HasValue)
                 _dtBirthday.Value = profile.Birthday.Value;
@@ -260,12 +254,9 @@ namespace SecureChat.Client.Forms.Profile
             {
                 _lblError.Text = string.Empty;
                 var name = _txtName.Text.Trim();
-                var phone = _txtPhone.Text.Trim();
                 var username = _txtUsername.Text.Trim().TrimStart('@');
                 if (string.IsNullOrWhiteSpace(name))
                     throw new InvalidOperationException("Name is required.");
-                if (!string.IsNullOrEmpty(phone) && !Regex.IsMatch(phone, "^\\+?[0-9 ]{6,20}$"))
-                    throw new InvalidOperationException("Phone number is not valid.");
                 if (!string.IsNullOrEmpty(username) && !Regex.IsMatch(username, "^[a-zA-Z0-9_]{5,32}$"))
                     throw new InvalidOperationException("Username must be 5-32 chars [a-zA-Z0-9_].");
 
@@ -281,7 +272,6 @@ namespace SecureChat.Client.Forms.Profile
                 }
 
                 _profile.FullName = name;
-                _profile.PhoneNumber = phone;
                 _profile.Username = username;
                 _profile.Birthday = _dtBirthday.Value;
 

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace SecureChat.Client.Forms.Chat
@@ -9,8 +10,7 @@ namespace SecureChat.Client.Forms.Chat
     {
         public string SelectedConversationId { get; private set; }
 
-        // Nhận vào danh sách hội thoại từ frmMainChat
-        public frmForwardMessage(List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> convs)
+        public frmForwardMessage(List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> convs, string? excludeConversationId = null)
         {
             Text = "Forward to...";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -29,12 +29,15 @@ namespace SecureChat.Client.Forms.Chat
                 BackColor = Color.White
             };
 
+            var filtered = excludeConversationId is not null
+                ? convs.Where(c => c.Id != excludeConversationId).ToList()
+                : convs;
+
             int y = 0;
-            foreach (var c in convs)
+            foreach (var c in filtered)
             {
                 var row = new Panel { Height = 56, Cursor = Cursors.Hand, Width = ClientSize.Width };
 
-                // Dùng AvatarControl có sẵn của bạn
                 var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(16, 8) };
                 avatar.SetName(c.Name);
 
@@ -50,13 +53,11 @@ namespace SecureChat.Client.Forms.Chat
 
                 row.Controls.AddRange(new Control[] { avatar, lblName });
 
-                // Hiệu ứng hover giống Telegram
                 row.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
                 row.MouseLeave += (s, e) => row.BackColor = Color.White;
                 lblName.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
                 avatar.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
 
-                // Xử lý Click: Lấy ID và đóng Form
                 Action onClick = () =>
                 {
                     SelectedConversationId = c.Id;

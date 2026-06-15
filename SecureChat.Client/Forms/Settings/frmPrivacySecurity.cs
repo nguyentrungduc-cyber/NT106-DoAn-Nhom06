@@ -78,7 +78,6 @@ namespace SecureChat.Client.Forms.Settings
             AddDivider();
             AddSectionHeader("Privacy");
 
-            AddPrivacyOption("Phone number");
             AddPrivacyOption("Last seen online");
             AddPrivacyOption("Profile photos");
             AddPrivacyOption("Forwarded messages");
