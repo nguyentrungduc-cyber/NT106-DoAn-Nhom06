@@ -16,7 +16,6 @@ namespace SecureChat.Client.Forms.Chat
         public Action<string>? Delete { get; init; }
         public Action<string>? Copy { get; init; }
         public Action<string>? Pin { get; init; }
-        public Action<string>? React { get; init; }
     }
 
     public class frmRightClickMessageMenu
@@ -25,8 +24,10 @@ namespace SecureChat.Client.Forms.Chat
         /// Create a ContextMenuStrip for a message. Optionally provide an icon resolver (label -> Image).
         /// If the resolver returns at least one non-null Image the menu will show the image margin.
         /// </summary>
-        public static ContextMenuStrip Create(string messageId, MessageActions actions, Func<string, Image?>? iconFor = null)
+        public static ContextMenuStrip Create(string messageId, MessageActions actions, Func<string, Image?>? iconFor = null, bool isPinned = false)
         {
+            var pinLabel = isPinned ? "Unpin" : "Pin";
+
             // Known menu labels in the same order as added below
             var labels = new[]
             {
@@ -34,8 +35,7 @@ namespace SecureChat.Client.Forms.Chat
                 "Forward",
                 "Copy",
                 "Edit",
-                "Pin / Unpin",
-                "React",
+                pinLabel,
                 "Delete"
             };
 
@@ -51,8 +51,7 @@ namespace SecureChat.Client.Forms.Chat
             AddItem(menu, "Forward", actions.Forward, messageId, icons["Forward"]);
             AddItem(menu, "Copy", actions.Copy, messageId, icons["Copy"]);
             AddItem(menu, "Edit", actions.Edit, messageId, icons["Edit"]);
-            AddItem(menu, "Pin / Unpin", actions.Pin, messageId, icons["Pin / Unpin"]);
-            AddItem(menu, "React", actions.React, messageId, icons["React"]);
+            AddItem(menu, pinLabel, actions.Pin, messageId, icons[pinLabel]);
 
             menu.Items.Add(new ToolStripSeparator());
 
