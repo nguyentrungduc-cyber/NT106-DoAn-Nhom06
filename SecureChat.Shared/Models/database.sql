@@ -154,6 +154,7 @@ create table if not exists Messages (
     sent_at datetime not null default current_timestamp,
     deleted_at datetime,
     edited_at datetime,
+    expires_at datetime,
 
     primary key (message_id),
     constraint fk_msg_conv foreign key (conversation_id) references Conversations (conversation_id) on delete cascade,
@@ -183,10 +184,14 @@ create table if not exists MessageAttachments (
 
     file_iv text,
     thumbnail_iv text,
+    encrypted_aes_key varchar(1024),
+    encrypted_aes_iv varchar(1024),
+    receiver_id varchar(8),
     uploaded_at datetime not null default current_timestamp,
 
     primary key (attachment_id),
-    constraint fk_attach_message foreign key (message_id) references Messages (message_id) on delete cascade
+    constraint fk_attach_message foreign key (message_id) references Messages (message_id) on delete cascade,
+    constraint fk_attach_receiver foreign key (receiver_id) references Users (user_id) on delete set null
 );
 
 create table if not exists MessageMentions (
@@ -214,7 +219,7 @@ create table if not exists MessagePins (
 create table if not exists MessageReactions (
     reaction_id varchar(8) not null,
     message_id varchar(8) not null,
-    member_id varchar(8),
+    member_id varchar(8) not null,
 
     reaction varchar(8) not null,
     created_at datetime not null default current_timestamp,
@@ -222,7 +227,7 @@ create table if not exists MessageReactions (
     primary key (reaction_id),
     unique key uq_reaction_msg_users (message_id, member_id, reaction),
     constraint fk_reaction_message foreign key (message_id) references Messages (message_id) on delete cascade,
-    constraint fk_reaction_member foreign key (member_id) references ConversationMembers (member_id) on delete set null
+    constraint fk_reaction_member foreign key (member_id) references ConversationMembers (member_id) on delete cascade
 );
 
 create table if not exists MessageStatuses (
@@ -252,7 +257,7 @@ create table if not exists CallLogs (
     ended_at datetime,
 
     primary key (call_id),
-    constraint fk_call_caller foreign key (started_by) references ConversationMembers (member_id) on delete set null,
+    constraint fk_call_caller foreign key (started_by) references ConversationMembers (member_id) on delete cascade,
     constraint fk_call_conv foreign key (conversation_id) references Conversations (conversation_id) on delete cascade,
     constraint chk_call_type check (call_type in (0, 1)),
     constraint chk_call_status check (status between 0 and 3)
@@ -287,5 +292,6 @@ create index if not exists idx_users_username on Users(username);
 create index if not exists idx_call_logs_conversation on CallLogs(conversation_id);
 create index if not exists idx_call_participants_user on CallParticipants(participant_id);
 create index if not exists idx_message_pins_conv on MessagePins(conversation_id);
+create index if not exists idx_messages_expires_at on Messages(expires_at);
 
 set foreign_key_checks = 1;

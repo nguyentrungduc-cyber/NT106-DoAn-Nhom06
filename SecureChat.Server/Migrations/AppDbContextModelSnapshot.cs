@@ -58,7 +58,7 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_block_pair");
 
-                    b.ToTable("BlockedUsers");
+                    b.ToTable("BlockedUsers", (string)null);
 
                     b.HasData(
                         new
@@ -114,7 +114,11 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("StartedBy");
 
-                    b.ToTable("CallLogs");
+                    b.ToTable("CallLogs", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_call_type", "call_type in (0, 1)");
+                            t.HasCheckConstraint("chk_call_status", "status between 0 and 3");
+                        });
 
                     b.HasData(
                         new
@@ -160,7 +164,10 @@ namespace SecureChat.Server.Migrations
                     b.HasIndex("ParticipantID")
                         .HasDatabaseName("idx_call_participants_user");
 
-                    b.ToTable("CallParticipants");
+                    b.ToTable("CallParticipants", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_participant_status", "status between 0 and 4");
+                        });
 
                     b.HasData(
                         new
@@ -236,7 +243,10 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("LastMessageID");
 
-                    b.ToTable("Conversations");
+                    b.ToTable("Conversations", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1)");
+                        });
 
                     b.HasData(
                         new
@@ -306,7 +316,8 @@ namespace SecureChat.Server.Migrations
 
                     b.Property<byte>("ShowNotifications")
                         .HasColumnType("tinyint unsigned")
-                        .HasColumnName("show_notifications");
+                        .HasColumnName("show_notifications")
+                        .HasDefaultValueSql("2");
 
                     b.Property<string>("UserID")
                         .IsRequired()
@@ -325,7 +336,11 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_convmems_user");
 
-                    b.ToTable("ConversationMembers");
+                    b.ToTable("ConversationMembers", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_convmems_role", "role between 0 and 2");
+                            t.HasCheckConstraint("chk_convmems_notif", "show_notifications between 0 and 2");
+                        });
 
                     b.HasData(
                         new
@@ -418,7 +433,7 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_friends_pair");
 
-                    b.ToTable("Friends", t =>
+                    b.ToTable("Friends", null, t =>
                         {
                             t.HasCheckConstraint("chk_friends_order", "user_a_id < user_b_id");
                         });
@@ -475,7 +490,10 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_friendreq_pair");
 
-                    b.ToTable("FriendRequests");
+                    b.ToTable("FriendRequests", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_friendreq_status", "status between 0 and 3");
+                        });
 
                     b.HasData(
                         new
@@ -542,6 +560,10 @@ namespace SecureChat.Server.Migrations
                         .HasColumnType("tinyint unsigned")
                         .HasColumnName("message_type");
 
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("expires_at");
+
                     b.HasKey("MessageID");
 
                     b.HasIndex("OriginalSenderID");
@@ -555,7 +577,13 @@ namespace SecureChat.Server.Migrations
                         .IsDescending(false, true)
                         .HasDatabaseName("idx_messages_conversation");
 
-                    b.ToTable("Messages");
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("idx_messages_expires_at");
+
+                    b.ToTable("Messages", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_message_type", "message_type between 0 and 7");
+                        });
 
                     b.HasData(
                         new
@@ -738,7 +766,9 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("MessageID");
 
-                    b.ToTable("MessageAttachments");
+                    b.HasIndex("ReceiverId");
+
+                    b.ToTable("MessageAttachments", (string)null);
 
                     b.HasData(
                         new
@@ -773,7 +803,7 @@ namespace SecureChat.Server.Migrations
                     b.HasIndex("MemberID")
                         .HasDatabaseName("idx_mentions_user");
 
-                    b.ToTable("MessageMentions");
+                    b.ToTable("MessageMentions", (string)null);
 
                     b.HasData(
                         new
@@ -813,7 +843,7 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("PinnedBy");
 
-                    b.ToTable("MessagePins");
+                    b.ToTable("MessagePins", (string)null);
 
                     b.HasData(
                         new
@@ -864,7 +894,7 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_reaction_msg_users");
 
-                    b.ToTable("MessageReactions");
+                    b.ToTable("MessageReactions", (string)null);
 
                     b.HasData(
                         new
@@ -913,7 +943,7 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_status_msg_user");
 
-                    b.ToTable("MessageStatuses");
+                    b.ToTable("MessageStatuses", (string)null);
 
                     b.HasData(
                         new
@@ -1030,7 +1060,7 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("idx_users_username");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
 
                     b.HasData(
                         new
@@ -1131,7 +1161,7 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("UserID");
 
-                    b.ToTable("UserSessions");
+                    b.ToTable("UserSessions", (string)null);
 
                     b.HasData(
                         new
@@ -1334,7 +1364,14 @@ namespace SecureChat.Server.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SecureChat.Models.User", "Receiver")
+                        .WithMany()
+                        .HasForeignKey("ReceiverId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Message");
+
+                    b.Navigation("Receiver");
                 });
 
             modelBuilder.Entity("SecureChat.Models.MessageMention", b =>

@@ -254,7 +254,7 @@ namespace SecureChat.Client.Forms.Profile
             _lblStatus.Location = new Point(centerX - (_lblStatus.PreferredWidth / 2), _lblName.Bottom + 2);
         }
 
-        private void SaveProfile()
+        private async void SaveProfile()
         {
             try
             {
@@ -268,6 +268,17 @@ namespace SecureChat.Client.Forms.Profile
                     throw new InvalidOperationException("Phone number is not valid.");
                 if (!string.IsNullOrEmpty(username) && !Regex.IsMatch(username, "^[a-zA-Z0-9_]{5,32}$"))
                     throw new InvalidOperationException("Username must be 5-32 chars [a-zA-Z0-9_].");
+
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var req = new { displayName = name };
+                var json = System.Text.Json.JsonSerializer.Serialize(req);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                var res = await http.PatchAsync("api/users/me", content);
+                if (!res.IsSuccessStatusCode)
+                {
+                    var err = await res.Content.ReadAsStringAsync();
+                    throw new InvalidOperationException($"Lỗi lưu hồ sơ: {err}");
+                }
 
                 _profile.FullName = name;
                 _profile.Email = phone;

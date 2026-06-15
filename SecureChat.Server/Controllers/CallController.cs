@@ -57,7 +57,7 @@ namespace SecureChat.Controllers
 
 			var existing = await calls.GetActiveCallAsync(conversationID);
 			if (existing is not null)
-				return Conflict(new { error = "Đã có cuộc gọi đang diễn ra." });
+				await calls.EndCallAsync(existing.CallID);
 
 			var call = await calls.CreateCallAsync(new CallLog {
 				CallID = NewID(),

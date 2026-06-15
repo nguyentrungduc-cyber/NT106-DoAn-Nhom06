@@ -70,26 +70,63 @@ namespace SecureChat.Controllers
 		});
 
 			if (req.Attachments is not null)
+			{
 				foreach (var att in req.Attachments)
-					await messages.CreateAttachmentAsync(new MessageAttachment {
-						AttachmentID = NewID(),
-						MessageID    = msg.MessageID,
-						FileURL      = att.FileURL,
-						FileName     = att.FileName,
-						FileNameInStorage = att.FileNameInStorage,
-						FileType     = att.FileType,
-						FileHash     = att.FileHash,
-						FileSize     = att.FileSize,
-						Width        = att.Width,
-						Height       = att.Height,
-						ThumbnailURL = att.ThumbnailURL,
-						DurationSecs = att.DurationSecs,
-						FileIv       = att.FileIV,
-                      ThumbnailIv  = att.ThumbnailIV,
-						EncryptedAesKey = att.EncryptedAesKey,
-						EncryptedAesIv  = att.EncryptedAesIv,
-						ReceiverId      = att.ReceiverId
-					});
+				{
+					// If RecipientEncryptions is provided, create one attachment per recipient
+					// Otherwise, use the single-recipient format (backward compatibility)
+					if (att.RecipientEncryptions is not null && att.RecipientEncryptions.Count > 0)
+					{
+						foreach (var recipientEnc in att.RecipientEncryptions)
+						{
+							await messages.CreateAttachmentAsync(new MessageAttachment
+							{
+								AttachmentID = NewID(),
+								MessageID = msg.MessageID,
+								FileURL = att.FileURL,
+								FileName = att.FileName,
+								FileNameInStorage = att.FileNameInStorage,
+								FileType = att.FileType,
+								FileHash = att.FileHash,
+								FileSize = att.FileSize,
+								Width = att.Width,
+								Height = att.Height,
+								ThumbnailURL = att.ThumbnailURL,
+								DurationSecs = att.DurationSecs,
+								FileIv = att.FileIV,
+								ThumbnailIv = att.ThumbnailIV,
+								EncryptedAesKey = recipientEnc.EncryptedAesKey,
+								EncryptedAesIv = recipientEnc.EncryptedAesIv,
+								ReceiverId = recipientEnc.RecipientUserId
+							});
+						}
+					}
+					else
+					{
+						// Legacy single-recipient format
+						await messages.CreateAttachmentAsync(new MessageAttachment
+						{
+							AttachmentID = NewID(),
+							MessageID = msg.MessageID,
+							FileURL = att.FileURL,
+							FileName = att.FileName,
+							FileNameInStorage = att.FileNameInStorage,
+							FileType = att.FileType,
+							FileHash = att.FileHash,
+							FileSize = att.FileSize,
+							Width = att.Width,
+							Height = att.Height,
+							ThumbnailURL = att.ThumbnailURL,
+							DurationSecs = att.DurationSecs,
+							FileIv = att.FileIV,
+							ThumbnailIv = att.ThumbnailIV,
+							EncryptedAesKey = att.EncryptedAesKey,
+							EncryptedAesIv = att.EncryptedAesIv,
+							ReceiverId = att.ReceiverId
+						});
+					}
+				}
+			}
 
 			if (req.MentionedMemberIDs is not null)
 				await messages.AddMentionsAsync(req.MentionedMemberIDs.Select(mid =>
