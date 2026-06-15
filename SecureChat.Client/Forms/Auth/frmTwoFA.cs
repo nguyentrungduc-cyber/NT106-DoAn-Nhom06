@@ -39,7 +39,6 @@ namespace SecureChat.Client
         {
             _identifier = string.Empty;
             InitializeComponent();
-            StartCountdown();
         }
 
         private void InitializeComponent()

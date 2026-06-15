@@ -335,7 +335,9 @@ namespace SecureChat.Client
                     if (dlg.ShowDialog(this) == DialogResult.OK)
                     {
                         // token should have been set by frmTwoFA
-                        new frmMainChat().Show();
+                        var chat = new frmMainChat();
+                        chat.Show();
+                        chat.FormClosed += (_, __) => this.Close();
                         this.Hide();
                         return;
                     }
@@ -352,7 +354,9 @@ namespace SecureChat.Client
                 if (auth != null)
                 {
                     ApiClient.Instance.SetAccessToken(auth.AccessToken);
-                    new frmMainChat().Show();
+                    var chat = new frmMainChat();
+                    chat.Show();
+                    chat.FormClosed += (_, __) => this.Close();
                     this.Hide();
                     return;
                 }
