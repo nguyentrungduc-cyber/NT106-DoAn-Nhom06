@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Net.Mail;
@@ -25,12 +26,23 @@ namespace SecureChat.Client
 
         // ── State ─────────────────────────────────────────────────────
         private bool _isRegisterMode = false;
+        private bool _suppressCloseOnChatClosed = false;
 
         public frmLoginRegister()
         {
             // Bật DoubleBuffered để giảm flickering khi resize hoặc đổi mode
             this.DoubleBuffered = true;
             InitializeComponent();
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (_suppressCloseOnChatClosed)
+            {
+                e.Cancel = true;
+                return;
+            }
+            base.OnFormClosing(e);
         }
 
         private void InitializeComponent()
@@ -335,9 +347,20 @@ namespace SecureChat.Client
                     if (dlg.ShowDialog(this) == DialogResult.OK)
                     {
                         // token should have been set by frmTwoFA
+                        _suppressCloseOnChatClosed = true;
+                        try
+                        {
+                            var oldChat = Application.OpenForms.OfType<frmMainChat>().FirstOrDefault();
+                            oldChat?.Close();
+                        }
+                        finally
+                        {
+                            _suppressCloseOnChatClosed = false;
+                        }
+
                         var chat = new frmMainChat();
                         chat.Show();
-                        chat.FormClosed += (_, __) => this.Close();
+                        chat.FormClosed += (_, __) => { if (!_suppressCloseOnChatClosed) this.Close(); };
                         this.Hide();
                         return;
                     }
@@ -354,9 +377,21 @@ namespace SecureChat.Client
                 if (auth != null)
                 {
                     ApiClient.Instance.SetAccessToken(auth.AccessToken);
+
+                    _suppressCloseOnChatClosed = true;
+                    try
+                    {
+                        var oldChat = Application.OpenForms.OfType<frmMainChat>().FirstOrDefault();
+                        oldChat?.Close();
+                    }
+                    finally
+                    {
+                        _suppressCloseOnChatClosed = false;
+                    }
+
                     var chat = new frmMainChat();
                     chat.Show();
-                    chat.FormClosed += (_, __) => this.Close();
+                    chat.FormClosed += (_, __) => { if (!_suppressCloseOnChatClosed) this.Close(); };
                     this.Hide();
                     return;
                 }
