@@ -83,7 +83,7 @@ namespace SecureChat.Client
 
         // ── Settings menu controls ─────────────────
         private Panel _pnlSettingsHeader;
-        
+
         // ── Conversation data ──────────────────────────────
         private string _activeConvId = string.Empty;
         private string _currentUserId = string.Empty;
@@ -103,7 +103,7 @@ namespace SecureChat.Client
 
         // Message expiration service
         private readonly MessageExpirationService _expirationService = new();
-        
+
         // Timer to refresh UI for countdown display
         private System.Windows.Forms.Timer? _countdownRefreshTimer;
 
@@ -219,7 +219,7 @@ namespace SecureChat.Client
                 }
             };
             _countdownRefreshTimer.Start();
-            
+
             // Load danh sách hội thoại từ API thật
             await LoadConversationsAsync();
         }
@@ -292,6 +292,13 @@ namespace SecureChat.Client
 
                 foreach (var m in list)
                 {
+                    // Cache AES key từ attachment nếu có
+                    if (m.Attachments != null)
+                    {
+                        foreach (var att in m.Attachments)
+                            HandleHybridEncryptedAttachment(m.MessageID, att);
+                    }
+
                     bool isOut = m.SenderID == _currentUserId;
                     string text = m.Content ?? "";
 
@@ -389,7 +396,7 @@ namespace SecureChat.Client
                 UpdateCachedBackground(); // Thêm dòng này để ảnh nền co giãn theo Form
             };
             AdjustLayout();
-            
+
             // Load mock data trước để UI có nội dung đẹp ngay khi mở form.
             // Sau khi SyncConversationsAsync (trong FrmMainChat_Load) chạy xong:
             //  - Nếu server có conversation thật -> mock bị replace.
@@ -1211,21 +1218,21 @@ namespace SecureChat.Client
             if (isGroup)
             {
                 var memberNames = new List<string>();
-try
-{
-    var http = ApiClient.Instance.GetHttpClient();
-    var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
-    if (res.IsSuccessStatusCode)
-    {
-        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(
-            await res.Content.ReadAsStringAsync(), opts);
-        if (list != null)
-            memberNames = list.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
-    }
-}
-catch { }
-using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, memberNames.ToArray());
+                try
+                {
+                    var http = ApiClient.Instance.GetHttpClient();
+                    var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
+                    if (res.IsSuccessStatusCode)
+                    {
+                        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(
+                            await res.Content.ReadAsStringAsync(), opts);
+                        if (list != null)
+                            memberNames = list.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
+                    }
+                }
+                catch { }
+                using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, memberNames.ToArray());
                 if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
                     return;
             }
@@ -1245,7 +1252,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             if (!await TryRemoveConversationOnServerAsync(_activeConvId))
             {
                 var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
-                string errorTitle = isGroup 
+                string errorTitle = isGroup
                     ? (resources.GetString("ChatLeaveTitle") ?? "Leave group")
                     : (resources.GetString("ChatDeleteTitle") ?? "Delete conversation");
                 string errorMessage = isGroup
@@ -1255,7 +1262,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 MessageBox.Show(this,
                     errorMessage,
                     errorTitle,
-                    MessageBoxButtons.OK, 
+                    MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
             }
@@ -1307,17 +1314,17 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             // Xóa conversation khỏi danh sách
             _convs.RemoveAll(c => c.Id == conversationId);
-            
+
             // Xóa tất cả tin nhắn của conversation
             _allMsgs.Remove(conversationId);
-            
+
             // Xóa khỏi cache sync
             _syncedConversations.Remove(conversationId);
             _myMemberIdByConv.Remove(conversationId);
-            
+
             // Xóa conversation key khỏi decryptor cache
             _decryptor.ForgetConversation(conversationId);
-            
+
             // Xóa processed message IDs của conversation này
             lock (_processedMessageIdsLock)
             {
@@ -1329,10 +1336,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             if (_activeConvId == conversationId)
             {
                 _activeConvId = string.Empty;
-                
+
                 // Clear current messages
                 _currentMsgs.Clear();
-                
+
                 // Chọn conversation đầu tiên nếu còn
                 if (_convs.Count > 0)
                 {
@@ -1691,7 +1698,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             {
                                 errorMessage = $"Upload thất bại với mã lỗi HTTP {(int)resp.StatusCode}.";
                             }
-                            
+
                             this.BeginInvoke(new Action(() => MessageBox.Show(this, errorMessage, "Lỗi Upload File", MessageBoxButtons.OK, MessageBoxIcon.Error)));
                             return;
                         }
@@ -1912,7 +1919,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                             errorMessage = $"Upload thất bại: {respStr}";
                                         }
                                     }
-                                    
+
                                     this.BeginInvoke(new Action(() => MessageBox.Show(this, errorMessage, "Lỗi Upload Voice", MessageBoxButtons.OK, MessageBoxIcon.Error)));
                                     return;
                                 }
@@ -2112,7 +2119,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 3600}h";
                 else
                     btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 86400}d";
-                
+
                 btnTimer.ForeColor = Color.FromArgb(255, 87, 34); // Orange color for active timer
                 btnTimer.Font = TG.FontSemiBold(10f);
             }
@@ -3029,6 +3036,27 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             await _fileTransfer.DownloadAsync(url, destination, progress, cts.Token).ConfigureAwait(false);
                         }).ConfigureAwait(false);
 
+                        // Decrypt file sau khi download
+                        if (SecureChat.Shared.Security.KeyManager.TryGetAesKey(messageId, out var aesKey, out var aesIv))
+                        {
+                            try
+                            {
+                                byte[] encryptedBytes = File.ReadAllBytes(destination);
+                                using var aes = System.Security.Cryptography.Aes.Create();
+                                aes.Key = aesKey;
+                                aes.IV = aesIv;
+                                using var decryptor = aes.CreateDecryptor();
+                                byte[] decryptedBytes = decryptor.TransformFinalBlock(encryptedBytes, 0, encryptedBytes.Length);
+                                File.WriteAllBytes(destination, decryptedBytes);
+                            }
+                            catch (Exception decEx)
+                            {
+                                this.BeginInvoke(new Action(() =>
+                                    MessageBox.Show(this, $"Giải mã thất bại: {decEx.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                            }
+                        }
+
+
                         // After successful download, if server provided expected sha256, verify integrity via FileTransferService
                         if (!string.IsNullOrWhiteSpace(expectedSha256))
                         {
@@ -3240,7 +3268,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         var timerSz = e.Graphics.MeasureString(timerText, timerFont);
                         float timerX = x + pad;
                         float timerY = y + bh - timerSz.Height - 6;
-                        
+
                         // Draw timer icon and text
                         e.Graphics.DrawString("⏱", new Font("Segoe UI Emoji", 8f), new SolidBrush(Color.FromArgb(255, 87, 34)), timerX, timerY - 1);
                         e.Graphics.DrawString(timerText, timerFont, new SolidBrush(Color.FromArgb(255, 87, 34)), timerX + 14, timerY);
@@ -3803,10 +3831,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             // Validate message length (tránh spam hoặc message quá dài)
             if (text.Length > 4096)
             {
-                MessageBox.Show(this, 
-                    "Tin nhắn quá dài. Vui lòng giới hạn trong 4096 ký tự.", 
-                    "Lỗi", 
-                    MessageBoxButtons.OK, 
+                MessageBox.Show(this,
+                    "Tin nhắn quá dài. Vui lòng giới hạn trong 4096 ký tự.",
+                    "Lỗi",
+                    MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
             }
@@ -3814,10 +3842,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             // Kiểm tra có conversation đang active không
             if (string.IsNullOrWhiteSpace(_activeConvId))
             {
-                MessageBox.Show(this, 
-                    "Vui lòng chọn một cuộc trò chuyện trước khi gửi tin nhắn.", 
-                    "Lỗi", 
-                    MessageBoxButtons.OK, 
+                MessageBox.Show(this,
+                    "Vui lòng chọn một cuộc trò chuyện trước khi gửi tin nhắn.",
+                    "Lỗi",
+                    MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
             }
@@ -4061,15 +4089,15 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             _wallpaperWatcher?.Dispose();
             _wallpaper?.Dispose();
             _chatMoreMenu?.Dispose();
-            
+
             // Stop and dispose countdown refresh timer
             _countdownRefreshTimer?.Stop();
             _countdownRefreshTimer?.Dispose();
-            
+
             // Stop and dispose expiration service
             _expirationService?.Stop();
             _expirationService?.Dispose();
-            
+
             SecureChat.Shared.Security.KeyManager.Clear();
             _decryptor.ForgetAll();
             _myMemberIdByConv.Clear();
