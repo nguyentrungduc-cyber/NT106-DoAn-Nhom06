@@ -264,6 +264,15 @@ namespace SecureChat.Client
 
                 BeginInvoke(new Action(() =>
                 {
+                    // Lưu preview hiện tại trước khi clear
+                    var existingPreviews = new Dictionary<string, string>();
+                    var existingTimes = new Dictionary<string, string>();
+                    foreach (var ec in _convs)
+                    {
+                        existingPreviews[ec.Id] = ec.Preview;
+                        existingTimes[ec.Id] = ec.Time;
+                    }
+
                     _convs.Clear();
                     foreach (var c in list)
                     {
@@ -271,7 +280,17 @@ namespace SecureChat.Client
                         string time = c.LastActivityAt.HasValue
                             ? c.LastActivityAt.Value.ToLocalTime().ToString("h:mm tt")
                             : c.CreatedAt.ToLocalTime().ToString("h:mm tt");
-                        _convs.Add((c.ConversationID, c.Name ?? "Conversation", "...", time, 0, isGroup));
+
+                        // Giữ preview cũ nếu có, nếu không thì dùng ... nếu có LastMessageID
+                        string preview = existingPreviews.TryGetValue(c.ConversationID, out var oldPreview)
+                            ? oldPreview
+                            : (c.LastMessageID != null ? "..." : string.Empty);
+
+                        // Giữ thời gian cũ nếu không có LastActivityAt mới
+                        if (c.LastActivityAt == null && existingTimes.TryGetValue(c.ConversationID, out var oldTime))
+                            time = oldTime;
+
+                        _convs.Add((c.ConversationID, c.Name ?? "Conversation", preview, time, 0, isGroup));
                     }
                     BuildConvList();
                 }));
