@@ -134,6 +134,8 @@ namespace SecureChat.Client
         private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new();
         private readonly Dictionary<string, DateTime> _messageDates = new();
 
+
+
         // Cập nhật lại _currentMsgs sang Tuple 5 tham số
         // Lưu ý: trả về list được lưu trong _allMsgs để các thao tác Add/Update
         // (gửi tin, nhận realtime) được phản ánh trực tiếp.
