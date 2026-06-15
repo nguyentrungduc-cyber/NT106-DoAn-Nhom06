@@ -2068,13 +2068,16 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             // Upload encrypted file using ApiClient.Instance (JWT)
                             try
                             {
+                                string durationLocal = SecureChat.Client.Services.AudioRecorderService.GetDurationSeconds(wavPath).ToString();
+
                                 using var fs = new FileStream(encryptedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                                 using var content = new MultipartFormDataContent();
                                 var streamContent = new StreamContent(fs);
                                 streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
                                 content.Add(streamContent, "file", Path.GetFileName(encryptedPath));
+                                content.Add(new System.Net.Http.StringContent(durationLocal), "duration");
 
-                                var (okUpload, respStr, uploadErr) = await ApiClient.Instance.PostMultipartAsync("api/files/upload", content);
+                                var (okUpload, respStr, uploadErr) = await ApiClient.Instance.PostMultipartAsync("api/voice/upload", content);
                                 if (!okUpload)
                                 {
                                     string errorMessage = "Không thể upload file lên server.";
@@ -2122,9 +2125,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                 string fileName = root.GetProperty("fileName").GetString() ?? Path.GetFileName(encryptedPath);
                                 long fileSize = root.GetProperty("fileSize").GetInt64();
                                 string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
-
-                                // Calculate actual WAV duration
-                                string duration = SecureChat.Client.Services.AudioRecorderService.GetDurationSeconds(wavPath).ToString();
+                                string duration = root.TryGetProperty("duration", out var durEl) ? durEl.GetInt32().ToString() : durationLocal;
                                 var fileNameInStorage = Path.GetFileName(url);
                                 var encodedFileName = Uri.EscapeDataString(fileName);
                                 var fileType = Path.GetExtension(fileName)?.TrimStart('.').ToLowerInvariant();
