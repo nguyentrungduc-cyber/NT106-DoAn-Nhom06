@@ -2125,7 +2125,9 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                 string fileName = root.GetProperty("fileName").GetString() ?? Path.GetFileName(encryptedPath);
                                 long fileSize = root.GetProperty("fileSize").GetInt64();
                                 string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
-                                string duration = root.TryGetProperty("duration", out var durEl) ? durEl.GetInt32().ToString() : durationLocal;
+                                string duration = root.TryGetProperty("duration", out var durEl) && durEl.ValueKind == System.Text.Json.JsonValueKind.Number
+                                    ? durEl.GetInt32().ToString()
+                                    : durationLocal;
                                 var fileNameInStorage = Path.GetFileName(url);
                                 var encodedFileName = Uri.EscapeDataString(fileName);
                                 var fileType = Path.GetExtension(fileName)?.TrimStart('.').ToLowerInvariant();
