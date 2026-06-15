@@ -44,38 +44,36 @@ namespace SecureChat.DTOs
         List<RecipientEncryption>? RecipientEncryptions = null
     );
 
-    public record AddReactionRequest([Required, MaxLength(8)] string Reaction);
-
-    public record MessageResponse(
-        string MessageID,
-        string ConversationID,
-        string? SenderID,
-        string? SenderUsername,
-        string? OriginalSenderID,
-        string? ReplyToID,
-        MessageType Type,
-        string Content,
-        string? ContentIV,
-        DateTime SentAt,
-        DateTime? EditedAt,
-        DateTime? DeletedAt,
-        DateTime? ExpiresAt,
-        List<AttachmentResponse>? Attachments,
-        List<ReactionResponse>? Reactions,
-        List<string>? MentionedMemberIDs
-    )
-    {
-        public static MessageResponse From(Message m) => new(
-            m.MessageID, m.ConversationID,
-            m.SenderID, m.Sender?.User.Username,
-            m.OriginalSenderID, m.ReplyToID,
-            m.Type, m.Content ?? "", m.ContentIV ?? "",
-            m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt,
-            m.Attachments.Select(AttachmentResponse.From).ToList(),
-            m.Reactions.Select(ReactionResponse.From).ToList(),
-            m.Mentions?.Select(mention => mention.MemberID).ToList()
-        );
-    }
+	public record MessageResponse(
+		string MessageID,
+		string ConversationID,
+		string? SenderID,
+		string? SenderUsername,
+		string? SenderDisplayName,
+		string? OriginalSenderID,
+		string? ReplyToID,
+		MessageType Type,
+		string Content,
+		string? ContentIV,
+		DateTime SentAt,
+		DateTime? EditedAt,
+		DateTime? DeletedAt,
+		DateTime? ExpiresAt,
+		List<AttachmentResponse>? Attachments,
+		List<string>? MentionedMemberIDs
+	)
+	{
+		public static MessageResponse From(Message m) => new(
+			m.MessageID, m.ConversationID,
+			m.SenderID, m.Sender?.User.Username,
+			m.Sender?.User?.DisplayName,
+			m.OriginalSenderID, m.ReplyToID,
+			m.Type, m.Content ?? "", m.ContentIV ?? "",
+			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt,
+			m.Attachments.Select(AttachmentResponse.From).ToList(),
+			m.Mentions?.Select(mention => mention.MemberID).ToList()
+		);
+	}
 
     public record AttachmentResponse(
         string AttachmentID,
@@ -103,32 +101,17 @@ namespace SecureChat.DTOs
         );
     }
 
-    public record ReactionResponse(
-        string ReactionID,
-        string MessageID,
-        string MemberID,
-        string? MemberUsername,
-        string Reaction,
-        DateTime CreatedAt
-    )
-    {
-        public static ReactionResponse From(MessageReaction r) => new(
-            r.ReactionID, r.MessageID, r.MemberID,
-            r.Member?.User?.Username, r.Reaction, r.CreatedAt
-        );
-    }
-
-    public record PinResponse(
-        string MessageID,
-        string ConversationID,
-        string? PinnedBy,
-        DateTime PinnedAt
-    )
-    {
-        public static PinResponse From(MessagePin p) => new(
-            p.MessageID, p.ConversationID, p.PinnedBy, p.PinnedAt
-        );
-    }
+	public record PinResponse(
+		string MessageID,
+		string ConversationID,
+		string? PinnedBy,
+		DateTime PinnedAt
+	)
+	{
+		public static PinResponse From(MessagePin p) => new(
+			p.MessageID, p.ConversationID, p.PinnedBy, p.PinnedAt
+		);
+	}
 
     public record MessageStatusResponse(
         string StatusID,

@@ -303,5 +303,8 @@ namespace SecureChat.Client.Services
         bool Out,
         string Time,
         string Sender,
-        MessageResponse Raw);
+        MessageResponse Raw)
+    {
+        public string SenderDisplayName => !string.IsNullOrWhiteSpace(Raw.SenderDisplayName) ? Raw.SenderDisplayName : Sender;
+    }
 }

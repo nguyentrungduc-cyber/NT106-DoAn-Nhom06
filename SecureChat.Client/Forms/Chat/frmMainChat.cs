@@ -149,7 +149,14 @@ namespace SecureChat.Client
             }
         }
 
-        private readonly Dictionary<string, bool> _settingsToggles = new(); // công tắc Night mode
+        private readonly Dictionary<string, bool> _settingsToggles = new();
+        private readonly Dictionary<string, string> _senderDisplayNameMap = new();
+        private readonly HashSet<string> _pinnedMessageIds = new();
+        private Panel _pnlPinnedBar = null!;
+        private Label _lblPinnedText = null!;
+        private Button _btnUnpin = null!;
+        private Panel _pnlPinnedPopup = null!;
+        private bool _isPinnedPopupOpen = false;
 
         public frmMainChat()
         {
@@ -340,6 +347,8 @@ namespace SecureChat.Client
 
                     string time = m.SentAt.ToLocalTime().ToString("h:mm tt");
                     string sender = isOut ? "" : (m.SenderUsername ?? "");
+                    if (!isOut && !string.IsNullOrEmpty(sender) && !string.IsNullOrEmpty(m.SenderDisplayName))
+                        _senderDisplayNameMap[sender] = m.SenderDisplayName;
                     _allMsgs[convId].Add((m.MessageID, text, isOut, time, sender));
                 }
 
@@ -981,9 +990,98 @@ namespace SecureChat.Client
             // Click vào vùng chat → đóng settings menu
             _pnlMessages.Click += (s, e) => { if (_settingsVisible) HideSettingsMenu(); };
 
+            // ── Pinned message bar (Messenger-style) ─────
+            _lblPinnedText = new Label
+            {
+                AutoSize = false,
+                Height = 28,
+                Font = TG.FontRegular(10f),
+                ForeColor = TG.TextPrimary,
+                BackColor = Color.Transparent,
+                Left = 30,
+                Top = 0,
+                TextAlign = ContentAlignment.MiddleLeft,
+                UseMnemonic = false,
+            };
+            _btnUnpin = new Button
+            {
+                Text = "✕",
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(20, 20),
+                Cursor = Cursors.Hand,
+                ForeColor = TG.TextSecondary,
+            };
+            _btnUnpin.FlatAppearance.BorderSize = 0;
+            _btnUnpin.Click += (s, e) => { _isPinnedPopupOpen = false; _pnlPinnedPopup.Visible = false; OnUnpinMessage(); };
+            _pnlPinnedBar = new Panel
+            {
+                Height = 28,
+                Dock = DockStyle.Top,
+                BackColor = Color.FromArgb(0xE8, 0xEA, 0xED),
+                Visible = false,
+                Cursor = Cursors.Hand,
+            };
+            var pinIcon = new Label
+            {
+                Text = "📌",
+                Font = new Font("Segoe UI Emoji", 10f),
+                AutoSize = true,
+                Location = new Point(8, 5),
+                BackColor = Color.Transparent,
+                Cursor = Cursors.Hand,
+            };
+            var downArrow = new Label
+            {
+                Text = "▾",
+                Font = TG.FontRegular(8f),
+                AutoSize = true,
+                ForeColor = TG.TextSecondary,
+                BackColor = Color.Transparent,
+                Cursor = Cursors.Hand,
+            };
+            _pnlPinnedBar.Controls.Add(pinIcon);
+            _pnlPinnedBar.Controls.Add(_lblPinnedText);
+            _pnlPinnedBar.Controls.Add(downArrow);
+            _pnlPinnedBar.Controls.Add(_btnUnpin);
+            void LayoutPinBar()
+            {
+                _lblPinnedText.Width = Math.Max(100, _pnlPinnedBar.Width - 78);
+                downArrow.Location = new Point(_pnlPinnedBar.Width - 42, 7);
+                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - 28, 4);
+            }
+            _pnlPinnedBar.Resize += (_, __) => LayoutPinBar();
+            _pnlPinnedBar.VisibleChanged += (_, __) => { if (_pnlPinnedBar.Visible) LayoutPinBar(); };
+
+            // Toggle popup on bar click
+            void TogglePinnedPopup(object? s, EventArgs e)
+            {
+                if (_pinnedMessageIds.Count == 0) return;
+                _isPinnedPopupOpen = !_isPinnedPopupOpen;
+                if (_isPinnedPopupOpen) RebuildPinnedPopup();
+                _pnlPinnedPopup.Visible = _isPinnedPopupOpen;
+            }
+            _lblPinnedText.Click += TogglePinnedPopup;
+            pinIcon.Click += TogglePinnedPopup;
+            downArrow.Click += TogglePinnedPopup;
+            _pnlPinnedBar.Click += TogglePinnedPopup;
+
+            // ── Pinned popup dropdown ─────────────────────
+            _pnlPinnedPopup = new Panel
+            {
+                Dock = DockStyle.Top,
+                BackColor = Color.White,
+                Visible = false,
+                Height = 0,
+            };
+            // Click outside popup to close
+            _pnlMessages.MouseClick += (s, e) => { _isPinnedPopupOpen = false; _pnlPinnedPopup.Visible = false; };
+            _pnlChatHeader.Click += (s, e) => { _isPinnedPopupOpen = false; _pnlPinnedPopup.Visible = false; };
+
             // ── Input bar ─────────────────────────────
             BuildInputBar();
 
+            _pnlChat.Controls.Add(_pnlPinnedPopup);
+            _pnlChat.Controls.Add(_pnlPinnedBar);
             _pnlChat.Controls.Add(_pnlMessages);
             _pnlChat.Controls.Add(_pnlChatEmpty);
             _pnlChat.Controls.Add(_pnlInputBar);
@@ -1933,6 +2031,22 @@ namespace SecureChat.Client
             _tbMessage.KeyDown += (s, e) => { if (e.KeyCode == Keys.Return && !e.Shift) { e.SuppressKeyPress = true; SendMessage(); } };
 
             var btnEmoji = MakeInputBtn("😊");
+            btnEmoji.Click += (s, e) =>
+            {
+                using var picker = new SecureChat.Client.Forms.Chat.frmReactionPicker();
+                var btn = (Control)s!;
+                var screenPt = btn.PointToScreen(new Point(0, 0));
+                int x = Math.Max(0, screenPt.X + btn.Width - picker.Width);
+                int y = screenPt.Y - picker.Height - 4;
+                if (y < 0) y = screenPt.Y + btn.Height + 4;
+                picker.StartPosition = FormStartPosition.Manual;
+                picker.Location = new Point(x, y);
+                if (picker.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(picker.SelectedReaction))
+                {
+                    _tbMessage.Text += picker.SelectedReaction;
+                    _tbMessage.Focus();
+                }
+            };
             var btnMic = MakeInputBtn("🎤");
             btnMic.Click += async (s, e) =>
             {
@@ -2216,24 +2330,17 @@ namespace SecureChat.Client
             var btn = new Button
             {
                 Text = icon,
-                // 1. Giảm nhẹ font từ 14f xuống 13f
                 Font = new Font("Segoe UI Emoji", 13f),
                 FlatStyle = FlatStyle.Flat,
                 Size = new Size(36, 36),
-                BackColor = Color.Transparent,
                 ForeColor = TG.Blue,
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleCenter,
-
-                // 2. Dùng Padding đẩy phần ruột (chữ) lên trên 4px, cách đều đáy
-                Padding = new Padding(0, 0, 0, 4)
+                UseVisualStyleBackColor = true,
             };
             btn.FlatAppearance.BorderSize = 0;
             btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 0, 0, 0);
             btn.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 0, 0, 0);
-
-            // (Tùy chọn) Thêm dòng này để nét render của emoji mượt và chuẩn viền hơn
-            btn.UseCompatibleTextRendering = true;
 
             return btn;
         }
@@ -2781,6 +2888,7 @@ namespace SecureChat.Client
             // để nhận realtime cho các tin sau đó.
             await SyncMessagesForActiveConversationAsync(convId);
             await JoinConversationSignalRAsync(convId);
+            await LoadPinsAsync(convId);
         }
 
         // ════════════════════════════════════════════
@@ -3124,13 +3232,21 @@ namespace SecureChat.Client
                 if (existing.Count == 0)
                 {
                     foreach (var dm in decrypted)
+                    {
+                        if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
+                            _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
                         existing.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
+                    }
                 }
                 else
                 {
                     var merged = new List<(string Id, string Text, bool Out, string Time, string Sender)>();
                     foreach (var dm in decrypted)
+                    {
+                        if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
+                            _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
                         merged.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
+                    }
                     foreach (var m in existing)
                         if (!decrypted.Exists(d => d.Id == m.Id) && !_hiddenMessageIds.Contains(m.Id))
                             merged.Add(m);
@@ -3244,6 +3360,7 @@ namespace SecureChat.Client
                 var msg = _currentMsgs[i];
                 bool isGroup = _convs.Find(c => c.Id == _activeConvId).IsGroup;
                 var bubble = BuildBubble(msg.Text, msg.Out, msg.Time, msg.Sender, isGroup, msg.Id);
+                bubble.Tag = msg.Id;
 
                 // Make bubble respect panel resizing
                 bubble.Location = new Point(0, y);
@@ -3530,16 +3647,19 @@ namespace SecureChat.Client
                 if (parts.Length == 3)
                 {
                     replySender = parts[0];
+                    if (replySender != "You" && _senderDisplayNameMap.TryGetValue(replySender, out var dn) && !string.IsNullOrEmpty(dn))
+                        replySender = dn;
                     replyText = ExtractActualText(parts[1]); // Tránh lỗi reply lồng reply
                     actualText = parts[2];
                 }
             }
 
             // Chỉ đo kích thước của phần chữ mới
-            SizeF sz;
+            Size sz;
             using (var g = _pnlMessages.CreateGraphics())
             {
-                sz = g.MeasureString(actualText, TG.FontRegular(9.5f), maxW - pad * 2);
+                sz = TextRenderer.MeasureText(g, actualText, TG.FontRegular(9.5f),
+                    new Size(maxW - pad * 2, 0), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
             }
 
             int statusHeight = 16;
@@ -3575,6 +3695,13 @@ namespace SecureChat.Client
                     ? new[] { new Point(x + bw, y + bh - 8), new Point(x + bw + 5, y + bh), new Point(x + bw, y + bh) }
                     : new[] { new Point(x, y + bh - 8), new Point(x - 5, y + bh), new Point(x, y + bh) };
                 e.Graphics.FillPolygon(new SolidBrush(bg), tail);
+
+                // Pin indicator
+                if (_pinnedMessageIds.Contains(messageId))
+                {
+                    using var pinFont = new Font("Segoe UI Emoji", 9f);
+                    e.Graphics.DrawString("📌", pinFont, Brushes.Gray, x + bw - 22, y + 2);
+                }
 
                 float currentY = y + pad;
 
@@ -3616,12 +3743,13 @@ namespace SecureChat.Client
                     currentY += 40;
                 }
 
-                // 3. Text tin nhắn chính (Sử dụng actualText)
-                var textRect = new RectangleF(x + pad, currentY, bw - pad * 2, sz.Height);
-                e.Graphics.DrawString(actualText, TG.FontRegular(9.5f), new SolidBrush(TG.TextPrimary), textRect);
+                // 3. Text tin nhắn chính - dùng TextRenderer để render emoji đúng
+                var textRect = new Rectangle(x + pad, (int)currentY, bw - pad * 2, sz.Height);
+                TextRenderer.DrawText(e.Graphics, actualText, TG.FontRegular(9.5f), textRect,
+                    TG.TextPrimary, TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
 
                 // 4. Thời gian và dấu tick ✓✓
-                var timeSz = e.Graphics.MeasureString(time, TG.FontRegular(7.5f));
+                var timeSz = TextRenderer.MeasureText(time, TG.FontRegular(7.5f));
                 float tx = x + bw - timeSz.Width - pad - (isOut ? 26 : 0);
                 float ty = y + bh - timeSz.Height - 6;
                 e.Graphics.DrawString(time, TG.FontRegular(7.5f), new SolidBrush(TG.TextTime), tx, ty);
@@ -3659,11 +3787,14 @@ namespace SecureChat.Client
                 Forward = id => OnForwardMessage(id),
                 Copy = id => OnCopyMessage(id),
                 Edit = isOut ? (id => OnEditMessage(id)) : null,
-                Pin = id => OnPinMessage(id),
-                React = id => OnReactMessage(id),
+                Pin = id =>
+                {
+                    if (_pinnedMessageIds.Contains(id)) OnUnpinMessage(id);
+                    else OnPinMessage(id);
+                },
                 Delete = id => OnDeleteMessage(id, isOut)
             };
-            pnl.ContextMenuStrip = SecureChat.Client.Forms.Chat.frmRightClickMessageMenu.Create(messageId, actions, null);
+            pnl.ContextMenuStrip = SecureChat.Client.Forms.Chat.frmRightClickMessageMenu.Create(messageId, actions, null, _pinnedMessageIds.Contains(messageId));
 
             if (!isOut && isGroup)
             {
@@ -3797,7 +3928,9 @@ namespace SecureChat.Client
             var msg = _currentMsgs[msgIndex];
             _replyingToMessageId = msg.Id;
 
-            _lblReplySender.Text = string.IsNullOrEmpty(msg.Sender) ? "You" : msg.Sender;
+            string replyDisplayName = string.IsNullOrEmpty(msg.Sender) ? "You"
+                : _senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : msg.Sender;
+            _lblReplySender.Text = replyDisplayName;
 
             // GỌI HÀM EXTRACT ĐỂ HIỂN THỊ TEXT TRONG THANH REPLY
             _lblReplyText.Text = ExtractActualText(msg.Text);
@@ -3834,6 +3967,7 @@ namespace SecureChat.Client
 
                 _currentMsgs[msgIndex] = (msg.Id, finalNewText, msg.Out, msg.Time, msg.Sender);
                 BuildMessages();
+                UpdatePinnedBar();
             }
         }
 
@@ -3879,28 +4013,296 @@ namespace SecureChat.Client
             BuildMessages();
         }
 
+        private async Task LoadPinsAsync(string convId)
+        {
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var res = await http.GetAsync($"api/conversations/{convId}/messages/pins");
+                if (!res.IsSuccessStatusCode) return;
+
+                var json = await res.Content.ReadAsStringAsync();
+                var pins = System.Text.Json.JsonSerializer.Deserialize<List<PinResponse>>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (pins is null) return;
+
+                _pinnedMessageIds.Clear();
+                foreach (var p in pins)
+                    _pinnedMessageIds.Add(p.MessageID);
+
+                if (_activeConvId == convId)
+                    UpdatePinnedBar();
+            }
+            catch { /* silently ignore */ }
+        }
+
         private async void OnPinMessage(string messageId)
         {
-            var dialog = ShowTelegramDialog("Pin message?", "Pin for both sides", "Pin", TG.Blue);
-            if (dialog.Result != DialogResult.Yes) return;
+            if (_pinnedMessageIds.Count >= 3)
+            {
+                BeginInvoke(new Action(() =>
+                    MessageBox.Show(this, "Chỉ được ghim tối đa 3 tin nhắn.", "Giới hạn", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
+                return;
+            }
 
             var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
             var res = await http.PostAsync(
                 $"api/conversations/{_activeConvId}/messages/{messageId}/pin",
                 null);
 
-            if (res.IsSuccessStatusCode)
-                MessageBox.Show(this, "Đã ghim tin nhắn.", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            else
+            if (!res.IsSuccessStatusCode)
             {
                 var err = await res.Content.ReadAsStringAsync();
-                MessageBox.Show(this, $"Lỗi ghim: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                BeginInvoke(new Action(() =>
+                    MessageBox.Show(this, $"Lỗi ghim: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                return;
             }
+
+            _pinnedMessageIds.Add(messageId);
+            UpdatePinnedBar();
+            BuildMessages();
         }
 
-        private void OnReactMessage(string messageId)
+        private async void OnUnpinMessage(string? messageId = null)
         {
-            MessageBox.Show("Tính năng thả cảm xúc (React) đang được phát triển!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (string.IsNullOrWhiteSpace(messageId))
+            {
+                if (_pinnedMessageIds.Count == 0) return;
+                messageId = _pinnedMessageIds.First();
+            }
+
+            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+            var res = await http.DeleteAsync(
+                $"api/conversations/{_activeConvId}/messages/{messageId}/pin");
+
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                BeginInvoke(new Action(() =>
+                    MessageBox.Show(this, $"Lỗi bỏ ghim: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                return;
+            }
+
+            _pinnedMessageIds.Remove(messageId);
+            UpdatePinnedBar();
+            BuildMessages();
+        }
+
+        private void UpdatePinnedBar()
+        {
+            if (_pinnedMessageIds.Count == 0)
+            {
+                _pnlPinnedBar.Visible = false;
+                _pnlPinnedPopup.Visible = false;
+                _isPinnedPopupOpen = false;
+                return;
+            }
+
+            var firstId = _pinnedMessageIds.First();
+            var firstMsg = _currentMsgs.Find(m => m.Id == firstId);
+            string preview = firstMsg.Id is not null ? GetPinnedDisplayText(firstMsg.Text) : "Pinned message";
+
+            var count = _pinnedMessageIds.Count;
+            string truncatedPreview = TruncateText(preview, 60);
+            _lblPinnedText.Text = count == 1
+                ? $"Pin: {truncatedPreview}"
+                : $"{count} pins: {truncatedPreview}";
+
+            _pnlPinnedBar.Visible = true;
+
+            // Rebuild popup if open
+            if (_isPinnedPopupOpen)
+                RebuildPinnedPopup();
+        }
+
+        private string GetPinnedDisplayText(string? text)
+        {
+            if (text is null) return "(media)";
+            if (text.StartsWith("reply::"))
+            {
+                var parts = text.Split(new[] { "::" }, 4, StringSplitOptions.None);
+                text = parts.Length >= 4 ? parts[3] : text;
+            }
+            if (text.StartsWith("voice::")) return "📞 Voice message";
+            if (text.StartsWith("file::")) return "📎 File";
+            return text;
+        }
+
+        private string TruncateText(string text, int maxLen = 80)
+            => text.Length > maxLen ? text[..maxLen] + "…" : text;
+
+        private void RebuildPinnedPopup()
+        {
+            _pnlPinnedPopup.Controls.Clear();
+            if (_pinnedMessageIds.Count == 0)
+            {
+                _pnlPinnedPopup.Height = 0;
+                return;
+            }
+
+            int itemH = 40;
+
+            foreach (var pid in _pinnedMessageIds)
+            {
+                var msg = _currentMsgs.Find(m => m.Id == pid);
+                string displayText;
+                string senderName = "Unknown";
+
+                if (msg.Id is not null)
+                {
+                    displayText = GetPinnedDisplayText(msg.Text);
+                    if (!string.IsNullOrEmpty(msg.Sender) && msg.Sender != "You")
+                    {
+                        if (_senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn))
+                            senderName = dn;
+                        else senderName = msg.Sender;
+                    }
+                    else senderName = "You";
+                }
+                else
+                {
+                    displayText = "Pinned message";
+                }
+
+                // Item panel
+                var item = new Panel
+                {
+                    Height = itemH,
+                    Dock = DockStyle.Top,
+                    BackColor = Color.White,
+                    Cursor = Cursors.Hand,
+                    Tag = pid,
+                };
+
+                // Hover highlight
+                item.MouseEnter += (_, __) => item.BackColor = Color.FromArgb(0xF0, 0xF0, 0xF0);
+                item.MouseLeave += (_, __) => item.BackColor = Color.White;
+
+                // Pin icon
+                var itemIcon = new Label
+                {
+                    Text = "📌",
+                    Font = new Font("Segoe UI Emoji", 9f),
+                    AutoSize = true,
+                    Location = new Point(12, 12),
+                    BackColor = Color.Transparent,
+                };
+
+                // Sender name
+                int itemTextW = Math.Max(50, _pnlPinnedBar.Width - 110);
+                var lblSender = new Label
+                {
+                    Text = TruncateText(senderName, 30),
+                    Font = TG.FontSemiBold(9f),
+                    ForeColor = TG.Blue,
+                    AutoSize = false,
+                    Height = 16,
+                    Width = itemTextW,
+                    Location = new Point(34, 4),
+                    BackColor = Color.Transparent,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                };
+
+                // Message text (2-line truncation)
+                var lblText = new Label
+                {
+                    Text = TruncateText(displayText, 80),
+                    Font = TG.FontRegular(9f),
+                    ForeColor = TG.TextPrimary,
+                    AutoSize = false,
+                    Height = 18,
+                    Width = itemTextW,
+                    Location = new Point(34, 20),
+                    BackColor = Color.Transparent,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                };
+
+                // Unpin button per item
+                var btnItemUnpin = new Button
+                {
+                    Text = "✕",
+                    FlatStyle = FlatStyle.Flat,
+                    Size = new Size(18, 18),
+                    Location = new Point(_pnlPinnedBar.Width - 28, 11),
+                    Cursor = Cursors.Hand,
+                    ForeColor = TG.TextSecondary,
+                    Tag = pid,
+                };
+                btnItemUnpin.FlatAppearance.BorderSize = 0;
+                btnItemUnpin.Click += (s, _) =>
+                {
+                    var btn = (Button)s!;
+                    var id = (string)btn.Tag!;
+                    _isPinnedPopupOpen = false;
+                    _pnlPinnedPopup.Visible = false;
+                    OnUnpinMessage(id);
+                };
+
+                // Click item → scroll to message
+                void OnItemClick(object? s, EventArgs e)
+                {
+                    _isPinnedPopupOpen = false;
+                    _pnlPinnedPopup.Visible = false;
+                    ScrollToMessage(pid);
+                }
+                item.Click += OnItemClick;
+                itemIcon.Click += OnItemClick;
+                lblSender.Click += OnItemClick;
+                lblText.Click += OnItemClick;
+
+                item.Controls.Add(btnItemUnpin);
+                item.Controls.Add(itemIcon);
+                item.Controls.Add(lblText);
+                item.Controls.Add(lblSender);
+                _pnlPinnedPopup.Controls.Add(item);
+            }
+
+            // Bottom separator line
+            var sep = new Panel
+            {
+                Height = 1,
+                Dock = DockStyle.Top,
+                BackColor = TG.Divider,
+            };
+            _pnlPinnedPopup.Controls.Add(sep);
+
+            _pnlPinnedPopup.Height = _pinnedMessageIds.Count * itemH + 1;
+        }
+
+        private void ScrollToMessage(string messageId)
+        {
+            // Close popup first
+            _isPinnedPopupOpen = false;
+            _pnlPinnedPopup.Visible = false;
+
+            foreach (Control c in _pnlMessages.Controls)
+            {
+                if (c.Tag is string tag && tag == messageId && c is Panel pnl)
+                {
+                    _pnlMessages.ScrollControlIntoView(pnl);
+
+                    // Flash highlight: add a colored border overlay
+                    var flash = new Panel
+                    {
+                        BackColor = Color.FromArgb(60, 0x52, 0x9C, 0xFF),
+                        Dock = DockStyle.Fill,
+                        Enabled = false,
+                    };
+                    pnl.Controls.Add(flash);
+                    flash.BringToFront();
+
+                    var timer = new System.Windows.Forms.Timer { Interval = 1200 };
+                    timer.Tick += (_, __) =>
+                    {
+                        pnl.Controls.Remove(flash);
+                        flash.Dispose();
+                        timer.Stop();
+                        timer.Dispose();
+                    };
+                    timer.Start();
+                    return;
+                }
+            }
         }
 
         private async Task InitializeSignalRAsync()
@@ -3981,6 +4383,8 @@ namespace SecureChat.Client
                     list = new List<(string Id, string Text, bool Out, string Time, string Sender)>();
                     _allMsgs[message.ConversationID] = list;
                 }
+                if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
+                    _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
                 list.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
 
                 // Cập nhật preview ở sidebar (best-effort).

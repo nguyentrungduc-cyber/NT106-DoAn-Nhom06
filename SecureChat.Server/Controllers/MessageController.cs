@@ -202,8 +202,6 @@ namespace SecureChat.Controllers
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
-			if (member.Role < MemberRole.Moderator)
-				return Forbid();
 
 			var msg = await messages.GetByIdAsync(messageID);
 			if (msg is null || msg.ConversationID != conversationID)
@@ -212,6 +210,10 @@ namespace SecureChat.Controllers
 			var existing = await messages.GetPinAsync(messageID, conversationID);
 			if (existing is not null)
 				return Conflict(new { error = "Tin nhắn đã được ghim." });
+
+			var pins = await messages.GetPinsByConversationAsync(conversationID);
+			if (pins.Count >= 3)
+				return BadRequest(new { error = "Chỉ được ghim tối đa 3 tin nhắn." });
 
 			var pin = await messages.PinMessageAsync(new MessagePin {
 				MessageID      = messageID,
@@ -228,52 +230,8 @@ namespace SecureChat.Controllers
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
-			if (member.Role < MemberRole.Moderator)
-				return Forbid();
 
 			await messages.UnpinMessageAsync(messageID, conversationID);
-			return NoContent();
-		}
-
-		[HttpPost("{messageID}/reactions")]
-		public async Task<IActionResult> AddReaction(string conversationID, string messageID, [FromBody] AddReactionRequest req)
-		{
-			var member = await GetActiveMember(conversationID);
-			if (member is null)
-				return Forbid();
-
-			var msg = await messages.GetByIdAsync(messageID);
-			if (msg is null || msg.ConversationID != conversationID)
-				return NotFound();
-
-			var existing = await messages.GetReactionAsync(messageID, member.MemberID, req.Reaction);
-			if (existing is not null)
-				return Conflict(new { error = "Đã react emoji này rồi." });
-
-			var reaction = await messages.AddReactionAsync(new MessageReaction {
-				ReactionID = NewID(),
-				MessageID  = messageID,
-				MemberID   = member.MemberID,
-				Reaction   = req.Reaction
-			});
-
-			return Ok(ReactionResponse.From(reaction));
-		}
-
-		[HttpDelete("{messageID}/reactions/{reactionID}")]
-		public async Task<IActionResult> RemoveReaction(string conversationID, string messageID, string reactionID)
-		{
-			var member = await GetActiveMember(conversationID);
-			if (member is null)
-				return Forbid();
-
-			var reaction = await messages.GetReactionByIdAsync(reactionID);
-			if (reaction is null || reaction.MessageID != messageID)
-				return NotFound();
-			if (reaction.MemberID != member.MemberID)
-				return Forbid();
-
-			await messages.RemoveReactionAsync(reactionID);
 			return NoContent();
 		}
 
