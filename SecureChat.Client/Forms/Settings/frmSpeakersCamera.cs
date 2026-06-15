@@ -54,6 +54,15 @@ namespace SecureChat.Client.Forms.Settings
             FormClosed += (_, __) => StopCameraPreview();
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                StopCameraPreview();
+            }
+            base.Dispose(disposing);
+        }
+
         private void InitializeComponent() { }
 
         private void BuildUI()
