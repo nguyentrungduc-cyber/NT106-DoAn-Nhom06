@@ -9,6 +9,7 @@ using System.Collections.Generic;   // List<>, Dictionary<>
 using System.Drawing;               // Color, Point, Size, Image, Bitmap
 using System.Drawing.Drawing2D;     // SmoothingMode, LinearGradientBrush
 using System.Drawing.Imaging;       // PixelFormat, ColorMatrix, ImageAttributes
+using System.Linq;
 using System.IO;                    // File, Path, MemoryStream, FileSystemWatcher
 using System.Net.Http;
 using System.Reflection;
@@ -155,6 +156,8 @@ namespace SecureChat.Client
 
         private readonly Dictionary<string, bool> _settingsToggles = new();
         private readonly ConcurrentDictionary<string, string> _senderDisplayNameMap = new();
+        private readonly ConcurrentDictionary<string, string> _usernameToUserId = new();
+        private readonly ConcurrentDictionary<string, string> _forwardMetadata = new();
         private readonly HashSet<string> _pinnedMessageIds = new();
         private Panel _pnlPinnedBar = null!;
         private Label _lblPinnedText = null!;
@@ -256,39 +259,21 @@ namespace SecureChat.Client
         {
             try
             {
-                var http = SecureChat.Client.Services.ApiClient.Instance;
-                var response = await http.GetHttpClient().GetAsync("api/conversations");
-                if (!response.IsSuccessStatusCode) return;
-
-                var json = await response.Content.ReadAsStringAsync();
-                var options = new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
-                };
-                var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.ConversationResponse>>(json, options);
-                if (list == null) return;
-
-                _convs.Clear();
-                foreach (var c in list)
-                {
-                    bool isGroup = c.Type == SecureChat.Models.ConversationType.Group;
-                    string preview = c.LastMessageID != null ? "..." : "";
-                    string time = c.LastActivityAt.HasValue
-                        ? c.LastActivityAt.Value.ToLocalTime().ToString("h:mm tt")
-                        : c.CreatedAt.ToLocalTime().ToString("h:mm tt");
-                    _convs.Add((c.ConversationID, c.Name ?? "Conversation", preview, time, 0, isGroup));
-                }
+                var (ok, list, _) = await _messageService.GetMyConversationsAsync();
+                if (!ok || list is null) return;
 
                 BeginInvoke(new Action(() =>
                 {
-                    BuildConvList();
-                    if (_convs.Count > 0)
+                    _convs.Clear();
+                    foreach (var c in list)
                     {
-                        _activeConvId = _convs[0].Id;
-                        _ = LoadMessagesAsync(_activeConvId);
-                        LoadConversation(_activeConvId);
+                        bool isGroup = c.Type == SecureChat.Models.ConversationType.Group;
+                        string time = c.LastActivityAt.HasValue
+                            ? c.LastActivityAt.Value.ToLocalTime().ToString("h:mm tt")
+                            : c.CreatedAt.ToLocalTime().ToString("h:mm tt");
+                        _convs.Add((c.ConversationID, c.Name ?? "Conversation", "...", time, 0, isGroup));
                     }
+                    BuildConvList();
                 }));
             }
             catch (Exception ex)
@@ -351,6 +336,10 @@ namespace SecureChat.Client
                     string sender = isOut ? "" : (m.SenderUsername ?? "");
                     if (!isOut && !string.IsNullOrEmpty(sender) && !string.IsNullOrEmpty(m.SenderDisplayName))
                         _senderDisplayNameMap[sender] = m.SenderDisplayName;
+                    if (!string.IsNullOrEmpty(sender) && !string.IsNullOrEmpty(m.SenderUserID))
+                        _usernameToUserId[sender] = m.SenderUserID;
+                    if (!string.IsNullOrEmpty(m.OriginalSenderID) && !string.IsNullOrEmpty(m.OriginalSenderName))
+                        _forwardMetadata[m.MessageID] = m.OriginalSenderName;
                     _messageDates[m.MessageID] = m.SentAt.ToLocalTime();
                     _allMsgs[convId].Add((m.MessageID, text, isOut, time, sender));
                 }
@@ -1543,6 +1532,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 
                 // Clear current messages
                 _currentMsgs.Clear();
+                _forwardMetadata.Clear();
                 
                 // Chọn conversation đầu tiên nếu còn
                 if (_convs.Count > 0)
@@ -1739,6 +1729,18 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
         private string ExtractActualText(string rawText)
         {
+            // Strip forward prefix (backward compat)
+            const string forwardPrefix = "[Forwarded from ";
+            if (!string.IsNullOrEmpty(rawText) && rawText.StartsWith(forwardPrefix))
+            {
+                int endBracket = rawText.IndexOf(']');
+                if (endBracket > forwardPrefix.Length)
+                {
+                    string rest = rawText.Substring(endBracket + 2).TrimStart();
+                    return ExtractActualText(rest);
+                }
+            }
+
             const string replyPrefix = "reply::";
             if (!string.IsNullOrEmpty(rawText) && rawText.StartsWith(replyPrefix))
             {
@@ -1748,6 +1750,21 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     return payload.Substring(lastSep + 2);
             }
             return rawText;
+        }
+
+        private string StripForwardPrefix(string text)
+        {
+            const string forwardPrefix = "[Forwarded from ";
+            if (!string.IsNullOrEmpty(text) && text.StartsWith(forwardPrefix))
+            {
+                int endBracket = text.IndexOf(']');
+                if (endBracket > forwardPrefix.Length)
+                {
+                    string rest = text.Substring(endBracket + 2).TrimStart();
+                    return rest;
+                }
+            }
+            return text;
         }
 
 
@@ -2795,12 +2812,20 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                     _processedMessageIds.Clear();
                                 }
 
-                                // 2. Mở lại Form Login
-                                var loginForm = new frmLoginRegister(); // Thay bằng tên Form Login của bạn
-                                loginForm.Show();
+                                // 2. Tìm login form cũ đang ẩn và hiện lại
+                                var oldLogin = Application.OpenForms.OfType<frmLoginRegister>().FirstOrDefault();
+                                if (oldLogin != null)
+                                {
+                                    oldLogin.Show();
+                                }
+                                else
+                                {
+                                    var loginForm = new frmLoginRegister();
+                                    loginForm.Show();
+                                }
 
-                                // 3. Đóng Form Main hiện tại
-                                this.Close();
+                                // 3. Ẩn Form Main thay vì đóng để không kích hoạt FormClosed cascade
+                                this.Hide();
                             }
                         }
                         catch (Exception ex)
@@ -3141,6 +3166,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 // Có data thật -> drop mock và replace.
                 _convs.Clear();
                 _allMsgs.Clear();
+                _forwardMetadata.Clear();
                 _syncedConversations.Clear();
                 _myMemberIdByConv.Clear();
 
@@ -3246,6 +3272,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     {
                         if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
                             _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
+                        if (!string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.Raw.SenderUserID))
+                            _usernameToUserId[dm.Sender] = dm.Raw.SenderUserID;
+                        if (!string.IsNullOrEmpty(dm.Raw.OriginalSenderID) && !string.IsNullOrEmpty(dm.Raw.OriginalSenderName))
+                            _forwardMetadata[dm.Id] = dm.Raw.OriginalSenderName;
                         existing.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
                     }
                 }
@@ -3256,6 +3286,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     {
                         if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
                             _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
+                        if (!string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.Raw.SenderUserID))
+                            _usernameToUserId[dm.Sender] = dm.Raw.SenderUserID;
+                        if (!string.IsNullOrEmpty(dm.Raw.OriginalSenderID) && !string.IsNullOrEmpty(dm.Raw.OriginalSenderName))
+                            _forwardMetadata[dm.Id] = dm.Raw.OriginalSenderName;
                         merged.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
                     }
                     foreach (var m in existing)
@@ -3308,21 +3342,30 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             return (true, all, string.Empty);
         }
 
-        private string GetSidebarPreviewText(string rawText)
+        private string GetSidebarPreviewText(string rawText, string? messageId = null)
         {
+            // Kiểm tra forward metadata
+            if (!string.IsNullOrEmpty(messageId) && _forwardMetadata.ContainsKey(messageId))
+                return "Forwarded message";
+
+            // Fallback: text prefix (backward compat)
+            const string forwardPrefix = "[Forwarded from ";
+            if (!string.IsNullOrEmpty(rawText) && rawText.StartsWith(forwardPrefix))
+                return "Forwarded message";
+
             string cleaned = ExtractActualText(rawText);
             if (cleaned.StartsWith("voice::")) return "Voice message";
             if (cleaned.StartsWith("file::")) return "File";
             return cleaned;
         }
 
-        private void RefreshConversationItem(string convId, string rawText, bool isOut, string senderName, string timeStr, int? unread = null)
+        private void RefreshConversationItem(string convId, string rawText, bool isOut, string senderName, string timeStr, int? unread = null, string? messageId = null)
         {
             int idx = _convs.FindIndex(c => c.Id == convId);
             if (idx < 0) return;
 
             var c = _convs[idx];
-            string displayText = GetSidebarPreviewText(rawText);
+            string displayText = GetSidebarPreviewText(rawText, messageId);
             string preview = string.IsNullOrEmpty(senderName) || isOut
                 ? displayText
                 : $"{senderName}: {displayText}";
@@ -3369,7 +3412,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
         {
             string senderForPreview = latest.Out ? "" : (!string.IsNullOrEmpty(latest.SenderDisplayName) ? latest.SenderDisplayName : latest.Sender);
             RefreshConversationItem(convId, latest.Text, latest.Out, senderForPreview,
-                latest.Raw.SentAt.ToLocalTime().ToString("h:mm tt"));
+                latest.Raw.SentAt.ToLocalTime().ToString("h:mm tt"), messageId: latest.Id);
         }
 
         private void RefreshSidebarPreview()
@@ -3494,6 +3537,65 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 Math.Max(0, (_pnlChatEmpty.Height - _lblChatEmpty.Height) / 2));
         }
 
+        private Panel WrapForwardIfNeeded(Panel inner, string messageId, bool isOut)
+        {
+            if (string.IsNullOrEmpty(messageId) || !_forwardMetadata.TryGetValue(messageId, out var fwdName))
+                return inner;
+
+            // Determine display name
+            string fwdDisplayName = fwdName;
+            if (!string.IsNullOrEmpty(_currentUserId) && _usernameToUserId.TryGetValue(fwdName, out var fwdUid) && fwdUid == _currentUserId)
+                fwdDisplayName = "You";
+
+            var wrapper = new Panel { BackColor = Color.Transparent };
+
+            string fwdFullText = $"Forwarded from {fwdDisplayName}";
+            int fwdLabelHeight;
+            using (var g = wrapper.CreateGraphics())
+            {
+                var sz = TextRenderer.MeasureText(g, fwdFullText, TG.FontRegular(8.5f),
+                    new Size(inner.Width, 0), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                fwdLabelHeight = sz.Height + 4;
+            }
+
+            var fwdLabel = new Label
+            {
+                Text = fwdFullText,
+                Font = TG.FontRegular(8.5f),
+                ForeColor = TG.TextSecondary,
+                AutoSize = false,
+                Size = new Size(inner.Width, fwdLabelHeight),
+                Location = new Point(0, 0),
+                BackColor = Color.Transparent,
+            };
+
+            int labelHeight = fwdLabel.Height + 4;
+            inner.Top = labelHeight;
+            inner.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            wrapper.Height = inner.Height + labelHeight;
+            wrapper.Width = inner.Width;
+
+            wrapper.Controls.Add(fwdLabel);
+            wrapper.Controls.Add(inner);
+
+            wrapper.Resize += (s, e) =>
+            {
+                int w = wrapper.ClientSize.Width;
+                fwdLabel.Width = w;
+                using (var g = wrapper.CreateGraphics())
+                {
+                    var sz = TextRenderer.MeasureText(g, fwdFullText, TG.FontRegular(8.5f),
+                        new Size(w, 0), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                    fwdLabel.Height = sz.Height + 4;
+                }
+                inner.Width = w;
+                inner.Top = fwdLabel.Height + 4;
+                wrapper.Height = inner.Height + fwdLabel.Height + 4;
+            };
+
+            return wrapper;
+        }
+
         // Updated BuildBubble signature: added messageIndex to identify which message the context menu acts on
         private Panel BuildBubble(string text, bool isOut, string time,
                            string sender = "", bool isGroup = false, string messageId = "")
@@ -3558,7 +3660,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 panel.Controls.Add(fileCtrl);
 
                 panel.PerformLayout();
-                return panel;
+                return WrapForwardIfNeeded(panel, messageId, isOut);
             }
 
             // file::url::name::size
@@ -3695,7 +3797,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 panel.Controls.Add(fileCtrl);
 
                 panel.PerformLayout();
-                return panel;
+                return WrapForwardIfNeeded(panel, messageId, isOut);
             }
 
             var pnl = new Panel { BackColor = Color.Transparent };
@@ -3711,14 +3813,23 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             string forwardSender = null;
             string actualText = text;
 
-            const string forwardPrefix = "[Forwarded from ";
-            if (!string.IsNullOrEmpty(text) && text.StartsWith(forwardPrefix))
+            // Ưu tiên _forwardMetadata (forward mới, không có prefix trong text)
+            if (!string.IsNullOrEmpty(messageId) && _forwardMetadata.TryGetValue(messageId, out var fwdName))
             {
-                int endBracket = text.IndexOf(']');
-                if (endBracket > forwardPrefix.Length)
+                forwardSender = fwdName;
+            }
+            else
+            {
+                // Fallback: text prefix (backward compat)
+                const string forwardPrefix = "[Forwarded from ";
+                if (!string.IsNullOrEmpty(text) && text.StartsWith(forwardPrefix))
                 {
-                    forwardSender = text.Substring(forwardPrefix.Length, endBracket - forwardPrefix.Length);
-                    actualText = text.Substring(endBracket + 2).TrimStart();
+                    int endBracket = text.IndexOf(']');
+                    if (endBracket > forwardPrefix.Length)
+                    {
+                        forwardSender = text.Substring(forwardPrefix.Length, endBracket - forwardPrefix.Length);
+                        actualText = text.Substring(endBracket + 2).TrimStart();
+                    }
                 }
             }
 
@@ -3757,11 +3868,54 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             int statusHeight = 16;
             int senderHeight = (!isOut && isGroup && !string.IsNullOrEmpty(sender)) ? 19 : 0;
             int replyBlockHeight = (replySender != null) ? 38 : 0;
-            int forwardHeaderHeight = (forwardSender != null) ? 24 : 0;
+
+            // --- FORWARD HEADER MEASUREMENT ---
+            string fwdDisplayName = forwardSender;
+            int forwardHeaderHeight = 0;
+            float fwdPrefixWidth = 0;
+            float fwdPrefixLineH = 0;
+            float fwdNameMeasuredH = 0;
+            float fwdNameMeasuredW = 0;
+            bool fwdNameWraps = false;
+
+            if (forwardSender != null)
+            {
+                // "Forwarded from You" if original sender is current user
+                if (!string.IsNullOrEmpty(_currentUserId) && _usernameToUserId.TryGetValue(forwardSender, out var fwdUid) && fwdUid == _currentUserId)
+                    fwdDisplayName = "You";
+
+                using (var g = _pnlMessages.CreateGraphics())
+                {
+                    string fwdPrefix = "Forwarded from ";
+                    fwdPrefixWidth = g.MeasureString(fwdPrefix, TG.FontRegular(8.5f)).Width;
+
+                    float avail = Math.Max(100, maxW - pad * 2 - 10);
+                    using var sf = new StringFormat(StringFormatFlags.LineLimit);
+                    var nameMeasured = g.MeasureString(fwdDisplayName, TG.FontSemiBold(8.5f), new SizeF(avail, 999), sf);
+                    fwdNameMeasuredW = nameMeasured.Width;
+                    fwdNameMeasuredH = nameMeasured.Height;
+
+                    fwdNameWraps = fwdNameMeasuredW > (avail - fwdPrefixWidth);
+
+                    if (fwdNameWraps)
+                    {
+                        fwdPrefixLineH = g.MeasureString(fwdPrefix.TrimEnd(), TG.FontRegular(8.5f), new SizeF(avail, 999), sf).Height;
+                        forwardHeaderHeight = (int)Math.Ceiling(fwdPrefixLineH + 3 + fwdNameMeasuredH + 4);
+                    }
+                    else
+                    {
+                        fwdPrefixLineH = g.MeasureString(fwdPrefix.TrimEnd(), TG.FontRegular(8.5f)).Height;
+                        forwardHeaderHeight = 24;
+                    }
+                }
+            }
 
             int minBw = (replySender != null) ? 160 : 100;
             if (forwardSender != null)
-                minBw = Math.Max(minBw, 180);
+            {
+                int fwdMinBw = (int)(fwdPrefixWidth + Math.Min(fwdNameMeasuredW, maxW - pad * 2 - 10 - fwdPrefixWidth) + pad * 2 + 10);
+                minBw = Math.Max(minBw, Math.Min(maxW, fwdMinBw));
+            }
             int bw = Math.Min(maxW, Math.Max((int)sz.Width + pad * 2 + 10, minBw));
 
             int bh = (int)sz.Height + pad * 2 + statusHeight + senderHeight + replyBlockHeight + forwardHeaderHeight;
@@ -3832,22 +3986,48 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 // 2.5 FORWARD HEADER
                 if (forwardSender != null)
                 {
+                    float fwdAccentX = x + pad;
+                    float fwdTextX = fwdAccentX + 10;
+                    float fwdAvailW = bw - pad * 2 - 10;
+
                     using var fwdBgBrush = new SolidBrush(Color.FromArgb(18, 0, 0, 0));
-                    var fwdRect = new Rectangle(x + pad, (int)currentY, bw - pad * 2, 20);
-                    using var fwdPath = RoundedPanel.GetRoundedPath(fwdRect, 4);
-                    e.Graphics.FillPath(fwdBgBrush, fwdPath);
-
                     using var accentPen = new SolidBrush(Color.FromArgb(120, 120, 120));
-                    e.Graphics.FillRectangle(accentPen, x + pad, currentY + 2, 3, 16);
 
-                    float fwdX = x + pad + 10;
-                    var fwdLabelSz = e.Graphics.MeasureString("Forwarded from ", TG.FontRegular(8.5f));
-                    e.Graphics.DrawString("Forwarded from", TG.FontRegular(8.5f), new SolidBrush(TG.TextSecondary), fwdX, currentY + 1);
+                    if (!fwdNameWraps)
+                    {
+                        var fwdRect = new Rectangle(x + pad, (int)currentY, bw - pad * 2, 20);
+                        using var fwdPath = RoundedPanel.GetRoundedPath(fwdRect, 4);
+                        e.Graphics.FillPath(fwdBgBrush, fwdPath);
 
-                    using var fwdNameBrush = new SolidBrush(TG.Blue);
-                    e.Graphics.DrawString(forwardSender, TG.FontSemiBold(8.5f), fwdNameBrush, fwdX + fwdLabelSz.Width, currentY + 1);
+                        e.Graphics.FillRectangle(accentPen, fwdAccentX, currentY + 2, 3, 16);
 
-                    currentY += 24;
+                        e.Graphics.DrawString("Forwarded from ", TG.FontRegular(8.5f), new SolidBrush(TG.TextSecondary), fwdTextX, currentY + 1);
+
+                        using var fwdNameBrush = new SolidBrush(TG.Blue);
+                        e.Graphics.DrawString(fwdDisplayName, TG.FontSemiBold(8.5f), fwdNameBrush, fwdTextX + fwdPrefixWidth, currentY + 1);
+
+                        currentY += 24;
+                    }
+                    else
+                    {
+                        float totalH = forwardHeaderHeight;
+
+                        var fwdRect = new Rectangle(x + pad, (int)currentY, bw - pad * 2, (int)totalH);
+                        using var fwdPath = RoundedPanel.GetRoundedPath(fwdRect, 4);
+                        e.Graphics.FillPath(fwdBgBrush, fwdPath);
+
+                        e.Graphics.FillRectangle(accentPen, fwdAccentX, currentY + 2, 3, (int)totalH - 4);
+
+                        e.Graphics.DrawString("Forwarded from", TG.FontRegular(8.5f), new SolidBrush(TG.TextSecondary), fwdTextX, currentY + 2);
+
+                        float nameStartY = currentY + 2 + fwdPrefixLineH + 3;
+                        var nameRect = new RectangleF(fwdTextX, nameStartY, fwdAvailW, fwdNameMeasuredH);
+                        using var sf = new StringFormat(StringFormatFlags.LineLimit);
+                        using var fwdNameBrush = new SolidBrush(TG.Blue);
+                        e.Graphics.DrawString(fwdDisplayName, TG.FontSemiBold(8.5f), fwdNameBrush, nameRect, sf);
+
+                        currentY += totalH + 4;
+                    }
                 }
 
                 // 3. Text tin nhắn chính - dùng TextRenderer để render emoji đúng
@@ -4008,25 +4188,23 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 string senderName = string.IsNullOrEmpty(msg.Sender) ? "You"
                     : _senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : msg.Sender;
 
-                // Xây nội dung forward friendly cho từng loại message
-                string forwardText;
+                // Xây nội dung forward: dùng rawContent (luôn là nội dung thật, không có prefix forward)
+                string rawContent = StripForwardPrefix(msg.Text);
                 const string voicePrefix = "voice::";
                 const string filePrefix = "file::";
-                if (msg.Text.StartsWith(voicePrefix, StringComparison.Ordinal))
+
+                string forwardText;
+                if (rawContent.StartsWith(voicePrefix, StringComparison.Ordinal))
                 {
-                    var parts = msg.Text.Substring(voicePrefix.Length).Split(new[] { "::" }, StringSplitOptions.None);
-                    string duration = parts.Length > 2 ? parts[2] : "0";
-                    forwardText = $"[Forwarded from {senderName}] 🎤 Voice message ({duration}s)";
+                    forwardText = rawContent; // giữ nguyên protocol text
                 }
-                else if (msg.Text.StartsWith(filePrefix, StringComparison.Ordinal))
+                else if (rawContent.StartsWith(filePrefix, StringComparison.Ordinal))
                 {
-                    var parts = msg.Text.Substring(filePrefix.Length).Split(new[] { "::" }, StringSplitOptions.None);
-                    string fileName = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "File";
-                    forwardText = $"[Forwarded from {senderName}] 📎 {fileName}";
+                    forwardText = rawContent; // giữ nguyên protocol text
                 }
                 else
                 {
-                    forwardText = $"[Forwarded from {senderName}] {ExtractActualText(msg.Text)}";
+                    forwardText = ExtractActualText(rawContent); // text thuần
                 }
 
                 // Mã hóa nội dung với key của cuộc trò chuyện đích
@@ -4046,12 +4224,16 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
                 var (encryptedContent, contentIV) = encryptionService.EncryptMessage(forwardText, conversationKey);
 
+                string? originalSenderId = null;
+                if (!string.IsNullOrEmpty(msg.Sender) && _usernameToUserId.TryGetValue(msg.Sender, out var uid))
+                    originalSenderId = uid;
+
                 var req = new SendMessageRequest(
                     Type: MessageType.Text,
                     Content: encryptedContent,
                     ContentIV: contentIV,
                     ReplyToID: null,
-                    OriginalSenderID: null,
+                    OriginalSenderID: originalSenderId,
                     Attachments: null,
                     MentionedMemberIDs: null,
                     ExpiresAfterSeconds: null
@@ -4079,6 +4261,9 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
                 string timeStr = messageResponse.SentAt.ToLocalTime().ToString("h:mm tt");
 
+                // Lưu forward metadata để render header
+                _forwardMetadata[messageResponse.MessageID] = senderName;
+
                 // Nếu đang ở cuộc trò chuyện đích, thêm vào UI ngay
                 if (targetConversationId == _activeConvId)
                 {
@@ -4088,7 +4273,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 }
 
                 // Cập nhật sidebar cho cuộc trò chuyện đích (preview + reorder)
-                RefreshConversationItem(targetConversationId, forwardText, true, "", timeStr);
+                RefreshConversationItem(targetConversationId, forwardText, true, "", timeStr, messageId: messageResponse.MessageID);
 
                 MessageBox.Show(this, "Đã chuyển tiếp tin nhắn thành công!", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
@@ -4189,6 +4374,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             }
 
             _currentMsgs.RemoveAt(msgIndex);
+            _forwardMetadata.TryRemove(messageId, out _);
             BuildMessages();
             RefreshSidebarPreview();
         }
@@ -4555,6 +4741,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 }
                 if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
                     _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
+                if (!string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(message.SenderUserID))
+                    _usernameToUserId[dm.Sender] = message.SenderUserID;
+                if (!string.IsNullOrEmpty(message.OriginalSenderID) && !string.IsNullOrEmpty(message.OriginalSenderName))
+                    _forwardMetadata[dm.Id] = message.OriginalSenderName;
                 _messageDates[dm.Id] = message.SentAt.ToLocalTime();
                 list.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
 
@@ -4567,7 +4757,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     string senderForPreview = dm.Out ? "" : dm.Sender;
                     if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && _senderDisplayNameMap.TryGetValue(dm.Sender, out var dn) && !string.IsNullOrEmpty(dn))
                         senderForPreview = dn;
-                    RefreshConversationItem(message.ConversationID, dm.Text, dm.Out, senderForPreview, dm.Time, unread);
+                    RefreshConversationItem(message.ConversationID, dm.Text, dm.Out, senderForPreview, dm.Time, unread, dm.Id);
                 }
 
                 if (message.ConversationID == _activeConvId)
