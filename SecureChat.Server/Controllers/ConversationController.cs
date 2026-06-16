@@ -10,7 +10,7 @@ namespace SecureChat.Controllers
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations")]
-	public class ConversationController(ConversationRepository conversations, UserRepository users) : BaseController
+	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -145,6 +145,18 @@ namespace SecureChat.Controllers
 				return Forbid();
 
 			await conversations.DeleteAsync(conversationID);
+			return NoContent();
+		}
+
+		[HttpPost("{conversationID}/clear")]
+		public async Task<IActionResult> ClearConversationMessages(string conversationID)
+		{
+			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
+			if (member is null || member.LeftAt is not null)
+				return Forbid();
+
+			await messages.DeleteAllByConversationAsync(conversationID);
+			await conversations.ClearLastMessageAsync(conversationID);
 			return NoContent();
 		}
 

@@ -431,3 +431,8 @@ SecureChat.Server/appsettings*.json
 # Uploaded files
 SecureChat.Server/wwwroot/uploads/*
 !SecureChat.Server/wwwroot/uploads/.gitkeep
+# Uploaded files (test artifacts)
+SecureChat.Server/wwwroot/uploads/
+
+# Voice recording data
+SecureChat.Server/wwwroot/voice/*.dat
