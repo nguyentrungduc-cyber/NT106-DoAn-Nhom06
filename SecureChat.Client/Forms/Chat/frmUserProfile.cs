@@ -7,10 +7,7 @@ namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmUserProfile : Form
     {
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-
-        public frmUserProfile(string displayName, string username, string userId, string? bio)
+        public frmUserProfile(string displayName, string username, string? email, string? bio)
         {
             Text = "Profile";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -19,14 +16,14 @@ namespace SecureChat.Client.Forms.Chat
             MinimizeBox = false;
             HelpButton = false;
             ControlBox = false;
-            ClientSize = new Size(400, 420);
-            BackColor = C_BG;
+            ClientSize = new Size(400, 400);
+            BackColor = Color.White;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
-            int y = 24;
+            int y = 28;
 
-            // Close button (✕) — giống frmGroupInfo
+            // Close button (✕) top-right
             var btnClose = new Button
             {
                 Text = "\u2715",
@@ -45,7 +42,7 @@ namespace SecureChat.Client.Forms.Chat
             btnClose.Click += (_, __) => Close();
             Controls.Add(btnClose);
 
-            // Large avatar (centered)
+            // Avatar (centered)
             var avatar = new AvatarControl
             {
                 Size = new Size(100, 100),
@@ -53,22 +50,21 @@ namespace SecureChat.Client.Forms.Chat
             };
             avatar.SetName(displayName);
             Controls.Add(avatar);
-            y += 118;
+            y += 114;
 
-            // Display name (centered)
+            // Display Name (centered)
             var lblName = new Label
             {
                 Text = displayName,
-                Font = TG.FontSemiBold(16f),
+                Font = TG.FontSemiBold(18f),
                 ForeColor = TG.TextPrimary,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(ClientSize.Width, 0),
                 AutoSize = true,
-                MaximumSize = new Size(ClientSize.Width - 40, 0),
+                MaximumSize = new Size(360, 0),
                 BackColor = Color.Transparent,
             };
-            if (lblName.Height < 24) lblName.Height = 24;
-            lblName.Location = new Point(0, y);
+            if (lblName.Height < 28) lblName.Height = 28;
+            lblName.Location = new Point((ClientSize.Width - lblName.Width) / 2, y);
             Controls.Add(lblName);
             y += lblName.Height + 4;
 
@@ -76,18 +72,17 @@ namespace SecureChat.Client.Forms.Chat
             var lblUsername = new Label
             {
                 Text = $"@{username}",
-                Font = TG.FontRegular(12f),
+                Font = TG.FontRegular(13f),
                 ForeColor = TG.TextSecondary,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(ClientSize.Width, 0),
                 AutoSize = true,
-                MaximumSize = new Size(ClientSize.Width - 40, 0),
+                MaximumSize = new Size(360, 0),
                 BackColor = Color.Transparent,
             };
             if (lblUsername.Height < 20) lblUsername.Height = 20;
-            lblUsername.Location = new Point(0, y);
+            lblUsername.Location = new Point((ClientSize.Width - lblUsername.Width) / 2, y);
             Controls.Add(lblUsername);
-            y += lblUsername.Height + 20;
+            y += lblUsername.Height + 28;
 
             // Divider
             Controls.Add(new Panel
@@ -97,30 +92,47 @@ namespace SecureChat.Client.Forms.Chat
                 BackColor = TG.Divider,
                 Location = new Point(40, y)
             });
-            y += 16;
+            y += 22;
 
-            // Info: User ID
-            AppendInfoRow("🆔", userId, ref y);
+            // Email
+            AppendInfoField("Email", string.IsNullOrWhiteSpace(email) ? "No email available" : email, ref y);
 
-            // Info: Bio
+            // Bio (optional)
             if (!string.IsNullOrWhiteSpace(bio))
-                AppendInfoRow("ℹ️", bio, ref y);
+            {
+                y += 4;
+                AppendInfoField("Bio", bio, ref y);
+            }
         }
 
-        private void AppendInfoRow(string icon, string text, ref int y)
+        private void AppendInfoField(string label, string value, ref int y)
         {
-            var lbl = new Label
+            int left = 40;
+
+            var lblLabel = new Label
             {
-                Text = $"{icon}  {text}",
+                Text = label,
+                Font = TG.FontRegular(9.5f),
+                ForeColor = TG.TextHint,
+                AutoSize = true,
+                BackColor = Color.Transparent,
+                Location = new Point(left, y),
+            };
+            Controls.Add(lblLabel);
+            y += lblLabel.Height + 2;
+
+            var lblValue = new Label
+            {
+                Text = value,
                 Font = TG.FontRegular(11f),
                 ForeColor = TG.TextPrimary,
                 AutoSize = true,
                 MaximumSize = new Size(ClientSize.Width - 80, 0),
                 BackColor = Color.Transparent,
-                Location = new Point(40, y)
+                Location = new Point(left, y),
             };
-            Controls.Add(lbl);
-            y += lbl.Height + 12;
+            Controls.Add(lblValue);
+            y += lblValue.Height + 20;
         }
     }
 }

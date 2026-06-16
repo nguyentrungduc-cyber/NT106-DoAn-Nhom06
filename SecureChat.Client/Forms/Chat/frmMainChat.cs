@@ -1623,7 +1623,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 using var dlg = new frmUserProfile(
                     other.User.DisplayName ?? "Unknown",
                     other.User.Username ?? "unknown",
-                    other.User.UserID ?? other.UserID,
+                    other.User.Email,
                     other.User.BioText
                 );
                 dlg.ShowDialog(this);
