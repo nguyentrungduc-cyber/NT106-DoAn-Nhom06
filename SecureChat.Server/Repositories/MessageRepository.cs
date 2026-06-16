@@ -33,6 +33,7 @@ namespace SecureChat.Repositories
 			var query = db.Messages
 				.Include(m => m.Sender)
 					.ThenInclude(s => s!.User)
+				.Include(m => m.OriginalSender)
 				.Include(m => m.Attachments)
 				.Include(m => m.Reactions)
 				.Where(m => m.ConversationID == conversationID && m.DeletedAt == null && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));

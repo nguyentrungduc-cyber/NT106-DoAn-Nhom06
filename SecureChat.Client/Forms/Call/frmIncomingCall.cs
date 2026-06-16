@@ -42,7 +42,7 @@ namespace SecureChat.Client.Forms.Call
                 e.Graphics.FillEllipse(br, 0, 0, _pnlAvatar.Width - 1, _pnlAvatar.Height - 1);
                 using var brush = new SolidBrush(Color.White);
                 var initial = callerName.Length > 0 ? callerName[0].ToString().ToUpperInvariant() : "?";
-                var font = new Font("Segoe UI", 28f, FontStyle.Bold);
+                using var font = new Font("Segoe UI", 28f, FontStyle.Bold);
                 var size = e.Graphics.MeasureString(initial, font);
                 e.Graphics.DrawString(initial, font, brush,
                     (_pnlAvatar.Width - size.Width) / 2,

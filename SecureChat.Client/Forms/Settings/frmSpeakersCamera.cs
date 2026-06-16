@@ -890,7 +890,8 @@ namespace SecureChat.Client.Forms.Settings
                     var path = Path.Combine(AppContext.BaseDirectory, FileName);
                     if (!File.Exists(path)) return s;
 
-                    var parts = File.ReadAllText(path, Encoding.UTF8).Split('|');
+                    var text = File.ReadAllText(path, Encoding.UTF8);
+                    var parts = text.Contains('\u001F') ? text.Split('\u001F') : text.Split('|');
                     if (parts.Length >= 7)
                     {
                         s.OutputDevice = parts[0];
@@ -915,7 +916,7 @@ namespace SecureChat.Client.Forms.Settings
                 try
                 {
                     var path = Path.Combine(AppContext.BaseDirectory, FileName);
-                    var data = string.Join("|",
+                    var data = string.Join("\u001F",
                         OutputDevice,
                         InputDevice,
                         UseSameDevicesForCalls,

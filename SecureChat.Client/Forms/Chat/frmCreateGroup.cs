@@ -517,7 +517,9 @@ namespace SecureChat.Client.Forms.Chat
             ResultAvatarPath = dlg.FileName;
             try
             {
+                var old = _pbAvatar.Image;
                 _pbAvatar.Image = Image.FromFile(ResultAvatarPath);
+                old?.Dispose();
                 _pbAvatar.BackColor = Color.Black;
                 _pnlCamOverlay.Invalidate();
             }

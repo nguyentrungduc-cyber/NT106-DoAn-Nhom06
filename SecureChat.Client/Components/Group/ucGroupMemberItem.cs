@@ -49,7 +49,12 @@ namespace SecureChat.Client.Components.Group
             get => _avatar.Image;
             set
             {
-                _avatar.Image = value;
+                if (_avatar.Image != value)
+                {
+                    var old = _avatar.Image;
+                    _avatar.Image = value;
+                    old?.Dispose();
+                }
                 _lblInitial.Visible = value == null;
                 _avatar.Invalidate();
             }
