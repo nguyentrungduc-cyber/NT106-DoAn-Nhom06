@@ -4342,8 +4342,13 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             var msg = _currentMsgs[msgIndex];
             _replyingToMessageId = msg.Id;
 
-            string replyDisplayName = string.IsNullOrEmpty(msg.Sender) ? "You"
-                : _senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : msg.Sender;
+            string replyDisplayName;
+            if (string.IsNullOrEmpty(msg.Sender) || msg.Sender == _currentUsername)
+                replyDisplayName = "You";
+            else if (_senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn))
+                replyDisplayName = dn;
+            else
+                replyDisplayName = msg.Sender;
             _lblReplySender.Text = replyDisplayName;
 
             // GỌI HÀM EXTRACT ĐỂ HIỂN THỊ TEXT TRONG THANH REPLY
