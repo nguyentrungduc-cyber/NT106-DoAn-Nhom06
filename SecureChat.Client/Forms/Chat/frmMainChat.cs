@@ -4496,9 +4496,14 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 }
 
                 // Đánh dấu message ID đã xử lý để SignalR handler không tạo duplicate
-                lock (_processedMessageIdsLock)
+                // Chỉ cần khi forward vào chính conversation đang mở (đã thêm manual vào _currentMsgs ở dưới).
+                // Khi forward sang conversation khác, để SignalR hoặc sync xử lý thêm vào _allMsgs.
+                if (targetConversationId == _activeConvId)
                 {
-                    _processedMessageIds.Add(messageResponse.MessageID);
+                    lock (_processedMessageIdsLock)
+                    {
+                        _processedMessageIds.Add(messageResponse.MessageID);
+                    }
                 }
 
                 // Broadcast qua SignalR để các member khác nhận realtime
@@ -4792,13 +4797,14 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 if (msg.Id is not null)
                 {
                     displayText = GetPinnedDisplayText(msg.Text);
-                    if (!string.IsNullOrEmpty(msg.Sender) && msg.Sender != "You")
+                    if (msg.Out)
+                        senderName = "You";
+                    else if (!string.IsNullOrEmpty(msg.Sender))
                     {
                         if (_senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn))
                             senderName = dn;
                         else senderName = msg.Sender;
                     }
-                    else senderName = "You";
                 }
                 else
                 {
