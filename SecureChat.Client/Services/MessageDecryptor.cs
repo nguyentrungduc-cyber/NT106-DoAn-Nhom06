@@ -56,6 +56,8 @@ namespace SecureChat.Client.Services
         /// mã được với key pair hiện tại, tự động rekey toàn bộ conversation:
         /// sinh AES key mới, mã hoá RSA cho từng member, PATCH lên server.
         /// </summary>
+        private readonly ConcurrentDictionary<string, SemaphoreSlim> _rekeyLocks = new();
+
         public async Task<byte[]?> EnsureConversationKeyAsync(string conversationId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
@@ -72,6 +74,10 @@ namespace SecureChat.Client.Services
                 return null;
             }
 
+            // Double-check after async call
+            if (_conversationKeys.TryGetValue(conversationId, out cached))
+                return cached;
+
             // Try to decrypt existing key; if it fails, trigger rekey
             byte[]? key = TryDecryptKey(me.EncryptedKey);
             if (key is not null)
@@ -81,8 +87,22 @@ namespace SecureChat.Client.Services
                 return key;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Existing key invalid for {conversationId}, triggering rekey...");
-            return await RekeyConversationAsync(conversationId).ConfigureAwait(false);
+            // Guard: one rekey at a time per conversation
+            var rekeyLock = _rekeyLocks.GetOrAdd(conversationId, _ => new SemaphoreSlim(1, 1));
+            await rekeyLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // Triple-check after acquiring lock
+                if (_conversationKeys.TryGetValue(conversationId, out cached))
+                    return cached;
+
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Existing key invalid for {conversationId}, triggering rekey...");
+                return await RekeyConversationAsync(conversationId).ConfigureAwait(false);
+            }
+            finally
+            {
+                rekeyLock.Release();
+            }
         }
 
         private byte[]? TryDecryptKey(string? encryptedKeyBase64)
@@ -180,12 +200,19 @@ namespace SecureChat.Client.Services
             var api = ApiClient.Instance;
             foreach (var (memberId, encryptedB64) in updates)
             {
-                var req = new UpdateMemberRequest(null, null, null, null, encryptedB64);
-                var (patchOk, _, patchErr) = await api.PatchAsync<UpdateMemberRequest, MemberResponse>(
-                    $"api/conversations/{conversationId}/members/{memberId}", req).ConfigureAwait(false);
-                if (!patchOk)
+                try
                 {
-                    System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: failed PATCH for member {memberId}: {patchErr}");
+                    var req = new UpdateMemberRequest(null, null, null, null, encryptedB64);
+                    var (patchOk, _, patchErr) = await api.PatchAsync<UpdateMemberRequest, MemberResponse>(
+                        $"api/conversations/{conversationId}/members/{memberId}", req).ConfigureAwait(false);
+                    if (!patchOk)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: failed PATCH for member {memberId}: {patchErr}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: PATCH exception for member {memberId}: {ex.Message}");
                 }
             }
 
@@ -257,12 +284,24 @@ namespace SecureChat.Client.Services
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
+                // Snapshot current keys (ConcurrentDictionary.ToDictionary is atomic snapshot)
+                var currentSnapshot = _conversationKeys.ToDictionary(
+                    kvp => kvp.Key, kvp => Convert.ToBase64String(kvp.Value));
+
+                // Snapshot old keys with per-list locking
+                var oldSnapshot = new Dictionary<string, List<string>>();
+                foreach (var kvp in _oldConversationKeys)
+                {
+                    lock (kvp.Value)
+                    {
+                        oldSnapshot[kvp.Key] = kvp.Value.Select(b => Convert.ToBase64String(b)).ToList();
+                    }
+                }
+
                 var data = new KeyHistoryData
                 {
-                    CurrentKeys = _conversationKeys.ToDictionary(kvp => kvp.Key, kvp => Convert.ToBase64String(kvp.Value)),
-                    OldKeys = _oldConversationKeys.ToDictionary(
-                        kvp => kvp.Key,
-                        kvp => kvp.Value.Select(b => Convert.ToBase64String(b)).ToList())
+                    CurrentKeys = currentSnapshot,
+                    OldKeys = oldSnapshot
                 };
 
                 var json = JsonSerializer.Serialize(data);
@@ -270,7 +309,7 @@ namespace SecureChat.Client.Services
             }
             catch
             {
-                // Best-effort — nếu không ghi được thì ignore
+                // Best-effort
             }
         }
 
@@ -357,9 +396,13 @@ namespace SecureChat.Client.Services
                             {
                                 content = AesEncryption.DecryptText(content, message.ContentIV!, freshKey);
                             }
-                            catch
+                            catch (FormatException)
                             {
-                                // Current key fails → try old keys from history
+                                content = TryDecryptWithOldKeys(content, message.ContentIV!, message.ConversationID)
+                                    ?? content;
+                            }
+                            catch (System.Security.Cryptography.CryptographicException)
+                            {
                                 content = TryDecryptWithOldKeys(content, message.ContentIV!, message.ConversationID)
                                     ?? "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
                             }
