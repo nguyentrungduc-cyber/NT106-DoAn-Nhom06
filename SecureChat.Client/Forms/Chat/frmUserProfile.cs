@@ -1,0 +1,138 @@
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+using SecureChat.Client;
+
+namespace SecureChat.Client.Forms.Chat
+{
+    public sealed class frmUserProfile : Form
+    {
+        public frmUserProfile(string displayName, string username, string? email, string? bio)
+        {
+            Text = "Profile";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            StartPosition = FormStartPosition.CenterParent;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            HelpButton = false;
+            ControlBox = false;
+            ClientSize = new Size(400, 400);
+            BackColor = Color.White;
+            Font = new Font("Segoe UI", 10f);
+            DoubleBuffered = true;
+
+            int y = 28;
+
+            // Close button (✕) top-right
+            var btnClose = new Button
+            {
+                Text = "\u2715",
+                Font = new Font("Segoe UI", 12f),
+                Size = new Size(30, 30),
+                Location = new Point(ClientSize.Width - 46, 14),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
+                Cursor = Cursors.Hand,
+                TabStop = false,
+            };
+            btnClose.FlatAppearance.BorderSize = 0;
+            btnClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xF0, 0xF4, 0xF8);
+            btnClose.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEE, 0xF5);
+            btnClose.Click += (_, __) => Close();
+            Controls.Add(btnClose);
+
+            // Avatar (centered)
+            var avatar = new AvatarControl
+            {
+                Size = new Size(100, 100),
+                Location = new Point((ClientSize.Width - 100) / 2, y)
+            };
+            avatar.SetName(displayName);
+            Controls.Add(avatar);
+            y += 114;
+
+            // Display Name (centered)
+            var lblName = new Label
+            {
+                Text = displayName,
+                Font = TG.FontSemiBold(18f),
+                ForeColor = TG.TextPrimary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                AutoSize = true,
+                MaximumSize = new Size(360, 0),
+                BackColor = Color.Transparent,
+            };
+            if (lblName.Height < 28) lblName.Height = 28;
+            lblName.Location = new Point((ClientSize.Width - lblName.Width) / 2, y);
+            Controls.Add(lblName);
+            y += lblName.Height + 4;
+
+            // Username (centered)
+            var lblUsername = new Label
+            {
+                Text = $"@{username}",
+                Font = TG.FontRegular(13f),
+                ForeColor = TG.TextSecondary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                AutoSize = true,
+                MaximumSize = new Size(360, 0),
+                BackColor = Color.Transparent,
+            };
+            if (lblUsername.Height < 20) lblUsername.Height = 20;
+            lblUsername.Location = new Point((ClientSize.Width - lblUsername.Width) / 2, y);
+            Controls.Add(lblUsername);
+            y += lblUsername.Height + 28;
+
+            // Divider
+            Controls.Add(new Panel
+            {
+                Height = 1,
+                Width = ClientSize.Width - 80,
+                BackColor = TG.Divider,
+                Location = new Point(40, y)
+            });
+            y += 22;
+
+            // Email
+            AppendInfoField("Email", string.IsNullOrWhiteSpace(email) ? "No email available" : email, ref y);
+
+            // Bio (optional)
+            if (!string.IsNullOrWhiteSpace(bio))
+            {
+                y += 4;
+                AppendInfoField("Bio", bio, ref y);
+            }
+        }
+
+        private void AppendInfoField(string label, string value, ref int y)
+        {
+            int left = 40;
+
+            var lblLabel = new Label
+            {
+                Text = label,
+                Font = TG.FontRegular(9.5f),
+                ForeColor = TG.TextHint,
+                AutoSize = true,
+                BackColor = Color.Transparent,
+                Location = new Point(left, y),
+            };
+            Controls.Add(lblLabel);
+            y += lblLabel.Height + 2;
+
+            var lblValue = new Label
+            {
+                Text = value,
+                Font = TG.FontRegular(11f),
+                ForeColor = TG.TextPrimary,
+                AutoSize = true,
+                MaximumSize = new Size(ClientSize.Width - 80, 0),
+                BackColor = Color.Transparent,
+                Location = new Point(left, y),
+            };
+            Controls.Add(lblValue);
+            y += lblValue.Height + 20;
+        }
+    }
+}

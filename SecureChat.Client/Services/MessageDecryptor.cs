@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using SecureChat.Client.Services.Api;
 using SecureChat.DTOs;
@@ -31,12 +33,17 @@ namespace SecureChat.Client.Services
     {
         private readonly MessageService _messageService;
         private readonly ConcurrentDictionary<string, byte[]> _conversationKeys = new();
+        private readonly ConcurrentDictionary<string, List<byte[]>> _oldConversationKeys = new();
+        private static readonly string _keyHistoryPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "SecureChat", "key_history.json");
 
         public MessageDecryptor() : this(new MessageService()) { }
 
         public MessageDecryptor(MessageService messageService)
         {
             _messageService = messageService ?? throw new ArgumentNullException(nameof(messageService));
+            LoadKeyHistory();
         }
 
         /// <summary>UserID của user đang đăng nhập. Bắt buộc set trước khi xử lý.</summary>
@@ -49,6 +56,8 @@ namespace SecureChat.Client.Services
         /// mã được với key pair hiện tại, tự động rekey toàn bộ conversation:
         /// sinh AES key mới, mã hoá RSA cho từng member, PATCH lên server.
         /// </summary>
+        private readonly ConcurrentDictionary<string, SemaphoreSlim> _rekeyLocks = new();
+
         public async Task<byte[]?> EnsureConversationKeyAsync(string conversationId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
@@ -65,16 +74,35 @@ namespace SecureChat.Client.Services
                 return null;
             }
 
+            // Double-check after async call
+            if (_conversationKeys.TryGetValue(conversationId, out cached))
+                return cached;
+
             // Try to decrypt existing key; if it fails, trigger rekey
             byte[]? key = TryDecryptKey(me.EncryptedKey);
             if (key is not null)
             {
                 _conversationKeys[conversationId] = key;
+                SaveKeyHistory();
                 return key;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Existing key invalid for {conversationId}, triggering rekey...");
-            return await RekeyConversationAsync(conversationId).ConfigureAwait(false);
+            // Guard: one rekey at a time per conversation
+            var rekeyLock = _rekeyLocks.GetOrAdd(conversationId, _ => new SemaphoreSlim(1, 1));
+            await rekeyLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // Triple-check after acquiring lock
+                if (_conversationKeys.TryGetValue(conversationId, out cached))
+                    return cached;
+
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Existing key invalid for {conversationId}, triggering rekey...");
+                return await RekeyConversationAsync(conversationId).ConfigureAwait(false);
+            }
+            finally
+            {
+                rekeyLock.Release();
+            }
         }
 
         private byte[]? TryDecryptKey(string? encryptedKeyBase64)
@@ -168,20 +196,49 @@ namespace SecureChat.Client.Services
                 return null;
             }
 
+            // Verify current user is in updates before caching
+            if (!string.IsNullOrWhiteSpace(CurrentUserId))
+            {
+                var myMember = members.FirstOrDefault(m => m.User?.UserID == CurrentUserId);
+                if (myMember is not null && !updates.Any(u => u.MemberId == myMember.MemberID))
+                {
+                    System.Diagnostics.Debug.WriteLine("[MessageDecryptor] Rekey: current user's encryption failed, refusing to cache");
+                    return null;
+                }
+            }
+
             // PATCH each member's encrypted key
             var api = ApiClient.Instance;
             foreach (var (memberId, encryptedB64) in updates)
             {
-                var req = new UpdateMemberRequest(null, null, null, null, encryptedB64);
-                var (patchOk, _, patchErr) = await api.PatchAsync<UpdateMemberRequest, MemberResponse>(
-                    $"api/conversations/{conversationId}/members/{memberId}", req).ConfigureAwait(false);
-                if (!patchOk)
+                try
                 {
-                    System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: failed PATCH for member {memberId}: {patchErr}");
+                    var req = new UpdateMemberRequest(null, null, null, null, encryptedB64);
+                    var (patchOk, _, patchErr) = await api.PatchAsync<UpdateMemberRequest, MemberResponse>(
+                        $"api/conversations/{conversationId}/members/{memberId}", req).ConfigureAwait(false);
+                    if (!patchOk)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: failed PATCH for member {memberId}: {patchErr}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey: PATCH exception for member {memberId}: {ex.Message}");
+                }
+            }
+
+            // Save old key before overwriting
+            if (_conversationKeys.TryGetValue(conversationId, out var oldKey))
+            {
+                var history = _oldConversationKeys.GetOrAdd(conversationId, _ => new List<byte[]>());
+                lock (history)
+                {
+                    history.Insert(0, oldKey);
                 }
             }
 
             _conversationKeys[conversationId] = newKey;
+            SaveKeyHistory();
             System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey complete for conversation {conversationId}");
             return newKey;
         }
@@ -192,10 +249,125 @@ namespace SecureChat.Client.Services
         public void ForgetConversation(string conversationId)
         {
             if (!string.IsNullOrWhiteSpace(conversationId))
+            {
                 _conversationKeys.TryRemove(conversationId, out _);
+                _oldConversationKeys.TryRemove(conversationId, out _);
+                SaveKeyHistory();
+            }
         }
 
-        public void ForgetAll() => _conversationKeys.Clear();
+        public void ForgetAll()
+        {
+            _conversationKeys.Clear();
+            _oldConversationKeys.Clear();
+        }
+
+        /// <summary>
+        /// Thử giải mã với các key cũ (từ lịch sử rekey).
+        /// </summary>
+        private string? TryDecryptWithOldKeys(string content, string contentIV, string conversationId)
+        {
+            if (!_oldConversationKeys.TryGetValue(conversationId, out var history) || history.Count == 0)
+                return null;
+
+            lock (history)
+            {
+                foreach (var oldKey in history)
+                {
+                    try
+                    {
+                        return AesEncryption.DecryptText(content, contentIV, oldKey);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+            return null;
+        }
+
+        public void SaveKeyHistory()
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(_keyHistoryPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                // Snapshot current keys (ConcurrentDictionary.ToDictionary is atomic snapshot)
+                var currentSnapshot = _conversationKeys.ToDictionary(
+                    kvp => kvp.Key, kvp => Convert.ToBase64String(kvp.Value));
+
+                // Snapshot old keys with per-list locking
+                var oldSnapshot = new Dictionary<string, List<string>>();
+                foreach (var kvp in _oldConversationKeys)
+                {
+                    lock (kvp.Value)
+                    {
+                        oldSnapshot[kvp.Key] = kvp.Value.Select(b => Convert.ToBase64String(b)).ToList();
+                    }
+                }
+
+                var data = new KeyHistoryData
+                {
+                    CurrentKeys = currentSnapshot,
+                    OldKeys = oldSnapshot
+                };
+
+                var json = JsonSerializer.Serialize(data);
+                File.WriteAllText(_keyHistoryPath, json);
+            }
+            catch
+            {
+                // Best-effort
+            }
+        }
+
+        public void LoadKeyHistory()
+        {
+            try
+            {
+                if (!File.Exists(_keyHistoryPath)) return;
+
+                var json = File.ReadAllText(_keyHistoryPath);
+                var data = JsonSerializer.Deserialize<KeyHistoryData>(json);
+                if (data is null) return;
+
+                if (data.CurrentKeys is not null)
+                {
+                    foreach (var kvp in data.CurrentKeys)
+                    {
+                        if (!string.IsNullOrWhiteSpace(kvp.Value))
+                            _conversationKeys[kvp.Key] = Convert.FromBase64String(kvp.Value);
+                    }
+                }
+
+                if (data.OldKeys is not null)
+                {
+                    foreach (var kvp in data.OldKeys)
+                    {
+                        var list = kvp.Value
+                            .Where(v => !string.IsNullOrWhiteSpace(v))
+                            .Select(Convert.FromBase64String)
+                            .ToList();
+                        if (list.Count > 0)
+                            _oldConversationKeys[kvp.Key] = list;
+                    }
+                }
+            }
+            catch
+            {
+                // File hỏng → bắt đầu lại với lịch sử trống
+                try { File.Delete(_keyHistoryPath); } catch { }
+            }
+        }
+
+        private sealed class KeyHistoryData
+        {
+            public Dictionary<string, string>? CurrentKeys { get; set; }
+            public Dictionary<string, List<string>>? OldKeys { get; set; }
+        }
 
         /// <summary>
         /// Giải mã 1 message và build view-model dạng tuple đã được
@@ -229,8 +401,8 @@ namespace SecureChat.Client.Services
                     }
                     catch (System.Security.Cryptography.CryptographicException)
                     {
-                        // Key mismatch — maybe a rekey happened since we last fetched.
-                        // Forget cache, force re-fetch (which triggers rekey if needed), retry.
+                        // Key mismatch — possibly a rekey happened.
+                        // Forget cache, force re-fetch, retry once.
                         System.Diagnostics.Debug.WriteLine(
                             $"[MessageDecryptor] Decrypt failed for {message.MessageID}, re-fetching key...");
                         ForgetConversation(message.ConversationID);
@@ -241,10 +413,21 @@ namespace SecureChat.Client.Services
                             {
                                 content = AesEncryption.DecryptText(content, message.ContentIV!, freshKey);
                             }
-                            catch
+                            catch (FormatException)
                             {
-                                // Still failed — show encrypted content as-is
+                                content = TryDecryptWithOldKeys(content, message.ContentIV!, message.ConversationID)
+                                    ?? content;
                             }
+                            catch (System.Security.Cryptography.CryptographicException)
+                            {
+                                content = TryDecryptWithOldKeys(content, message.ContentIV!, message.ConversationID)
+                                    ?? "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
+                            }
+                        }
+                        else
+                        {
+                            content = TryDecryptWithOldKeys(content, message.ContentIV!, message.ConversationID)
+                                ?? "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
                         }
                     }
                 }
