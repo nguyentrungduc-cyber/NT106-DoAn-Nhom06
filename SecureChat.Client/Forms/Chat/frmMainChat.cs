@@ -1679,6 +1679,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 }
                 _currentMsgs.Clear();
 
+                // Clear pinned messages — they reference deleted messages
+                _pinnedMessageIds.Clear();
+                UpdatePinnedBar();
+
                 // Refresh sidebar: clear preview text and timestamp.
                 // RefreshConversationItem updates both the _convs tuple
                 // and the visible Label controls in the cached row.
@@ -4618,6 +4622,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
     _currentMsgs.RemoveAt(msgIndex);
     _forwardMetadata.TryRemove(messageId, out _);
     _forwardOriginalSenderId.TryRemove(messageId, out _);
+    if (_pinnedMessageIds.Remove(messageId))
+        UpdatePinnedBar();
     BuildMessages();
             RefreshSidebarPreview();
         }
@@ -4708,9 +4714,20 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 return;
             }
 
+            // Remove stale pin IDs whose messages are no longer loaded
+            _pinnedMessageIds.RemoveWhere(pid => !_currentMsgs.Exists(m => m.Id == pid));
+            if (_pinnedMessageIds.Count == 0)
+            {
+                _pnlPinnedBar.Visible = false;
+                _pnlPinnedBottomBar.Visible = false;
+                _pnlPinnedPopup.Visible = false;
+                _isPinnedPopupOpen = false;
+                return;
+            }
+
             var firstId = _pinnedMessageIds.First();
             var firstMsg = _currentMsgs.Find(m => m.Id == firstId);
-            string preview = firstMsg.Id is not null ? GetPinnedDisplayText(firstMsg.Text) : "Pinned message";
+            string preview = GetPinnedDisplayText(firstMsg.Text);
 
             var count = _pinnedMessageIds.Count;
             string truncatedPreview = TruncateText(preview, 60);
@@ -5624,6 +5641,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 _messageDates.Remove(messageId);
                 _forwardMetadata.TryRemove(messageId, out _);
                 _forwardOriginalSenderId.TryRemove(messageId, out _);
+                if (_pinnedMessageIds.Remove(messageId))
+                    UpdatePinnedBar();
                 var index = _currentMsgs.FindIndex(m => m.Id == messageId);
                 if (index >= 0)
                 {
