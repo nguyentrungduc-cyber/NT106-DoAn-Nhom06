@@ -2781,7 +2781,25 @@ namespace SecureChat.Client
                         {
                             using var dlg = new SecureChat.Client.Forms.Chat.frmCreateGroup();
                             dlg.StartPosition = FormStartPosition.CenterParent;
-                            dlg.ShowDialog(this);
+                            if (dlg.ShowDialog(this) != DialogResult.OK) break;
+                            if (string.IsNullOrWhiteSpace(dlg.ResultGroupName)) break;
+
+                            var http = ApiClient.Instance.GetHttpClient();
+                            var payload = new
+                            {
+                                Name = dlg.ResultGroupName,
+                                MemberIds = dlg.ResultMemberIds
+                            };
+                            var body = new System.Net.Http.StringContent(
+                                System.Text.Json.JsonSerializer.Serialize(payload),
+                                System.Text.Encoding.UTF8, "application/json");
+                            var res = await http.PostAsync("api/conversations/group", body);
+                            if (!res.IsSuccessStatusCode)
+                            {
+                                MessageBox.Show(this, "Tạo nhóm thất bại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                break;
+                            }
+                            await SyncConversationsAsync();
                         }
                         catch (Exception ex)
                         {
