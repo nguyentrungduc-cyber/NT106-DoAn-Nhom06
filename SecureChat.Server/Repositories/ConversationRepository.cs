@@ -64,9 +64,29 @@ namespace SecureChat.Repositories
 
 		public async Task DeleteAsync(string conversationID)
 		{
-			var conv = await db.Conversations.FindAsync(conversationID);
+			var conv = await db.Conversations
+				.Include(c => c.Members)
+				.Include(c => c.PinnedMessages)
+				.FirstOrDefaultAsync(c => c.ConversationID == conversationID);
 			if (conv is null)
 				return;
+
+			// Break SetNull FK references to prevent circular dependency.
+			// When both the principal (Message, ConversationMember) and the dependent
+			// (Conversation, ConversationMember, MessagePin) are being deleted, EF cannot
+			// UPDATE a row (SetNull) and DELETE it in the same SaveChangesAsync().
+			//
+			// Conflicts fixed:
+			//   Conversation.LastMessageID     (SetNull → Message)
+			//   ConversationMember.LastReadMsgID (SetNull → Message)
+			//   MessagePin.PinnedBy            (SetNull → ConversationMember)
+			conv.LastMessageID = null;
+			foreach (var m in conv.Members)
+				m.LastReadMsgID = null;
+			foreach (var p in conv.PinnedMessages)
+				p.PinnedBy = null;
+
+			await db.SaveChangesAsync();
 
 			db.Conversations.Remove(conv);
 			await db.SaveChangesAsync();
