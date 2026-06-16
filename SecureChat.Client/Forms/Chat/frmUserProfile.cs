@@ -1,7 +1,7 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using SecureChat.Client;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -9,113 +9,118 @@ namespace SecureChat.Client.Forms.Chat
     {
         private static readonly Color C_BG = Color.White;
         private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x7D, 0x8B, 0x98);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x2A, 0xAB, 0xEE);
 
         public frmUserProfile(string displayName, string username, string userId, string? bio)
         {
-            Text = "View Profile";
+            Text = "Profile";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
             MinimizeBox = false;
+            HelpButton = false;
             ControlBox = false;
-            ClientSize = new Size(400, 380);
+            ClientSize = new Size(400, 420);
             BackColor = C_BG;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
-            var avatar = new Panel
+            int y = 24;
+
+            // Close button (✕) — giống frmGroupInfo
+            var btnClose = new Button
+            {
+                Text = "\u2715",
+                Font = new Font("Segoe UI", 12f),
+                Size = new Size(30, 30),
+                Location = new Point(ClientSize.Width - 46, 14),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
+                Cursor = Cursors.Hand,
+                TabStop = false,
+            };
+            btnClose.FlatAppearance.BorderSize = 0;
+            btnClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xF0, 0xF4, 0xF8);
+            btnClose.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEE, 0xF5);
+            btnClose.Click += (_, __) => Close();
+            Controls.Add(btnClose);
+
+            // Large avatar (centered)
+            var avatar = new AvatarControl
             {
                 Size = new Size(100, 100),
-                Location = new Point(150, 24),
-                BackColor = TG.GetAvatarColor(displayName),
+                Location = new Point((ClientSize.Width - 100) / 2, y)
             };
-            avatar.Paint += (s, e) =>
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = new GraphicsPath();
-                path.AddEllipse(0, 0, avatar.Width - 1, avatar.Height - 1);
-                avatar.Region = new Region(path);
-                if (string.IsNullOrEmpty(displayName)) return;
-                string initial = displayName.Length > 0 ? displayName[..1].ToUpper() : "?";
-                using var brush = new SolidBrush(Color.White);
-                using var fmt = new StringFormat
-                {
-                    Alignment = StringAlignment.Center,
-                    LineAlignment = StringAlignment.Center
-                };
-                e.Graphics.DrawString(initial, new Font("Segoe UI Semibold", 36f), brush,
-                    new RectangleF(0, 0, avatar.Width, avatar.Height), fmt);
-            };
+            avatar.SetName(displayName);
+            Controls.Add(avatar);
+            y += 118;
 
+            // Display name (centered)
             var lblName = new Label
             {
                 Text = displayName,
-                Font = new Font("Segoe UI Semibold", 16f),
-                ForeColor = C_TEXT,
-                BackColor = Color.Transparent,
+                Font = TG.FontSemiBold(16f),
+                ForeColor = TG.TextPrimary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(ClientSize.Width, 0),
                 AutoSize = true,
+                MaximumSize = new Size(ClientSize.Width - 40, 0),
+                BackColor = Color.Transparent,
             };
-            lblName.Location = new Point((ClientSize.Width - lblName.Width) / 2, 140);
+            if (lblName.Height < 24) lblName.Height = 24;
+            lblName.Location = new Point(0, y);
+            Controls.Add(lblName);
+            y += lblName.Height + 4;
 
+            // Username (centered)
             var lblUsername = new Label
             {
                 Text = $"@{username}",
-                Font = new Font("Segoe UI", 11f),
-                ForeColor = C_SUB,
-                BackColor = Color.Transparent,
+                Font = TG.FontRegular(12f),
+                ForeColor = TG.TextSecondary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Size = new Size(ClientSize.Width, 0),
                 AutoSize = true,
+                MaximumSize = new Size(ClientSize.Width - 40, 0),
+                BackColor = Color.Transparent,
             };
-            lblUsername.Location = new Point((ClientSize.Width - lblUsername.Width) / 2, 172);
+            if (lblUsername.Height < 20) lblUsername.Height = 20;
+            lblUsername.Location = new Point(0, y);
+            Controls.Add(lblUsername);
+            y += lblUsername.Height + 20;
 
-            int infoY = 220;
+            // Divider
+            Controls.Add(new Panel
+            {
+                Height = 1,
+                Width = ClientSize.Width - 80,
+                BackColor = TG.Divider,
+                Location = new Point(40, y)
+            });
+            y += 16;
 
-            AddInfoField("User ID", userId, ref infoY);
+            // Info: User ID
+            AppendInfoRow("🆔", userId, ref y);
+
+            // Info: Bio
             if (!string.IsNullOrWhiteSpace(bio))
-                AddInfoField("Bio", bio, ref infoY);
+                AppendInfoRow("ℹ️", bio, ref y);
+        }
 
-            var btnClose = new Button
+        private void AppendInfoRow(string icon, string text, ref int y)
+        {
+            var lbl = new Label
             {
-                Text = "Close",
-                FlatStyle = FlatStyle.Flat,
-                BackColor = C_ACCENT,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 11f, FontStyle.Bold),
-                Size = new Size(120, 40),
-                Location = new Point((ClientSize.Width - 120) / 2, ClientSize.Height - 70),
-                Cursor = Cursors.Hand,
+                Text = $"{icon}  {text}",
+                Font = TG.FontRegular(11f),
+                ForeColor = TG.TextPrimary,
+                AutoSize = true,
+                MaximumSize = new Size(ClientSize.Width - 80, 0),
+                BackColor = Color.Transparent,
+                Location = new Point(40, y)
             };
-            btnClose.FlatAppearance.BorderSize = 0;
-            btnClose.Click += (_, __) => Close();
-
-            Controls.AddRange(new Control[] { avatar, lblName, lblUsername, btnClose });
-
-            void AddInfoField(string label, string value, ref int y)
-            {
-                var lbl = new Label
-                {
-                    Text = label,
-                    Font = new Font("Segoe UI", 9f),
-                    ForeColor = C_SUB,
-                    BackColor = Color.Transparent,
-                    AutoSize = true,
-                    Location = new Point(40, y),
-                };
-                var val = new Label
-                {
-                    Text = value,
-                    Font = new Font("Segoe UI", 10.5f),
-                    ForeColor = C_TEXT,
-                    BackColor = Color.Transparent,
-                    AutoSize = true,
-                    Location = new Point(40, y + 18),
-                    MaximumSize = new Size(320, 0),
-                };
-                Controls.Add(lbl);
-                Controls.Add(val);
-                y += 56;
-            }
+            Controls.Add(lbl);
+            y += lbl.Height + 12;
         }
     }
 }
