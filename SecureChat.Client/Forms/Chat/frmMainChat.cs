@@ -98,7 +98,7 @@ namespace SecureChat.Client
 
         // ── Settings menu controls ─────────────────
         private Panel _pnlSettingsHeader;
-        
+
         // ── Conversation data ──────────────────────────────
         private string _activeConvId = string.Empty;
         private string _currentUserId = string.Empty;
@@ -120,7 +120,7 @@ namespace SecureChat.Client
 
         // Message expiration service
         private readonly MessageExpirationService _expirationService = new();
-        
+
         // Timer to refresh UI for countdown display
         private System.Windows.Forms.Timer? _countdownRefreshTimer;
 
@@ -134,6 +134,8 @@ namespace SecureChat.Client
 
         private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new();
         private readonly Dictionary<string, DateTime> _messageDates = new();
+
+
 
         // Cập nhật lại _currentMsgs sang Tuple 5 tham số
         // Lưu ý: trả về list được lưu trong _allMsgs để các thao tác Add/Update
@@ -251,7 +253,7 @@ namespace SecureChat.Client
                 }
             };
             _countdownRefreshTimer.Start();
-            
+
             // Load danh sách hội thoại từ API thật
             await LoadConversationsAsync();
         }
@@ -328,6 +330,13 @@ namespace SecureChat.Client
 
                 foreach (var m in list)
                 {
+                    // Cache AES key từ attachment nếu có
+                    if (m.Attachments != null)
+                    {
+                        foreach (var att in m.Attachments)
+                            HandleHybridEncryptedAttachment(m.MessageID, att);
+                    }
+
                     bool isOut = m.SenderID == _currentUserId;
                     string text = m.Content ?? "";
 
@@ -436,7 +445,7 @@ namespace SecureChat.Client
                 UpdateCachedBackground(); // Thêm dòng này để ảnh nền co giãn theo Form
             };
             AdjustLayout();
-            
+
             // Load mock data trước để UI có nội dung đẹp ngay khi mở form.
             // Sau khi SyncConversationsAsync (trong FrmMainChat_Load) chạy xong:
             //  - Nếu server có conversation thật -> mock bị replace.
@@ -710,7 +719,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
-                Height = 18,
+                Height = 22,
                 Location = new Point(66, 32),
                 BackColor = Color.Transparent,
                 AutoEllipsis = true
@@ -1446,21 +1455,21 @@ namespace SecureChat.Client
             if (isGroup)
             {
                 var memberNames = new List<string>();
-try
-{
-    var http = ApiClient.Instance.GetHttpClient();
-    var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
-    if (res.IsSuccessStatusCode)
-    {
-        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(
-            await res.Content.ReadAsStringAsync(), opts);
-        if (list != null)
-            memberNames = list.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
-    }
-}
-catch { }
-using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, memberNames.ToArray());
+                try
+                {
+                    var http = ApiClient.Instance.GetHttpClient();
+                    var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
+                    if (res.IsSuccessStatusCode)
+                    {
+                        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(
+                            await res.Content.ReadAsStringAsync(), opts);
+                        if (list != null)
+                            memberNames = list.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
+                    }
+                }
+                catch { }
+                using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, memberNames.ToArray());
                 if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
                     return;
             }
@@ -1480,7 +1489,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             if (!await TryRemoveConversationOnServerAsync(_activeConvId))
             {
                 var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
-                string errorTitle = isGroup 
+                string errorTitle = isGroup
                     ? (resources.GetString("ChatLeaveTitle") ?? "Leave group")
                     : (resources.GetString("ChatDeleteTitle") ?? "Delete conversation");
                 string errorMessage = isGroup
@@ -1490,7 +1499,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 MessageBox.Show(this,
                     errorMessage,
                     errorTitle,
-                    MessageBoxButtons.OK, 
+                    MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
             }
@@ -1542,17 +1551,17 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             // Xóa conversation khỏi danh sách
             _convs.RemoveAll(c => c.Id == conversationId);
-            
+
             // Xóa tất cả tin nhắn của conversation
             _allMsgs.Remove(conversationId);
-            
+
             // Xóa khỏi cache sync
             _syncedConversations.Remove(conversationId);
             _myMemberIdByConv.Remove(conversationId);
-            
+
             // Xóa conversation key khỏi decryptor cache
             _decryptor.ForgetConversation(conversationId);
-            
+
             // Xóa processed message IDs của conversation này
             lock (_processedMessageIdsLock)
             {
@@ -1564,7 +1573,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             if (_activeConvId == conversationId)
             {
                 _activeConvId = string.Empty;
-                
+
                 // Clear current messages
                 _currentMsgs.Clear();
                 _forwardMetadata.Clear();
@@ -2125,7 +2134,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                             {
                                 errorMessage = $"Upload thất bại với mã lỗi HTTP {(int)resp.StatusCode}.";
                             }
-                            
+
                             this.BeginInvoke(new Action(() => MessageBox.Show(this, errorMessage, "Lỗi Upload File", MessageBoxButtons.OK, MessageBoxIcon.Error)));
                             return;
                         }
@@ -2139,7 +2148,17 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         var doc = System.Text.Json.JsonDocument.Parse(respStr);
                         var root = doc.RootElement;
                         string url = root.GetProperty("url").GetString() ?? string.Empty;
+
                         string fileName = Path.GetFileName(path);
+
+                        // Truncate tên file nếu quá 64 ký tự (giới hạn server)
+                        if (fileName.Length > 64)
+                        {
+                            string ext = Path.GetExtension(fileName);           // ví dụ ".docx"
+                            string nameOnly = Path.GetFileNameWithoutExtension(fileName);
+                            fileName = nameOnly.Substring(0, 64 - ext.Length) + ext;
+                        }
+
                         long fileSize = root.GetProperty("fileSize").GetInt64();
                         string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
 
@@ -2360,7 +2379,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                             errorMessage = $"Upload thất bại: {respStr}";
                                         }
                                     }
-                                    
+
                                     this.BeginInvoke(new Action(() => MessageBox.Show(this, errorMessage, "Lỗi Upload Voice", MessageBoxButtons.OK, MessageBoxIcon.Error)));
                                     return;
                                 }
@@ -2374,7 +2393,17 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                                 var doc = System.Text.Json.JsonDocument.Parse(respStr);
                                 var root = doc.RootElement;
                                 string url = root.GetProperty("url").GetString() ?? string.Empty;
+
                                 string fileName = root.GetProperty("fileName").GetString() ?? Path.GetFileName(encryptedPath);
+
+                                // Truncate
+                                if (fileName.Length > 64)
+                                {
+                                    string ext = Path.GetExtension(fileName);
+                                    string nameOnly = Path.GetFileNameWithoutExtension(fileName);
+                                    fileName = nameOnly.Substring(0, 64 - ext.Length) + ext;
+                                }
+
                                 long fileSize = root.GetProperty("fileSize").GetInt64();
                                 string sha = root.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() ?? localSha : localSha;
                                 string duration = root.TryGetProperty("duration", out var durEl) && durEl.ValueKind == System.Text.Json.JsonValueKind.Number
@@ -2590,7 +2619,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 3600}h";
                 else
                     btnTimer.Text = $"⏱{_selfDestructSeconds.Value / 86400}d";
-                
+
                 btnTimer.ForeColor = Color.FromArgb(255, 87, 34); // Orange color for active timer
                 btnTimer.Font = new Font("Segoe UI Emoji", 10f);
             }
@@ -2931,13 +2960,65 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         }
                         break;
                     }
+
                 case "New Group":
                     {
                         try
                         {
                             using var dlg = new SecureChat.Client.Forms.Chat.frmCreateGroup();
                             dlg.StartPosition = FormStartPosition.CenterParent;
-                            dlg.ShowDialog(this);
+                            if (dlg.ShowDialog(this) != DialogResult.OK) break;
+                            if (string.IsNullOrWhiteSpace(dlg.ResultGroupName))
+                            {
+                                MessageBox.Show(this, "Group name is required.", "Tạo nhóm", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                break;
+                            }
+                            if (dlg.ResultMemberIds == null || dlg.ResultMemberIds.Count == 0)
+                            {
+                                MessageBox.Show(this, "Please select members for the group.", "Tạo nhóm", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                break;
+                            }
+
+                            var http = ApiClient.Instance.GetHttpClient();
+
+                            // Build Members payload expected by server: list of { UserID, EncryptedKey }
+                            var members = new List<object>();
+                            foreach (var id in dlg.ResultMemberIds)
+                                members.Add(new { UserID = id, EncryptedKey = "TBD" });
+
+                            // Ensure current user is included as a member
+                            if (!string.IsNullOrWhiteSpace(_currentUserId) && !dlg.ResultMemberIds.Contains(_currentUserId))
+                                members.Insert(0, new { UserID = _currentUserId, EncryptedKey = "TBD" });
+
+                            var payload = new
+                            {
+                                Type = SecureChat.Models.ConversationType.Group, // serializes to numeric enum
+                                Name = dlg.ResultGroupName,
+                                AvatarUrl = (string?)null,
+                                Members = members
+                            };
+
+                            var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                            var res = await http.PostAsync("api/conversations", content);
+
+                            if (!res.IsSuccessStatusCode)
+                            {
+                                string body = string.Empty;
+                                try { body = await res.Content.ReadAsStringAsync(); } catch { /* ignore */ }
+
+                                var msg = $"Tạo nhóm thất bại. HTTP {(int)res.StatusCode} {res.ReasonPhrase}";
+                                if (!string.IsNullOrWhiteSpace(body))
+                                    msg += $"\n\nServer response:\n{body}";
+
+                                MessageBox.Show(this, msg, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                System.Diagnostics.Debug.WriteLine($"Create group failed: {msg}");
+                                break;
+                            }
+
+                            // success — refresh conversations
+                            await SyncConversationsAsync();
                         }
                         catch (Exception ex)
                         {
@@ -3689,7 +3770,9 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 }
 
                 bool isGroup = _convs.Find(c => c.Id == _activeConvId).IsGroup;
-                var bubble = BuildBubble(msg.Text, msg.Out, msg.Time, msg.Sender, isGroup, msg.Id);
+                string bubbleSender = msg.Out ? "" :
+                    (_senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : msg.Sender);
+                var bubble = BuildBubble(msg.Text, msg.Out, msg.Time, bubbleSender, isGroup, msg.Id);
                 bubble.Tag = msg.Id;
 
                 bubble.Location = new Point(0, y);
@@ -3891,7 +3974,21 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             {
                 var payload = text.Substring(filePrefix.Length);
                 var parts = payload.Split(new[] { "::" }, StringSplitOptions.None);
+
                 string url = parts.Length > 0 ? parts[0] : "";
+                // Ghép baseUrl nếu URL là relative (mỗi client tự ghép theo server của họ)
+                // Nếu URL chứa localhost, replace bằng server thật của client này
+                if (!string.IsNullOrEmpty(url) && url.Contains("://localhost"))
+                {
+                    var uri = new Uri(url);
+                    var baseUri = new Uri(SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl());
+                    url = baseUri.Scheme + "://" + baseUri.Host + ":" + baseUri.Port + uri.PathAndQuery;
+                }
+                else if (!string.IsNullOrEmpty(url) && !url.StartsWith("http"))
+                {
+                    url = SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl() + url;
+                }
+
                 string fileName = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "";
                 string fileSize = parts.Length > 2 ? parts[2] : "";
                 // optional expected sha256 provided by server: url|fileName|fileSize|sha256
@@ -4095,6 +4192,12 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             int statusHeight = 16;
             int senderHeight = (!isOut && isGroup && !string.IsNullOrEmpty(sender)) ? 19 : 0;
+            int senderMinWidth = 0;
+            if (!isOut && isGroup && !string.IsNullOrEmpty(sender))
+            {
+                using var gSender = _pnlMessages.CreateGraphics();
+                senderMinWidth = (int)gSender.MeasureString(sender, TG.FontSemiBold(8f)).Width + pad * 2 + 10;
+            }
             int replyBlockHeight = (replySender != null) ? 38 : 0;
 
             // --- FORWARD HEADER MEASUREMENT ---
@@ -4147,6 +4250,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             }
 
             int minBw = (replySender != null) ? 160 : 100;
+            minBw = Math.Max(minBw, senderMinWidth);
             if (forwardSender != null)
             {
                 int fwdMinBw = (int)(fwdPrefixWidth + Math.Min(fwdNameMeasuredW, maxW - pad * 2 - 10 - fwdPrefixWidth) + pad * 2 + 10);
@@ -4295,7 +4399,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                         var timerSz = e.Graphics.MeasureString(timerText, timerFont);
                         float timerX = x + pad;
                         float timerY = y + bh - timerSz.Height - 6;
-                        
+
                         // Draw timer icon and text
                         e.Graphics.DrawString("⏱", new Font("Segoe UI Emoji", 8f), new SolidBrush(Color.FromArgb(255, 87, 34)), timerX, timerY - 1);
                         e.Graphics.DrawString(timerText, timerFont, new SolidBrush(Color.FromArgb(255, 87, 34)), timerX + 14, timerY);
@@ -5408,10 +5512,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             // Validate message length (tránh spam hoặc message quá dài)
             if (text.Length > 4096)
             {
-                MessageBox.Show(this, 
-                    "Tin nhắn quá dài. Vui lòng giới hạn trong 4096 ký tự.", 
-                    "Lỗi", 
-                    MessageBoxButtons.OK, 
+                MessageBox.Show(this,
+                    "Tin nhắn quá dài. Vui lòng giới hạn trong 4096 ký tự.",
+                    "Lỗi",
+                    MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
             }
@@ -5419,10 +5523,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             // Kiểm tra có conversation đang active không
             if (string.IsNullOrWhiteSpace(_activeConvId))
             {
-                MessageBox.Show(this, 
-                    "Vui lòng chọn một cuộc trò chuyện trước khi gửi tin nhắn.", 
-                    "Lỗi", 
-                    MessageBoxButtons.OK, 
+                MessageBox.Show(this,
+                    "Vui lòng chọn một cuộc trò chuyện trước khi gửi tin nhắn.",
+                    "Lỗi",
+                    MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
             }
@@ -5683,14 +5787,15 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             _wallpaperWatcher?.Dispose();
             _wallpaper?.Dispose();
             _chatMoreMenu?.Dispose();
-            
+
             // Stop and dispose countdown refresh timer
             _countdownRefreshTimer?.Stop();
             _countdownRefreshTimer?.Dispose();
-            
+
             // Stop and dispose expiration service
             _expirationService?.Stop();
             _expirationService?.Dispose();
+
 
             // Stop and dispose SignalR client
             if (_signalRClient is not null)

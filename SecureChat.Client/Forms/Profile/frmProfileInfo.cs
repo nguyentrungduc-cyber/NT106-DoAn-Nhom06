@@ -26,6 +26,7 @@ namespace SecureChat.Client.Forms.Profile
         private Label _lblName = null!;
         private Label _lblStatus = null!;
         private TextBox _txtName = null!;
+        private TextBox _txtEmail = null!;
         private TextBox _txtUsername = null!;
         private Button _btnAvatar = null!;
         private DateTimePicker _dtBirthday = null!;
@@ -119,6 +120,8 @@ namespace SecureChat.Client.Forms.Profile
             int fieldTop = 240;
             var nameField = InputField("Name", fieldTop);
             fieldTop += 74;
+            var phoneField = InputField("Email", fieldTop);
+            fieldTop += 74;
             var userField = InputField("t.me/username", fieldTop);
             fieldTop += 74;
 
@@ -175,11 +178,13 @@ namespace SecureChat.Client.Forms.Profile
             {
                 _btnBack, _btnClose, _avatar, _btnAvatar, _lblName, _lblStatus,
                 nameField.Label, nameField.TextBox, nameField.Underline,
+                phoneField.Label, phoneField.TextBox, phoneField.Underline,
                 userField.Label, userField.TextBox, userField.Underline,
                 lblBirth, _dtBirthday, _lblError, btnSave,
             });
 
             _txtName = nameField.TextBox;
+            _txtEmail = phoneField.TextBox;
             _txtUsername = userField.TextBox;
         }
 
@@ -221,6 +226,7 @@ namespace SecureChat.Client.Forms.Profile
         private void LoadProfile(ProfileModel profile)
         {
             _txtName.Text = profile.FullName;
+            _txtEmail.Text = profile.Email;
             _txtUsername.Text = profile.Username;
             if (profile.Birthday.HasValue)
                 _dtBirthday.Value = profile.Birthday.Value;
@@ -272,6 +278,7 @@ namespace SecureChat.Client.Forms.Profile
                 }
 
                 _profile.FullName = name;
+                _profile.Email = _txtEmail.Text.Trim();
                 _profile.Username = username;
                 _profile.Birthday = _dtBirthday.Value;
 

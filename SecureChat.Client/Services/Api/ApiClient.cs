@@ -253,12 +253,13 @@ namespace SecureChat.Client.Services
 				    return (true, data, string.Empty);
 				}
 
-				return (false, default, $"Lỗi server: {responseStr}");
-			}
-			catch (Exception ex)
-			{
-				return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
-			}
-		}
+                return (false, default, $"Lỗi server: {responseStr}");
+            }
+            catch (Exception ex)
+            {
+                return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
+            }
+        }
+        public string GetBaseUrl() => _httpClient.BaseAddress?.ToString().TrimEnd('/') ?? "";
     }
 }

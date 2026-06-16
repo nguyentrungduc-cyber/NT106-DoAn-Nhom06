@@ -428,6 +428,9 @@ SecureChat.Server/appsettings*.json
 # Không có ví dụ thì chỉnh kiểu sao?
 !SecureChat.Server/appsettings.example.json
 
+# Uploaded files
+SecureChat.Server/wwwroot/uploads/*
+!SecureChat.Server/wwwroot/uploads/.gitkeep
 # Uploaded files (test artifacts)
 SecureChat.Server/wwwroot/uploads/
 

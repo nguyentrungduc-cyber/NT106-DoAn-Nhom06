@@ -104,6 +104,9 @@ namespace SecureChat.Client
 
         // Đếm số những lời mời bạn đã nhận được (Incoming) (để hiển thị badge đỏ trên tab "Lời mời").
         private int _incomingCount = 0;
+
+        // Khai báo field timer 
+        private System.Windows.Forms.Timer? _searchDebounceTimer;
         public string? PendingOpenConversationId { get; private set; }
 
         private List<ContactItem> _friends = new List<ContactItem>();
@@ -515,6 +518,8 @@ namespace SecureChat.Client
 
         private void BuildFriendList(List<ContactItem> friends, Panel pnl)
         {
+            pnl.Controls.Clear();
+
             // Khai báo biến y để xác định tọa độ dọc. Mỗi khi thêm một người bạn mới, y sẽ tăng lên để người tiếp theo không bị đè lên người trước.
             int y = 0;
 
@@ -539,6 +544,7 @@ namespace SecureChat.Client
 
         private void BuildGroupList(List<ContactItem> groups, Panel pnl)
         {
+            pnl.Controls.Clear();
             int y = 0;
             int initialWidth = pnl.ClientSize.Width > 0 ? pnl.ClientSize.Width : 360;
             foreach (var item in groups)
@@ -693,13 +699,38 @@ namespace SecureChat.Client
                             new { UserID = c.UserId,  EncryptedKey = encryptedKeyForOther }
                         }
                     });
+
+                    
                     var res = await http.PostAsync("api/conversations",
                         new StringContent(reqBody, System.Text.Encoding.UTF8, "application/json"));
+
+                    /*
                     if (!res.IsSuccessStatusCode) { btnMsg.Enabled = true; return; }
 
                     var conv = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.ConversationResponse>(
                         await res.Content.ReadAsStringAsync(), opts);
                     if (conv == null) { btnMsg.Enabled = true; return; }
+                    */
+
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var errBody = await res.Content.ReadAsStringAsync();
+                        btnMsg.Enabled = true;
+                        MessageBox.Show($"Lỗi {(int)res.StatusCode}: {errBody}", "Debug");
+                        return;
+                    }
+
+                    var resBody = await res.Content.ReadAsStringAsync();
+                    var conv = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.ConversationResponse>(resBody, opts);
+                    if (conv == null)
+                    {
+                        btnMsg.Enabled = true;
+                        MessageBox.Show($"conv null, body: {resBody}", "Debug");
+                        return;
+                    }
+
+
+
 
                     PendingOpenConversationId = conv.ConversationID;
                     Close();
@@ -1126,7 +1157,20 @@ namespace SecureChat.Client
             _tbSearch.Height = 36;
             _tbSearch.Dock = DockStyle.Fill;
             _tbSearch.SetPlaceholder("🔍  Tìm theo tên hoặc @username...");
-            _tbSearch.TextChanged += (s, e) => DoSearch(_tbSearch.Text);
+            _tbSearch.TextChanged += (s, e) =>
+            {
+                _searchDebounceTimer?.Stop();
+                if (_searchDebounceTimer == null)
+                {
+                    _searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 400 };
+                    _searchDebounceTimer.Tick += (_, __) =>
+                    {
+                        _searchDebounceTimer.Stop();
+                        DoSearch(_tbSearch.Text);
+                    };
+                }
+                _searchDebounceTimer.Start();
+            };
             pnlSearch.Controls.Add(_tbSearch);
 
             _lblSearchHint.Text = "Nhập tên hoặc username để tìm kiếm";
@@ -1472,11 +1516,35 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 Location = new Point(initialWidth - 92, 16)
             };
-            btnUnblock.Click += (s, e) =>
+            btnUnblock.Click += async (s, e) =>
             {
-                c.Status = FriendStatus.None;
-                _blockedUsers.Remove(c);
-                LoadBlockedUsers();
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(c.UserId))
+                    {
+                        MessageBox.Show("UserId is empty; cannot unblock.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.DeleteAsync($"api/friends/block/{c.UserId}");
+                    var body = await res.Content.ReadAsStringAsync();
+
+                    if (res.IsSuccessStatusCode)
+                    {
+                        c.Status = FriendStatus.None;
+                        _blockedUsers.Remove(c);
+                        LoadBlockedUsers();
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Unblock failed ({(int)res.StatusCode}): {body}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Unblock request failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             };
 
             pnl.Controls.AddRange(new Control[] { avatar, lblName, btnUnblock });

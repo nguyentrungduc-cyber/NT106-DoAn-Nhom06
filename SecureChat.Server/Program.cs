@@ -73,6 +73,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 
 builder.Services.AddAuthorization();
 
+
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 524288000; // 500MB
+});
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 524288000; // 500MB
+});
+
 builder.Services.AddControllers().AddJsonOptions(o => {
 		o.JsonSerializerOptions.Converters.Add(
 			new System.Text.Json.Serialization.JsonStringEnumConverter());
@@ -116,9 +127,12 @@ if (app.Environment.IsDevelopment()) {
 }
 
 // Serve static files from wwwroot (uploads will be available under /uploads)
-app.UseStaticFiles(new StaticFileOptions
+
+// With this:
+app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
 {
-    ServeUnknownFileTypes = true
+    ServeUnknownFileTypes = true,
+    DefaultContentType = "application/octet-stream"
 });
 
 app.UseCors();

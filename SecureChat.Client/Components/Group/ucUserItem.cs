@@ -53,6 +53,8 @@ namespace SecureChat.Client.Components.Group
         // ═══════════════════════════════════════════════════
         //  PROPERTIES
         // ═══════════════════════════════════════════════════
+        public string UserId { get; set; } = string.Empty;
+
         public string DisplayName
         {
             get => _displayName;
