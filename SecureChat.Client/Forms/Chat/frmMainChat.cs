@@ -1569,6 +1569,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 _currentMsgs.Clear();
                 _forwardMetadata.Clear();
                 _forwardOriginalSenderId.Clear();
+
+                // Clear pinned messages — conversation/pins no longer exist
+                _pinnedMessageIds.Clear();
+                UpdatePinnedBar();
                 
                 // Chọn conversation đầu tiên nếu còn
                 if (_convs.Count > 0)
@@ -3723,6 +3727,15 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             _pnlInputBar.Visible = hasActiveConversation;
             _pnlMessages.Visible = hasActiveConversation;
             _pnlChatEmpty.Visible = !hasActiveConversation;
+
+            // Hide pinned bar when no conversation is active
+            if (!hasActiveConversation)
+            {
+                _pnlPinnedBar.Visible = false;
+                _pnlPinnedBottomBar.Visible = false;
+                _pnlPinnedPopup.Visible = false;
+                _isPinnedPopupOpen = false;
+            }
 
             if (_pnlChatEmpty.Visible)
             {
