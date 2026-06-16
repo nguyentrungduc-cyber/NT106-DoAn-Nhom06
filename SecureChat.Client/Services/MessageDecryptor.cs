@@ -31,6 +31,7 @@ namespace SecureChat.Client.Services
     {
         private readonly MessageService _messageService;
         private readonly ConcurrentDictionary<string, byte[]> _conversationKeys = new();
+        private readonly ConcurrentDictionary<string, List<byte[]>> _oldConversationKeys = new();
 
         public MessageDecryptor() : this(new MessageService()) { }
 
@@ -181,6 +182,16 @@ namespace SecureChat.Client.Services
                 }
             }
 
+            // Save old key before overwriting
+            if (_conversationKeys.TryGetValue(conversationId, out var oldKey))
+            {
+                var history = _oldConversationKeys.GetOrAdd(conversationId, _ => new List<byte[]>());
+                lock (history)
+                {
+                    history.Insert(0, oldKey);
+                }
+            }
+
             _conversationKeys[conversationId] = newKey;
             System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey complete for conversation {conversationId}");
             return newKey;
@@ -192,10 +203,42 @@ namespace SecureChat.Client.Services
         public void ForgetConversation(string conversationId)
         {
             if (!string.IsNullOrWhiteSpace(conversationId))
+            {
                 _conversationKeys.TryRemove(conversationId, out _);
+                _oldConversationKeys.TryRemove(conversationId, out _);
+            }
         }
 
-        public void ForgetAll() => _conversationKeys.Clear();
+        public void ForgetAll()
+        {
+            _conversationKeys.Clear();
+            _oldConversationKeys.Clear();
+        }
+
+        /// <summary>
+        /// Thử giải mã với các key cũ (từ lịch sử rekey).
+        /// </summary>
+        private string? TryDecryptWithOldKeys(string content, string contentIV, string conversationId)
+        {
+            if (!_oldConversationKeys.TryGetValue(conversationId, out var history) || history.Count == 0)
+                return null;
+
+            lock (history)
+            {
+                foreach (var oldKey in history)
+                {
+                    try
+                    {
+                        return AesEncryption.DecryptText(content, contentIV, oldKey);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+            return null;
+        }
 
         /// <summary>
         /// Giải mã 1 message và build view-model dạng tuple đã được
@@ -243,13 +286,15 @@ namespace SecureChat.Client.Services
                             }
                             catch
                             {
-                                // Rekey đã xảy ra → key cũ không còn → không thể giải mã
-                                content = "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
+                                // Current key fails → try old keys from history
+                                content = TryDecryptWithOldKeys(content, message.ContentIV!, message.ConversationID)
+                                    ?? "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
                             }
                         }
                         else
                         {
-                            content = "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
+                            content = TryDecryptWithOldKeys(content, message.ContentIV!, message.ConversationID)
+                                ?? "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
                         }
                     }
                 }
