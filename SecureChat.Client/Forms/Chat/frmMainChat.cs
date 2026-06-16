@@ -4231,9 +4231,14 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             try
             {
-                // Lấy display name của người gửi gốc
-                string senderName = string.IsNullOrEmpty(msg.Sender) ? "You"
-                    : _senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : msg.Sender;
+                // Lấy display name của người gửi gốc.
+                // Nếu message được forward (có _forwardMetadata), giữ nguyên chuỗi forward gốc.
+                string senderName;
+                if (!string.IsNullOrEmpty(messageId) && _forwardMetadata.TryGetValue(messageId, out var origFwdName))
+                    senderName = origFwdName;
+                else
+                    senderName = string.IsNullOrEmpty(msg.Sender) ? "You"
+                        : _senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : msg.Sender;
 
                 // Xây nội dung forward: dùng rawContent (luôn là nội dung thật, không có prefix forward)
                 string rawContent = StripForwardPrefix(msg.Text ?? string.Empty);
@@ -4271,8 +4276,11 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
                 var (encryptedContent, contentIV) = encryptionService.EncryptMessage(forwardText, conversationKey);
 
+                // Nếu message nguồn đã là forward, giữ nguyên chuỗi forward gốc (OriginalSenderID)
                 string? originalSenderId = null;
-                if (!string.IsNullOrEmpty(msg.Sender) && _usernameToUserId.TryGetValue(msg.Sender, out var uid))
+                if (!string.IsNullOrEmpty(messageId) && _forwardOriginalSenderId.TryGetValue(messageId, out var chainOrigId))
+                    originalSenderId = chainOrigId;
+                else if (!string.IsNullOrEmpty(msg.Sender) && _usernameToUserId.TryGetValue(msg.Sender, out var uid))
                     originalSenderId = uid;
                 else if (string.IsNullOrEmpty(msg.Sender))
                     originalSenderId = _currentUserId;
@@ -4296,6 +4304,12 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 {
                     MessageBox.Show(this, $"Lỗi forward: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
+                }
+
+                // Đánh dấu message ID đã xử lý để SignalR handler không tạo duplicate
+                lock (_processedMessageIdsLock)
+                {
+                    _processedMessageIds.Add(messageResponse.MessageID);
                 }
 
                 // Broadcast qua SignalR để các member khác nhận realtime
