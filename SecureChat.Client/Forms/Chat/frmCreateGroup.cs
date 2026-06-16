@@ -95,6 +95,7 @@ namespace SecureChat.Client.Forms.Chat
         public string ResultGroupName { get; private set; } = "";
         public string ResultAvatarPath { get; private set; } = "";
         public List<string> ResultMembers { get; private set; } = new();
+        public List<string> ResultMemberIds { get; private set; } = new();
 
         // ═══════════════════════════════════════════════════
         //  CONSTRUCTOR
@@ -125,7 +126,7 @@ namespace SecureChat.Client.Forms.Chat
                 var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.FriendResponse>>(json, opts);
                 if (list == null) return;
 
-                var users = list.Select(f => (f.Friend.DisplayName, "last seen recently"));
+                var users = list.Select(f => (f.Friend.UserID, f.Friend.DisplayName, "last seen recently"));
                 BeginInvoke(new Action(() => LoadUserList(users)));
             }
             catch { /* Giữ list rỗng nếu lỗi mạng */ }
@@ -134,14 +135,15 @@ namespace SecureChat.Client.Forms.Chat
         // ───────────────────────────────────────────────────
         //  API: Nạp danh sách user từ service
         // ───────────────────────────────────────────────────
-        public void LoadUserList(IEnumerable<(string Name, string Status)> users)
+        public void LoadUserList(IEnumerable<(string UserId, string Name, string Status)> users)
         {
             _allUsers.Clear();
             _selectedUsers.Clear();
             int idx = 0;
-            foreach (var (name, status) in users)
+            foreach (var (userId, name, status) in users)
             {
                 var item = new ucUserItem(name, status, _palette[idx++ % _palette.Length]);
+                item.UserId = userId;
                 item.SelectionChanged += OnUserSelectionChanged;
                 _allUsers.Add(item);
             }
@@ -419,6 +421,7 @@ namespace SecureChat.Client.Forms.Chat
             else
             {
                 ResultMembers = _selectedUsers.Select(u => u.DisplayName).ToList();
+                ResultMemberIds = _selectedUsers.Select(u => u.UserId).ToList();
                 DialogResult = DialogResult.OK;
                 Close();
             }
