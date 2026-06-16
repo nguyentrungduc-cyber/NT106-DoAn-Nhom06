@@ -3983,6 +3983,9 @@ namespace SecureChat.Client
 
             int statusHeight = 16;
             int senderHeight = (!isOut && isGroup && !string.IsNullOrEmpty(sender)) ? 19 : 0;
+            int senderMinWidth = (!isOut && isGroup && !string.IsNullOrEmpty(sender))
+                ? (int)g.MeasureString(sender, TG.FontSemiBold(8f)).Width + pad * 2 + 10
+                : 0;
             int replyBlockHeight = (replySender != null) ? 38 : 0;
 
             // --- FORWARD HEADER MEASUREMENT ---
@@ -4027,6 +4030,7 @@ namespace SecureChat.Client
             }
 
             int minBw = (replySender != null) ? 160 : 100;
+            minBw = Math.Max(minBw, senderMinWidth);
             if (forwardSender != null)
             {
                 int fwdMinBw = (int)(fwdPrefixWidth + Math.Min(fwdNameMeasuredW, maxW - pad * 2 - 10 - fwdPrefixWidth) + pad * 2 + 10);
