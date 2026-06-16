@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using SecureChat.Client.Services.Api;
 using SecureChat.DTOs;
@@ -32,12 +34,16 @@ namespace SecureChat.Client.Services
         private readonly MessageService _messageService;
         private readonly ConcurrentDictionary<string, byte[]> _conversationKeys = new();
         private readonly ConcurrentDictionary<string, List<byte[]>> _oldConversationKeys = new();
+        private static readonly string _keyHistoryPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "SecureChat", "key_history.json");
 
         public MessageDecryptor() : this(new MessageService()) { }
 
         public MessageDecryptor(MessageService messageService)
         {
             _messageService = messageService ?? throw new ArgumentNullException(nameof(messageService));
+            LoadKeyHistory();
         }
 
         /// <summary>UserID của user đang đăng nhập. Bắt buộc set trước khi xử lý.</summary>
@@ -71,6 +77,7 @@ namespace SecureChat.Client.Services
             if (key is not null)
             {
                 _conversationKeys[conversationId] = key;
+                SaveKeyHistory();
                 return key;
             }
 
@@ -193,6 +200,7 @@ namespace SecureChat.Client.Services
             }
 
             _conversationKeys[conversationId] = newKey;
+            SaveKeyHistory();
             System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Rekey complete for conversation {conversationId}");
             return newKey;
         }
@@ -206,6 +214,7 @@ namespace SecureChat.Client.Services
             {
                 _conversationKeys.TryRemove(conversationId, out _);
                 _oldConversationKeys.TryRemove(conversationId, out _);
+                SaveKeyHistory();
             }
         }
 
@@ -238,6 +247,70 @@ namespace SecureChat.Client.Services
                 }
             }
             return null;
+        }
+
+        public void SaveKeyHistory()
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(_keyHistoryPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                var data = new KeyHistoryData
+                {
+                    CurrentKeys = _conversationKeys.ToDictionary(kvp => kvp.Key, kvp => Convert.ToBase64String(kvp.Value)),
+                    OldKeys = _oldConversationKeys.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value.Select(b => Convert.ToBase64String(b)).ToList())
+                };
+
+                var json = JsonSerializer.Serialize(data);
+                File.WriteAllText(_keyHistoryPath, json);
+            }
+            catch
+            {
+                // Best-effort — nếu không ghi được thì ignore
+            }
+        }
+
+        public void LoadKeyHistory()
+        {
+            try
+            {
+                if (!File.Exists(_keyHistoryPath)) return;
+
+                var json = File.ReadAllText(_keyHistoryPath);
+                var data = JsonSerializer.Deserialize<KeyHistoryData>(json);
+                if (data is null) return;
+
+                foreach (var kvp in data.CurrentKeys)
+                {
+                    if (!string.IsNullOrWhiteSpace(kvp.Value))
+                        _conversationKeys[kvp.Key] = Convert.FromBase64String(kvp.Value);
+                }
+
+                foreach (var kvp in data.OldKeys)
+                {
+                    var list = kvp.Value
+                        .Where(v => !string.IsNullOrWhiteSpace(v))
+                        .Select(Convert.FromBase64String)
+                        .ToList();
+                    if (list.Count > 0)
+                        _oldConversationKeys[kvp.Key] = list;
+                }
+            }
+            catch
+            {
+                // File hỏng → bắt đầu lại với lịch sử trống
+                try { File.Delete(_keyHistoryPath); } catch { }
+            }
+        }
+
+        private sealed class KeyHistoryData
+        {
+            public Dictionary<string, string>? CurrentKeys { get; set; }
+            public Dictionary<string, List<string>>? OldKeys { get; set; }
         }
 
         /// <summary>
