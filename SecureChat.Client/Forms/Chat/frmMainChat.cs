@@ -5209,8 +5209,11 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 if (origMsg.Id != null)
                 {
                     replyToId = _replyingToMessageId;
+                    // Resolve display name: prefer _senderDisplayNameMap, fallback to raw username
                     string origSender = string.IsNullOrEmpty(origMsg.Sender) ? "You" : origMsg.Sender;
-                    // Format: reply::SenderName::OriginalText::NewText
+                    if (origSender != "You" && _senderDisplayNameMap.TryGetValue(origSender, out var dn) && !string.IsNullOrEmpty(dn))
+                        origSender = dn;
+                    // Format: reply::DisplayName::OriginalText::NewText
                     finalMessageText = $"reply::{origSender}::{ExtractActualText(origMsg.Text)}::{text}";
                 }
             }
