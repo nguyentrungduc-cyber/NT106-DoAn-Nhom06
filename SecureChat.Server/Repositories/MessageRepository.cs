@@ -33,9 +33,10 @@ namespace SecureChat.Repositories
 			var query = db.Messages
 				.Include(m => m.Sender)
 					.ThenInclude(s => s!.User)
+				.Include(m => m.OriginalSender)
 				.Include(m => m.Attachments)
 				.Include(m => m.Reactions)
-				.Where(m => m.ConversationID == conversationID && m.DeletedAt == null);
+				.Where(m => m.ConversationID == conversationID && m.DeletedAt == null && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
 			if (before.HasValue)
 				query = query.Where(m => m.SentAt < before.Value);
@@ -148,48 +149,6 @@ namespace SecureChat.Repositories
 		}
 
 		/*
-		 * REACTIONS
-		 */
-
-		public async Task<MessageReaction> AddReactionAsync(MessageReaction reaction)
-		{
-			reaction.CreatedAt = DateTime.UtcNow;
-			db.MessageReactions.Add(reaction);
-			await db.SaveChangesAsync();
-			return reaction;
-		}
-
-		public async Task<MessageReaction?> GetReactionByIdAsync(string reactionID)
-			=> await db.MessageReactions
-				.Include(r => r.Member)
-				.FirstOrDefaultAsync(r => r.ReactionID == reactionID);
-
-		public async Task<MessageReaction?> GetReactionAsync(
-			string messageID, string memberID, string reaction)
-			=> await db.MessageReactions
-				.FirstOrDefaultAsync(r => r.MessageID == messageID &&
-				                          r.MemberID  == memberID  &&
-				                          r.Reaction  == reaction);
-
-		public async Task<List<MessageReaction>> GetReactionsByMessageAsync(string messageID)
-			=> await db.MessageReactions
-				.Include(r => r.Member)
-					.ThenInclude(m => m!.User)
-				.Where(r => r.MessageID == messageID)
-				.OrderBy(r => r.CreatedAt)
-				.ToListAsync();
-
-		public async Task RemoveReactionAsync(string reactionID)
-		{
-			var reaction = await db.MessageReactions.FindAsync(reactionID);
-			if (reaction is null)
-				return;
-
-			db.MessageReactions.Remove(reaction);
-			await db.SaveChangesAsync();
-		}
-
-		/*
 		 * STATUS
 		 */
 
@@ -241,7 +200,7 @@ namespace SecureChat.Repositories
 			if (member is null)
 				return 0;
 
-			var query = db.Messages.Where(m => m.ConversationID == conversationID && m.DeletedAt == null && m.SenderID != memberID);
+			var query = db.Messages.Where(m => m.ConversationID == conversationID && m.DeletedAt == null && m.SenderID != memberID && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
 			if (member.LastReadMessage is not null)
 				query = query.Where(m => m.SentAt > member.LastReadMessage.SentAt);

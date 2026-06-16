@@ -35,7 +35,7 @@ namespace SecureChat.Controllers
             return Ok(result);
         }
 
-        [HttpGet("{conversationID}")]
+	[HttpGet("{conversationID}")]
 		public async Task<IActionResult> GetConversation(string conversationID)
 		{
 			var conv = await conversations.GetByIdWithMembersAsync(conversationID);
@@ -44,7 +44,15 @@ namespace SecureChat.Controllers
 			var member = conv.Members.FirstOrDefault(m => m.UserID == Me && m.LeftAt == null);
 			if (member is null)
 				return Forbid();
-			return Ok(ConversationResponse.From(conv));
+
+			var res = ConversationResponse.From(conv);
+			if (conv.Type == ConversationType.Direct && string.IsNullOrEmpty(res.Name))
+			{
+				var other = conv.Members.FirstOrDefault(m => m.UserID != Me && m.LeftAt == null);
+				if (other?.User != null)
+					res = res with { Name = other.User.DisplayName };
+			}
+			return Ok(res);
 		}
 
 		[HttpPost]
@@ -60,7 +68,22 @@ namespace SecureChat.Controllers
 				if (otherID is not null) {
 					var existing = await conversations.GetDirectConversationAsync(Me, otherID);
 					if (existing is not null)
+					{
+						// Cập nhật EncryptedKey cho các member nếu cần
+						var existingWithMembers = await conversations.GetByIdWithMembersAsync(existing.ConversationID);
+						if (existingWithMembers is not null)
+						{
+							foreach (var entry in req.Members)
+							{
+								var member = existingWithMembers.Members.FirstOrDefault(m => m.UserID == entry.UserID && m.LeftAt == null);
+								if (member is not null && member.EncryptedKey != entry.EncryptedKey)
+								{
+									await conversations.UpdateEncryptedKeyAsync(member.MemberID, entry.EncryptedKey);
+								}
+							}
+						}
 						return Ok(ConversationResponse.From(existing));
+					}
 				}
 			}
 
@@ -114,22 +137,15 @@ namespace SecureChat.Controllers
 				return NotFound();
 
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
-			if (member is null || member.Role != MemberRole.Owner)
+			if (member is null || member.LeftAt is not null)
 				return Forbid();
+
+			// Group: only Owner can delete. Direct: any active member can delete.
+			if (conv.Type != ConversationType.Direct && member.Role != MemberRole.Owner)
+				return Forbid();
+
 			await conversations.DeleteAsync(conversationID);
-
 			return NoContent();
-		}
-
-		[HttpGet("{conversationID}/members")]
-		public async Task<IActionResult> GetMembers(string conversationID)
-		{
-			var myMember = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
-			if (myMember is null || myMember.LeftAt is not null)
-				return Forbid();
-
-			var members = await conversations.GetActiveMembersAsync(conversationID);
-			return Ok(members.Select(MemberResponse.From));
 		}
 
 		[HttpPost("{conversationID}/members")]
@@ -156,7 +172,7 @@ namespace SecureChat.Controllers
 			});
 
 			var loaded = await conversations.GetMemberByIdAsync(newMember.MemberID);
-			return CreatedAtAction(nameof(GetMembers), new { conversationID }, MemberResponse.From(loaded!));
+			return CreatedAtAction(nameof(GetConversationMembers), new { conversationID }, MemberResponse.From(loaded!));
 		}
 
 		[HttpPatch("{conversationID}/members/{memberID}")]
@@ -180,6 +196,8 @@ namespace SecureChat.Controllers
 				await conversations.UpdateNotificationModeAsync(memberID, req.ShowNotifications.Value);
 			if (req.BannedUntil.HasValue && myMember.Role >= MemberRole.Moderator)
 				await conversations.SetBanAsync(memberID, req.BannedUntil.Value);
+			if (req.EncryptedKey is not null)
+				await conversations.UpdateEncryptedKeyAsync(memberID, req.EncryptedKey);
 
 			var updated = await conversations.GetMemberByIdAsync(memberID);
 			return Ok(MemberResponse.From(updated!));
@@ -222,6 +240,26 @@ namespace SecureChat.Controllers
 			if (member is null)
 				return NotFound();
 			return Ok(MemberResponse.From(member));
+		}
+
+		[HttpGet("{conversationID}/members")]
+		public async Task<IActionResult> GetConversationMembers(string conversationID)
+		{
+			// Verify user is member of conversation
+			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
+			if (member is null || member.LeftAt is not null)
+				return Forbid();
+
+			var conv = await conversations.GetByIdWithMembersAsync(conversationID);
+			if (conv is null)
+				return NotFound();
+
+			// Return active members with their user info (including public key)
+			var activeMembers = conv.Members
+				.Where(m => m.LeftAt == null)
+				.ToList();
+
+			return Ok(activeMembers.Select(MemberResponse.From));
 		}
 	}
 }

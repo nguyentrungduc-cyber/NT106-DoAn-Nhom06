@@ -37,11 +37,14 @@ namespace SecureChat.Models
 		[Column("deleted_at")]
 		public DateTime? DeletedAt { get; set; }
 
-		[Column("edited_at")]
-		public DateTime? EditedAt { get; set; }
+	[Column("edited_at")]
+	public DateTime? EditedAt { get; set; }
 
-		[ForeignKey(nameof(ConversationID)), InverseProperty(nameof(Conversation.Messages))]
-		public Conversation Conversation { get; set; } = null!;
+	[Column("expires_at")]
+	public DateTime? ExpiresAt { get; set; }
+
+	[ForeignKey(nameof(ConversationID)), InverseProperty(nameof(Conversation.Messages))]
+	public Conversation Conversation { get; set; } = null!;
 
 		[ForeignKey(nameof(SenderID)), InverseProperty(nameof(ConversationMember.SentMessages))]
 		public ConversationMember? Sender { get; set; }
@@ -74,16 +77,16 @@ namespace SecureChat.Models
 		[Required, Column("file_url")]
 		public string FileURL { get; set; } = "";
 
-		[Required, Column("file_name"),MaxLength(64)]
+		[Required, Column("file_name"), MaxLength(64)]
 		public string FileName { get; set; } = "";
 
-        [Required, Column("file_name_in_storage"), MaxLength(64)]
-        public string FileNameInStorage { get; set; } = "";
+		[Required, Column("file_name_in_storage"), MaxLength(64)]
+		public string FileNameInStorage { get; set; } = "";
 
-        [Required, Column("file_type"), MaxLength(128)]
+		[Required, Column("file_type"), MaxLength(128)]
 		public string FileType { get; set; } = "";
 
-		[Required, Column("file_hash"),MaxLength(256)]
+		[Required, Column("file_hash"), MaxLength(256)]
 		public string FileHash { get; set; } = "";
 
 		[Required, Column("file_size")]
@@ -121,6 +124,9 @@ namespace SecureChat.Models
 
 		[ForeignKey(nameof(MessageID)), InverseProperty(nameof(Message.Attachments))]
 		public Message Message { get; set; } = null!;
+
+		[ForeignKey(nameof(ReceiverId))]
+		public User? Receiver { get; set; }
 	}
 
 	[Table("MessagePins")]
@@ -158,7 +164,7 @@ namespace SecureChat.Models
 		[Required, Column("message_id"), MaxLength(8)]
 		public string MessageID { get; set; } = "";
 
-		[Column("member_id"), MaxLength(8)]
+		[Required, Column("member_id"), MaxLength(8)]
 		public string MemberID { get; set; } = "";
 
 		[Required, Column("reaction"), MaxLength(8)]
@@ -171,7 +177,7 @@ namespace SecureChat.Models
 		public Message Message { get; set; } = null!;
 
 		[ForeignKey(nameof(MemberID))]
-		public ConversationMember? Member { get; set; }
+		public ConversationMember Member { get; set; } = null!;
 	}
 
 	[Table("MessageStatuses")]
@@ -196,7 +202,7 @@ namespace SecureChat.Models
 		public Message Message { get; set; } = null!;
 
 		[ForeignKey(nameof(MemberID))]
-		public ConversationMember? Member { get; set; } = null!;
+		public ConversationMember Member { get; set; } = null!;
 	}
 
 	[Table("MessageMentions")]

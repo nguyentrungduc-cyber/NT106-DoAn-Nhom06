@@ -5,7 +5,7 @@ using NAudio.Wave;
 namespace SecureChat.Client.Services
 {
     // Minimal local audio recorder using NAudio WaveInEvent -> WAV file
-    public sealed class AudioRecorderService
+    public sealed class AudioRecorderService : IDisposable
     {
         private WaveInEvent? _waveIn;
         private WaveFileWriter? _writer;
@@ -85,6 +85,31 @@ namespace SecureChat.Client.Services
                 IsRecording = false;
 
                 return _outputPath ?? string.Empty;
+            }
+        }
+        public void Dispose()
+        {
+            if (IsRecording)
+            {
+                StopRecording();
+            }
+            else
+            {
+                _waveIn?.Dispose();
+                _writer?.Dispose();
+            }
+        }
+
+        public static int GetDurationSeconds(string wavPath)
+        {
+            try
+            {
+                using var wav = new WaveFileReader(wavPath);
+                return (int)wav.TotalTime.TotalSeconds;
+            }
+            catch
+            {
+                return 0;
             }
         }
     }

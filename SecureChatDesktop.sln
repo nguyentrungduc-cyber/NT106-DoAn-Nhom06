@@ -4,6 +4,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.14.36915.13
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SecureChat.Server", "SecureChat.Server\SecureChat.Server.csproj", "{706E5F25-DE6A-404D-9E81-6EB09311FF8E}"
+	ProjectSection(ProjectDependencies) = postProject
+		{10241046-DA44-4A6A-BCD2-EE9D6E2AC40E} = {10241046-DA44-4A6A-BCD2-EE9D6E2AC40E}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SecureChat.Client", "SecureChat.Client\SecureChat.Client.csproj", "{10241046-DA44-4A6A-BCD2-EE9D6E2AC40E}"
 EndProject

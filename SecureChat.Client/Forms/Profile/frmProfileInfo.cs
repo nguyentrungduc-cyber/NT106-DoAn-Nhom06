@@ -26,7 +26,7 @@ namespace SecureChat.Client.Forms.Profile
         private Label _lblName = null!;
         private Label _lblStatus = null!;
         private TextBox _txtName = null!;
-        private TextBox _txtPhone = null!;
+        private TextBox _txtEmail = null!;
         private TextBox _txtUsername = null!;
         private Button _btnAvatar = null!;
         private DateTimePicker _dtBirthday = null!;
@@ -120,7 +120,7 @@ namespace SecureChat.Client.Forms.Profile
             int fieldTop = 240;
             var nameField = InputField("Name", fieldTop);
             fieldTop += 74;
-            var phoneField = InputField("Phone number", fieldTop);
+            var phoneField = InputField("Email", fieldTop);
             fieldTop += 74;
             var userField = InputField("t.me/username", fieldTop);
             fieldTop += 74;
@@ -184,7 +184,7 @@ namespace SecureChat.Client.Forms.Profile
             });
 
             _txtName = nameField.TextBox;
-            _txtPhone = phoneField.TextBox;
+            _txtEmail = phoneField.TextBox;
             _txtUsername = userField.TextBox;
         }
 
@@ -226,7 +226,7 @@ namespace SecureChat.Client.Forms.Profile
         private void LoadProfile(ProfileModel profile)
         {
             _txtName.Text = profile.FullName;
-            _txtPhone.Text = profile.PhoneNumber;
+            _txtEmail.Text = profile.Email;
             _txtUsername.Text = profile.Username;
             if (profile.Birthday.HasValue)
                 _dtBirthday.Value = profile.Birthday.Value;
@@ -254,23 +254,31 @@ namespace SecureChat.Client.Forms.Profile
             _lblStatus.Location = new Point(centerX - (_lblStatus.PreferredWidth / 2), _lblName.Bottom + 2);
         }
 
-        private void SaveProfile()
+        private async void SaveProfile()
         {
             try
             {
                 _lblError.Text = string.Empty;
                 var name = _txtName.Text.Trim();
-                var phone = _txtPhone.Text.Trim();
                 var username = _txtUsername.Text.Trim().TrimStart('@');
                 if (string.IsNullOrWhiteSpace(name))
                     throw new InvalidOperationException("Name is required.");
-                if (!string.IsNullOrEmpty(phone) && !Regex.IsMatch(phone, "^\\+?[0-9 ]{6,20}$"))
-                    throw new InvalidOperationException("Phone number is not valid.");
                 if (!string.IsNullOrEmpty(username) && !Regex.IsMatch(username, "^[a-zA-Z0-9_]{5,32}$"))
                     throw new InvalidOperationException("Username must be 5-32 chars [a-zA-Z0-9_].");
 
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var req = new { displayName = name };
+                var json = System.Text.Json.JsonSerializer.Serialize(req);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                var res = await http.PatchAsync("api/users/me", content);
+                if (!res.IsSuccessStatusCode)
+                {
+                    var err = await res.Content.ReadAsStringAsync();
+                    throw new InvalidOperationException($"Lỗi lưu hồ sơ: {err}");
+                }
+
                 _profile.FullName = name;
-                _profile.PhoneNumber = phone;
+                _profile.Email = _txtEmail.Text.Trim();
                 _profile.Username = username;
                 _profile.Birthday = _dtBirthday.Value;
 

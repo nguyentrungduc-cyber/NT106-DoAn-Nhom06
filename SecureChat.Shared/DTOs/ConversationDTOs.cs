@@ -32,7 +32,8 @@ namespace SecureChat.DTOs
 		MemberRole? Role,
 		[MaxLength(64)] string? Nickname,
 		NotificationMode? ShowNotifications,
-		DateTime? BannedUntil
+		DateTime? BannedUntil,
+		string? EncryptedKey
 	);
 
 	public record ConversationResponse(

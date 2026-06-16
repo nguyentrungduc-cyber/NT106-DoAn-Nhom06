@@ -1,5 +1,6 @@
 ﻿using SecureChat.Client.Components.Group;
 using System.Drawing.Drawing2D;
+using System.Linq;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -211,23 +212,25 @@ namespace SecureChat.Client.Forms.Chat
 
         private Button BuildActionCard(string emoji, string title, Color? titleColor = null)
         {
-            var b = new Button
             {
-                Size = new Size(112, 70),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0xF7, 0xF9, 0xFB),
-                ForeColor = titleColor ?? C_TEXT,
-                Font = new Font("Segoe UI Emoji", 10.8f),
-                Text = $"{emoji}\n{title}",
-                TextAlign = ContentAlignment.MiddleCenter,
-                Cursor = Cursors.Hand,
-                UseCompatibleTextRendering = true,
-                TabStop = false
-            };
-            b.FlatAppearance.BorderSize = 0;
-            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xEF, 0xF3, 0xF8);
-            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEE, 0xF6);
-            return b;
+                var b = new Button
+                {
+                    Size = new Size(112, 70),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = Color.FromArgb(0xF7, 0xF9, 0xFB),
+                    ForeColor = titleColor ?? C_TEXT,
+                    Font = new Font("Segoe UI Emoji", 10.8f),
+                    Text = $"{emoji}\n{title}",
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Cursor = Cursors.Hand,
+                    UseCompatibleTextRendering = true,
+                    TabStop = false
+                };
+                b.FlatAppearance.BorderSize = 0;
+                b.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xEF, 0xF3, 0xF8);
+                b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEE, 0xF6);
+                return b;
+            }
         }
 
         private static Button FlatIconButton(string text, string fontFamily, float size)
@@ -285,13 +288,36 @@ namespace SecureChat.Client.Forms.Chat
             _lblName.Text = f.GroupName;
         }
 
-        private void OpenLeaveGroup()
+        private async void OpenLeaveGroup()
         {
-            using var f = new frmLeaveGroup(_lblName.Text, _currentUserDisplayName);
-            if (f.ShowDialog(this) != DialogResult.OK) return;
+            var memberNames = _pnlList.Controls
+                .OfType<ucGroupMemberItem>()
+                .Select(item => item.DisplayName)
+                .ToList();
 
-            if (f.LeaveConfirmed)
-                Close();
+            using var f = new frmLeaveGroup(_lblName.Text, _currentUserDisplayName, memberNames);
+            if (f.ShowDialog(this) != DialogResult.OK || !f.LeaveConfirmed) return;
+
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var res = await http.PostAsync(
+                    $"api/conversations/{_conversationId}/leave",
+                    null);
+
+                if (res.IsSuccessStatusCode)
+                    Close();
+                else
+                {
+                    var err = await res.Content.ReadAsStringAsync();
+                    MessageBox.Show(this, $"Không thể rời nhóm: {err}", "Lỗi",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         public void LoadGroup(string name, Image? avatar, IReadOnlyList<MemberModel> members)
@@ -300,10 +326,13 @@ namespace SecureChat.Client.Forms.Chat
             _lblCount.Text = $"{members.Count} members";
             _lblMembersTitle.Text = $"{members.Count} MEMBERS";
 
+            var oldAvatar = _pbAvatar.Image;
             _pbAvatar.Image = avatar;
+            oldAvatar?.Dispose();
             _pbAvatar.BackColor = avatar == null ? Color.FromArgb(0xF4, 0xA4, 0x44) : Color.Transparent;
 
             _pnlList.SuspendLayout();
+            DisposeOldMemberItems();
             _pnlList.Controls.Clear();
             int y = 0;
             foreach (var m in members)
@@ -327,6 +356,18 @@ namespace SecureChat.Client.Forms.Chat
             _pnlList.AutoScrollMinSize = new Size(0, y);
             _pnlList.ResumeLayout();
             LayoutMemberItems();
+        }
+
+        private void DisposeOldMemberItems()
+        {
+            foreach (Control c in _pnlList.Controls)
+            {
+                if (c is ucGroupMemberItem item)
+                {
+                    item.AvatarImage = null;
+                }
+                c.Dispose();
+            }
         }
 
         private void LayoutMemberItems()

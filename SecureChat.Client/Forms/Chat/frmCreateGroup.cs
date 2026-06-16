@@ -29,22 +29,22 @@ namespace SecureChat.Client.Forms.Chat
     public partial class frmCreateGroup : Form
     {
         // ═══════════════════════════════════════════════════
-        //  TELEGRAM DARK PALETTE
+        //  TELEGRAM LIGHT PALETTE
         // ═══════════════════════════════════════════════════
         private const int FORM_WIDTH = 520;
         private const int FORM_HEIGHT = 560;
         private const int BOTTOM_HEIGHT = 60;
         private const int CONTENT_HEIGHT = FORM_HEIGHT - BOTTOM_HEIGHT;
         private const int SCROLLBAR_WIDTH = 18;
-        private static readonly Color C_BG = Color.FromArgb(0x17, 0x21, 0x2B);
-        private static readonly Color C_SURFACE = Color.FromArgb(0x1E, 0x2C, 0x3A);
-        private static readonly Color C_INPUT_BG = Color.FromArgb(0x14, 0x1D, 0x27);
+        private static readonly Color C_BG = Color.White;
+        private static readonly Color C_SURFACE = Color.FromArgb(0xF4, 0xF6, 0xF8);
+        private static readonly Color C_INPUT_BG = Color.FromArgb(0xF3, 0xF5, 0xF8);
         private static readonly Color C_ACCENT = Color.FromArgb(0x2A, 0xAB, 0xEE);
-        private static readonly Color C_TEXT = Color.FromArgb(0xF5, 0xF5, 0xF5);
-        private static readonly Color C_SUBTEXT = Color.FromArgb(0x70, 0x84, 0x99);
-        private static readonly Color C_SEPARATOR = Color.FromArgb(0x1B, 0x29, 0x39);
-        private static readonly Color C_UNDERLINE = Color.FromArgb(0x2B, 0x52, 0x78);
-        private static readonly Color C_AVATAR_D = Color.FromArgb(0x40, 0x90, 0xCB);
+        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
+        private static readonly Color C_SUBTEXT = Color.FromArgb(0x7D, 0x8B, 0x98);
+        private static readonly Color C_SEPARATOR = Color.FromArgb(0xE4, 0xE4, 0xE4);
+        private static readonly Color C_UNDERLINE = Color.FromArgb(0xE5, 0xE5, 0xE5);
+        private static readonly Color C_AVATAR_D = Color.FromArgb(0x5C, 0xA5, 0xEC);
 
         // ═══════════════════════════════════════════════════
         //  CONTROLS – Step 1
@@ -95,6 +95,7 @@ namespace SecureChat.Client.Forms.Chat
         public string ResultGroupName { get; private set; } = "";
         public string ResultAvatarPath { get; private set; } = "";
         public List<string> ResultMembers { get; private set; } = new();
+        public List<string> ResultMemberIds { get; private set; } = new();
 
         // ═══════════════════════════════════════════════════
         //  CONSTRUCTOR
@@ -125,7 +126,7 @@ namespace SecureChat.Client.Forms.Chat
                 var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.FriendResponse>>(json, opts);
                 if (list == null) return;
 
-                var users = list.Select(f => (f.Friend.DisplayName, "last seen recently"));
+                var users = list.Select(f => (f.Friend.UserID, f.Friend.DisplayName, "last seen recently"));
                 BeginInvoke(new Action(() => LoadUserList(users)));
             }
             catch { /* Giữ list rỗng nếu lỗi mạng */ }
@@ -134,14 +135,15 @@ namespace SecureChat.Client.Forms.Chat
         // ───────────────────────────────────────────────────
         //  API: Nạp danh sách user từ service
         // ───────────────────────────────────────────────────
-        public void LoadUserList(IEnumerable<(string Name, string Status)> users)
+        public void LoadUserList(IEnumerable<(string UserId, string Name, string Status)> users)
         {
             _allUsers.Clear();
             _selectedUsers.Clear();
             int idx = 0;
-            foreach (var (name, status) in users)
+            foreach (var (userId, name, status) in users)
             {
                 var item = new ucUserItem(name, status, _palette[idx++ % _palette.Length]);
+                item.UserId = userId;
                 item.SelectionChanged += OnUserSelectionChanged;
                 _allUsers.Add(item);
             }
@@ -419,6 +421,7 @@ namespace SecureChat.Client.Forms.Chat
             else
             {
                 ResultMembers = _selectedUsers.Select(u => u.DisplayName).ToList();
+                ResultMemberIds = _selectedUsers.Select(u => u.UserId).ToList();
                 DialogResult = DialogResult.OK;
                 Close();
             }
@@ -517,7 +520,9 @@ namespace SecureChat.Client.Forms.Chat
             ResultAvatarPath = dlg.FileName;
             try
             {
+                var old = _pbAvatar.Image;
                 _pbAvatar.Image = Image.FromFile(ResultAvatarPath);
+                old?.Dispose();
                 _pbAvatar.BackColor = Color.Black;
                 _pnlCamOverlay.Invalidate();
             }

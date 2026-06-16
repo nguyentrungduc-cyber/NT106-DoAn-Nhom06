@@ -47,41 +47,86 @@ namespace SecureChat.Controllers
 			if (member is null)
 				return Forbid();
 
-			if (member.BannedUntil.HasValue && member.BannedUntil > DateTime.UtcNow)
-				return BadRequest(new { error = "Bạn đang bị cấm gửi tin nhắn." });
+		if (member.BannedUntil.HasValue && member.BannedUntil > DateTime.UtcNow)
+			return BadRequest(new { error = "Bạn đang bị cấm gửi tin nhắn." });
 
-			var msg = await messages.CreateAsync(new Message {
-				MessageID        = NewID(),
-				ConversationID   = conversationID,
-				SenderID         = member.MemberID,
-				OriginalSenderID = req.OriginalSenderID,
-				ReplyToID        = req.ReplyToID,
-				Type             = req.Type,
-				Content          = req.Content,
-				ContentIV        = req.ContentIV
-			});
+		// Calculate ExpiresAt if ExpiresAfterSeconds is provided
+		DateTime? expiresAt = null;
+		if (req.ExpiresAfterSeconds.HasValue && req.ExpiresAfterSeconds.Value > 0)
+		{
+			expiresAt = DateTime.UtcNow.AddSeconds(req.ExpiresAfterSeconds.Value);
+		}
+
+		var msg = await messages.CreateAsync(new Message {
+			MessageID        = NewID(),
+			ConversationID   = conversationID,
+			SenderID         = member.MemberID,
+			OriginalSenderID = req.OriginalSenderID,
+			ReplyToID        = req.ReplyToID,
+			Type             = req.Type,
+			Content          = req.Content,
+			ContentIV        = req.ContentIV,
+			ExpiresAt        = expiresAt
+		});
 
 			if (req.Attachments is not null)
+			{
 				foreach (var att in req.Attachments)
-					await messages.CreateAttachmentAsync(new MessageAttachment {
-						AttachmentID = NewID(),
-						MessageID    = msg.MessageID,
-						FileURL      = att.FileURL,
-						FileName     = att.FileName,
-						FileNameInStorage = att.FileNameInStorage,
-						FileType     = att.FileType,
-						FileHash     = att.FileHash,
-						FileSize     = att.FileSize,
-						Width        = att.Width,
-						Height       = att.Height,
-						ThumbnailURL = att.ThumbnailURL,
-						DurationSecs = att.DurationSecs,
-						FileIv       = att.FileIV,
-                      ThumbnailIv  = att.ThumbnailIV,
-						EncryptedAesKey = att.EncryptedAesKey,
-						EncryptedAesIv  = att.EncryptedAesIv,
-						ReceiverId      = att.ReceiverId
-					});
+				{
+					// If RecipientEncryptions is provided, create one attachment per recipient
+					// Otherwise, use the single-recipient format (backward compatibility)
+					if (att.RecipientEncryptions is not null && att.RecipientEncryptions.Count > 0)
+					{
+						foreach (var recipientEnc in att.RecipientEncryptions)
+						{
+							await messages.CreateAttachmentAsync(new MessageAttachment
+							{
+								AttachmentID = NewID(),
+								MessageID = msg.MessageID,
+								FileURL = att.FileURL,
+								FileName = att.FileName,
+								FileNameInStorage = att.FileNameInStorage,
+								FileType = att.FileType,
+								FileHash = att.FileHash,
+								FileSize = att.FileSize,
+								Width = att.Width,
+								Height = att.Height,
+								ThumbnailURL = att.ThumbnailURL,
+								DurationSecs = att.DurationSecs,
+								FileIv = att.FileIV,
+								ThumbnailIv = att.ThumbnailIV,
+								EncryptedAesKey = recipientEnc.EncryptedAesKey,
+								EncryptedAesIv = recipientEnc.EncryptedAesIv,
+								ReceiverId = recipientEnc.RecipientUserId
+							});
+						}
+					}
+					else
+					{
+						// Legacy single-recipient format
+						await messages.CreateAttachmentAsync(new MessageAttachment
+						{
+							AttachmentID = NewID(),
+							MessageID = msg.MessageID,
+							FileURL = att.FileURL,
+							FileName = att.FileName,
+							FileNameInStorage = att.FileNameInStorage,
+							FileType = att.FileType,
+							FileHash = att.FileHash,
+							FileSize = att.FileSize,
+							Width = att.Width,
+							Height = att.Height,
+							ThumbnailURL = att.ThumbnailURL,
+							DurationSecs = att.DurationSecs,
+							FileIv = att.FileIV,
+							ThumbnailIv = att.ThumbnailIV,
+							EncryptedAesKey = att.EncryptedAesKey,
+							EncryptedAesIv = att.EncryptedAesIv,
+							ReceiverId = att.ReceiverId
+						});
+					}
+				}
+			}
 
 			if (req.MentionedMemberIDs is not null)
 				await messages.AddMentionsAsync(req.MentionedMemberIDs.Select(mid =>
@@ -157,8 +202,6 @@ namespace SecureChat.Controllers
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
-			if (member.Role < MemberRole.Moderator)
-				return Forbid();
 
 			var msg = await messages.GetByIdAsync(messageID);
 			if (msg is null || msg.ConversationID != conversationID)
@@ -167,6 +210,10 @@ namespace SecureChat.Controllers
 			var existing = await messages.GetPinAsync(messageID, conversationID);
 			if (existing is not null)
 				return Conflict(new { error = "Tin nhắn đã được ghim." });
+
+			var pins = await messages.GetPinsByConversationAsync(conversationID);
+			if (pins.Count >= 3)
+				return BadRequest(new { error = "Chỉ được ghim tối đa 3 tin nhắn." });
 
 			var pin = await messages.PinMessageAsync(new MessagePin {
 				MessageID      = messageID,
@@ -183,52 +230,8 @@ namespace SecureChat.Controllers
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
-			if (member.Role < MemberRole.Moderator)
-				return Forbid();
 
 			await messages.UnpinMessageAsync(messageID, conversationID);
-			return NoContent();
-		}
-
-		[HttpPost("{messageID}/reactions")]
-		public async Task<IActionResult> AddReaction(string conversationID, string messageID, [FromBody] AddReactionRequest req)
-		{
-			var member = await GetActiveMember(conversationID);
-			if (member is null)
-				return Forbid();
-
-			var msg = await messages.GetByIdAsync(messageID);
-			if (msg is null || msg.ConversationID != conversationID)
-				return NotFound();
-
-			var existing = await messages.GetReactionAsync(messageID, member.MemberID, req.Reaction);
-			if (existing is not null)
-				return Conflict(new { error = "Đã react emoji này rồi." });
-
-			var reaction = await messages.AddReactionAsync(new MessageReaction {
-				ReactionID = NewID(),
-				MessageID  = messageID,
-				MemberID   = member.MemberID,
-				Reaction   = req.Reaction
-			});
-
-			return Ok(ReactionResponse.From(reaction));
-		}
-
-		[HttpDelete("{messageID}/reactions/{reactionID}")]
-		public async Task<IActionResult> RemoveReaction(string conversationID, string messageID, string reactionID)
-		{
-			var member = await GetActiveMember(conversationID);
-			if (member is null)
-				return Forbid();
-
-			var reaction = await messages.GetReactionByIdAsync(reactionID);
-			if (reaction is null || reaction.MessageID != messageID)
-				return NotFound();
-			if (reaction.MemberID != member.MemberID)
-				return Forbid();
-
-			await messages.RemoveReactionAsync(reactionID);
 			return NoContent();
 		}
 

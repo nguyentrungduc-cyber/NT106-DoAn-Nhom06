@@ -610,7 +610,7 @@ namespace SecureChat.Client.Forms.Settings
                 try
                 {
                     var path = Path.Combine(AppContext.BaseDirectory, FileName);
-                    var data = string.Join("|", DownloadPathMode, CustomDownloadPath, AskDownloadPathEachFile, ShowChatName, TotalUnreadCount, UseSystemWindowFrame, ShowTaskbarIcon, UseMonochromeIcon);
+                    var data = string.Join("\u001F", DownloadPathMode, CustomDownloadPath, AskDownloadPathEachFile, ShowChatName, TotalUnreadCount, UseSystemWindowFrame, ShowTaskbarIcon, UseMonochromeIcon);
                     File.WriteAllText(path, data, Encoding.UTF8);
                 }
                 catch { }
@@ -624,7 +624,8 @@ namespace SecureChat.Client.Forms.Settings
                     var path = Path.Combine(AppContext.BaseDirectory, FileName);
                     if (!File.Exists(path)) return s;
 
-                    var parts = File.ReadAllText(path, Encoding.UTF8).Split('|');
+                    var text = File.ReadAllText(path, Encoding.UTF8);
+                    var parts = text.Contains('\u001F') ? text.Split('\u001F') : text.Split('|');
 
                     if (parts.Length >= 8)
                     {

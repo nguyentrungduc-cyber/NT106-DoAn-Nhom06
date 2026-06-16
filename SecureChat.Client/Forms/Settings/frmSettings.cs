@@ -27,7 +27,7 @@ namespace SecureChat.Client.Forms.Settings
         private Panel _root = null!;
         private Panel _headerPanel = null!;
         private Label _lblName = null!;
-        private Label _lblPhone = null!;
+        private Label _lblEmail = null!;
         private Label _lblUsername = null!;
         private Panel _avatarPanel = null!;
         private Label? _lblLanguageMenu;
@@ -162,7 +162,7 @@ namespace SecureChat.Client.Forms.Settings
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
-            _lblPhone = new Label
+            _lblEmail = new Label
             {
                 Font = TG.FontRegular(11.2f),
                 ForeColor = C_SUB,
@@ -193,7 +193,7 @@ namespace SecureChat.Client.Forms.Settings
 
             _headerPanel.Controls.AddRange(new Control[]
             {
-                lblTitle, btnClose, _avatarPanel, _lblName, _lblPhone, _lblUsername, headerSep
+                lblTitle, btnClose, _avatarPanel, _lblName, _lblEmail, _lblUsername, headerSep
             });
 
             _root.Controls.Add(_headerPanel);
@@ -430,7 +430,7 @@ namespace SecureChat.Client.Forms.Settings
         private void RefreshHeader()
         {
             _lblName.Text = string.IsNullOrWhiteSpace(_profile.FullName) ? "Unknown User" : _profile.FullName;
-            _lblPhone.Text = string.IsNullOrWhiteSpace(_profile.PhoneNumber) ? "+84 --- --- ---" : _profile.PhoneNumber;
+            _lblEmail.Text = string.IsNullOrWhiteSpace(_profile.Email) ? "---" : _profile.Email;
             _avatarPanel.BackColor = TG.GetAvatarColor(_profile.FullName);
 
             _lblUsername.Text = string.IsNullOrWhiteSpace(_profile.Username) ? "Add username" : _profile.Username;
@@ -459,7 +459,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private void LayoutHeaderProfileText()
         {
-            if (_headerPanel == null || _lblName == null || _lblPhone == null || _lblUsername == null)
+            if (_headerPanel == null || _lblName == null || _lblEmail == null || _lblUsername == null)
                 return;
 
             int textLeft = _avatarPanel.Right + 18;
@@ -479,20 +479,20 @@ namespace SecureChat.Client.Forms.Settings
             nameHeight = Math.Max(32, Math.Min(nameHeight, 56));
             int nameTop = _avatarPanel.Top + 4;
 
-            int phoneHeight;
+            int emailHeight;
             int usernameHeight;
             using (var g = _headerPanel.CreateGraphics())
             {
-                phoneHeight = TextRenderer.MeasureText(g, _lblPhone.Text, _lblPhone.Font, new Size(textWidth, int.MaxValue), TextFormatFlags.NoPadding).Height;
+                emailHeight = TextRenderer.MeasureText(g, _lblEmail.Text, _lblEmail.Font, new Size(textWidth, int.MaxValue), TextFormatFlags.NoPadding).Height;
                 usernameHeight = TextRenderer.MeasureText(g, _lblUsername.Text, _lblUsername.Font, new Size(textWidth, int.MaxValue), TextFormatFlags.NoPadding).Height;
             }
 
-            phoneHeight = Math.Max(22, phoneHeight + 4);
+            emailHeight = Math.Max(22, emailHeight + 4);
             usernameHeight = Math.Max(24, usernameHeight + 6);
 
             _lblName.SetBounds(textLeft, nameTop, textWidth, nameHeight);
-            _lblPhone.SetBounds(textLeft, _lblName.Bottom + 6, textWidth, phoneHeight);
-            _lblUsername.SetBounds(textLeft, _lblPhone.Bottom + 6, textWidth, usernameHeight);
+            _lblEmail.SetBounds(textLeft, _lblName.Bottom + 6, textWidth, emailHeight);
+            _lblUsername.SetBounds(textLeft, _lblEmail.Bottom + 6, textWidth, usernameHeight);
 
             int neededHeaderHeight = Math.Max(_avatarPanel.Bottom + 24, _lblUsername.Bottom + 24);
             if (_headerPanel.Height != neededHeaderHeight)

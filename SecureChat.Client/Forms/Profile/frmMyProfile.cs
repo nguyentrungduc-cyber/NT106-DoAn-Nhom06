@@ -11,9 +11,9 @@ namespace SecureChat.Client.Forms.Profile
     {
         private void InitializeComponent() { /* built in code */ }
 
-        private static readonly Color C_BG = Color.FromArgb(0x14, 0x1D, 0x27);
-        private static readonly Color C_TEXT = Color.FromArgb(0xF5, 0xF5, 0xF5);
-        private static readonly Color C_SUB = Color.FromArgb(0x89, 0x9A, 0xB4);
+        private static readonly Color C_BG = Color.White;
+        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
+        private static readonly Color C_SUB = Color.FromArgb(0x7D, 0x8B, 0x98);
         private static readonly Color C_ACCENT = Color.FromArgb(0x2A, 0xAB, 0xEE);
 
         private readonly ProfileModel _profile;
@@ -22,8 +22,10 @@ namespace SecureChat.Client.Forms.Profile
         private Label _lblInitial = null!;
         private Label _lblName = null!;
         private Label _lblStatus = null!;
-        private Label _lblPhone = null!;
-        private Label _lblPhoneType = null!;
+        private Label _lblEmail = null!;
+        private Label _lblEmailType = null!;
+        private Label _lblUsername = null!;
+        private Label _lblUsernameType = null!;
         private Button _btnEdit = null!;
         private Button _btnClose = null!;
 
@@ -46,7 +48,7 @@ namespace SecureChat.Client.Forms.Profile
             HelpButton = false;
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(520, 380);
+            ClientSize = new Size(520, 480);
             BackColor = C_BG;
             Font = new Font("Segoe UI", 10f, GraphicsUnit.Point);
             DoubleBuffered = true;
@@ -94,7 +96,7 @@ namespace SecureChat.Client.Forms.Profile
                 BackColor = Color.Transparent,
             };
 
-            _lblPhone = new Label
+            _lblEmail = new Label
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f, GraphicsUnit.Point),
@@ -102,20 +104,38 @@ namespace SecureChat.Client.Forms.Profile
                 BackColor = Color.Transparent,
             };
 
-            _lblPhoneType = new Label
+            _lblEmailType = new Label
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9.5f, GraphicsUnit.Point),
                 ForeColor = C_SUB,
                 BackColor = Color.Transparent,
-                Text = "Mobile",
+                Text = "Email",
+            };
+
+            _lblUsername = new Label
+            {
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10.5f, GraphicsUnit.Point),
+                ForeColor = C_TEXT,
+                BackColor = Color.Transparent,
+            };
+
+            _lblUsernameType = new Label
+            {
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9.5f, GraphicsUnit.Point),
+                ForeColor = C_SUB,
+                BackColor = Color.Transparent,
+                Text = "Username",
             };
 
             Controls.AddRange(new Control[]
             {
                 _avatar, _btnEdit, _btnClose,
                 _lblName, _lblStatus,
-                _lblPhone, _lblPhoneType,
+                _lblEmail, _lblEmailType,
+                _lblUsername, _lblUsernameType,
             });
         }
 
@@ -123,7 +143,8 @@ namespace SecureChat.Client.Forms.Profile
         {
             _lblName.Text = profile.FullName;
             _lblStatus.Text = profile.StatusText;
-            _lblPhone.Text = profile.PhoneNumber;
+            _lblEmail.Text = string.IsNullOrWhiteSpace(profile.Email) ? "No email" : profile.Email;
+            _lblUsername.Text = FormatUsername(profile.Username);
             _lblInitial.Text = GetInitials(profile.FullName);
             _avatar.BackColor = TG.GetAvatarColor(profile.FullName);
             ApplyAvatarImage();
@@ -192,6 +213,16 @@ namespace SecureChat.Client.Forms.Profile
             return enumerator.MoveNext() ? enumerator.GetTextElement() : string.Empty;
         }
 
+        private static string FormatUsername(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username))
+                return "@";
+
+            // Remove @ if already present and add it back
+            string clean = username.TrimStart('@').Trim();
+            return string.IsNullOrEmpty(clean) ? "@" : "@" + clean;
+        }
+
         private static void ClipCircle(PictureBox pb)
         {
             using var path = new GraphicsPath();
@@ -216,8 +247,8 @@ namespace SecureChat.Client.Forms.Profile
                 Padding = new Padding(8, 2, 8, 2),
             };
             b.FlatAppearance.BorderSize = 0;
-            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 255, 255, 255);
-            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 255, 255, 255);
+            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xF2, 0xF5, 0xF9);
+            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEF, 0xF6);
             return b;
         }
 
@@ -250,10 +281,19 @@ namespace SecureChat.Client.Forms.Profile
             _lblName.Location = new Point(centerX - (_lblName.PreferredWidth / 2), _avatar.Bottom + 14);
             _lblStatus.Location = new Point(centerX - (_lblStatus.PreferredWidth / 2), _lblName.Bottom + 3);
 
-            _lblPhone.Location = new Point(40, _lblStatus.Bottom + 48);
-            if (_lblPhoneType != null)
+            // Email section
+            _lblEmail.Location = new Point(40, _lblStatus.Bottom + 48);
+            if (_lblEmailType != null)
             {
-                _lblPhoneType.Location = new Point(_lblPhone.Left, _lblPhone.Bottom + 6);
+                _lblEmailType.Location = new Point(_lblEmail.Left, _lblEmail.Bottom + 6);
+            }
+
+            // Username section
+            int usernameTop = _lblEmailType.Bottom + 32;
+            _lblUsername.Location = new Point(40, usernameTop);
+            if (_lblUsernameType != null)
+            {
+                _lblUsernameType.Location = new Point(_lblUsername.Left, _lblUsername.Bottom + 6);
             }
         }
     }
