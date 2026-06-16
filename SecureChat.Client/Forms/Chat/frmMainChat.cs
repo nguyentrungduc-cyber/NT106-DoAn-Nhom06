@@ -1172,53 +1172,65 @@ namespace SecureChat.Client
 
         private void EnsureChatMoreMenu()
         {
-            if (_chatMoreMenu != null) return;
-
-            _chatMoreMenu = new ContextMenuStrip
+            if (_chatMoreMenu == null)
             {
-                ShowImageMargin = false,
-                BackColor = Color.White,
-                ForeColor = TG.TextPrimary,
-                Font = new Font("Segoe UI", 10f),
-                Renderer = new ToolStripProfessionalRenderer(new ChatMenuColorTable())
-            };
+                _chatMoreMenu = new ContextMenuStrip
+                {
+                    ShowImageMargin = false,
+                    BackColor = Color.White,
+                    ForeColor = TG.TextPrimary,
+                    Font = new Font("Segoe UI", 10f),
+                    Renderer = new ToolStripProfessionalRenderer(new ChatMenuColorTable())
+                };
 
-            _mnuMuteNotifications = CreateChatMenuItem("🔕  Mute notifications", (_, __) => ToggleMuteNotificationsQuick());
+                _mnuMuteNotifications = CreateChatMenuItem("🔕  Mute notifications", (_, __) => ToggleMuteNotificationsQuick());
 
-            _mnuUnmuteNow = CreateChatMenuItem("🔊  Unmute now", (_, __) => UnmuteNow());
-            _mnuDisableSound = CreateChatMenuItem("🔇  Disable sound", (_, __) => ToggleDisableSound());
-            _mnuMuteForever = CreateChatMenuItem("⛔  Mute forever", (_, __) => SetMuteForever());
-            _mnuMuteFor = CreateChatMenuItem("⏳  Mute for...", null);
+                _mnuUnmuteNow = CreateChatMenuItem("🔊  Unmute now", (_, __) => UnmuteNow());
+                _mnuDisableSound = CreateChatMenuItem("🔇  Disable sound", (_, __) => ToggleDisableSound());
+                _mnuMuteForever = CreateChatMenuItem("⛔  Mute forever", (_, __) => SetMuteForever());
+                _mnuMuteFor = CreateChatMenuItem("⏳  Mute for...", null);
 
-            _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("30 minutes", (_, __) => SetMuteFor(TimeSpan.FromMinutes(30))));
-            _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 hour", (_, __) => SetMuteFor(TimeSpan.FromHours(1))));
-            _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("8 hours", (_, __) => SetMuteFor(TimeSpan.FromHours(8))));
-            _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 day", (_, __) => SetMuteFor(TimeSpan.FromDays(1))));
-            _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 week", (_, __) => SetMuteFor(TimeSpan.FromDays(7))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("30 minutes", (_, __) => SetMuteFor(TimeSpan.FromMinutes(30))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 hour", (_, __) => SetMuteFor(TimeSpan.FromHours(1))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("8 hours", (_, __) => SetMuteFor(TimeSpan.FromHours(8))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 day", (_, __) => SetMuteFor(TimeSpan.FromDays(1))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 week", (_, __) => SetMuteFor(TimeSpan.FromDays(7))));
 
-            _muteOptionItems = new ToolStripItem[]
-            {
-                _mnuUnmuteNow,
-                _mnuDisableSound,
-                _mnuMuteForever,
-                _mnuMuteFor
-            };
+                _muteOptionItems = new ToolStripItem[]
+                {
+                    _mnuUnmuteNow,
+                    _mnuDisableSound,
+                    _mnuMuteForever,
+                    _mnuMuteFor
+                };
 
-            foreach (var item in _muteOptionItems)
-                _mnuMuteNotifications.DropDownItems.Add(item);
+                foreach (var item in _muteOptionItems)
+                    _mnuMuteNotifications.DropDownItems.Add(item);
+            }
 
-            var mnuViewInfo = CreateChatMenuItem("ℹ️  View group info", (_, __) => OpenGroupInfo());
-            var mnuManageGroup = CreateChatMenuItem("🎛️  Manage group", (_, __) => OpenEditGroupFromChat());
-            var mnuClearHistory = CreateChatMenuItem("🧹  Clear history", (_, __) => ClearHistory());
-            var mnuDeleteLeave = CreateChatMenuItem("🚪  Delete and leave", (_, __) => DeleteAndLeave(), Color.FromArgb(0xE2, 0x4B, 0x4A));
+            _chatMoreMenu.Items.Clear();
+
+            var currentConv = _convs.Find(c => c.Id == _activeConvId);
+            bool isGroup = currentConv.IsGroup;
 
             _chatMoreMenu.Items.Add(_mnuMuteNotifications);
-            _chatMoreMenu.Items.Add(new ToolStripSeparator());
-            _chatMoreMenu.Items.Add(mnuViewInfo);
-            _chatMoreMenu.Items.Add(mnuManageGroup);
-            _chatMoreMenu.Items.Add(mnuClearHistory);
-            _chatMoreMenu.Items.Add(new ToolStripSeparator());
-            _chatMoreMenu.Items.Add(mnuDeleteLeave);
+
+            if (isGroup)
+            {
+                _chatMoreMenu.Items.Add(new ToolStripSeparator());
+                _chatMoreMenu.Items.Add(CreateChatMenuItem("ℹ️  View group info", (_, __) => OpenGroupInfo()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem("🎛️  Manage group", (_, __) => OpenEditGroupFromChat()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem("🧹  Clear history", (_, __) => ClearHistory()));
+                _chatMoreMenu.Items.Add(new ToolStripSeparator());
+                _chatMoreMenu.Items.Add(CreateChatMenuItem("🚪  Delete and leave", (_, __) => DeleteAndLeave(), Color.FromArgb(0xE2, 0x4B, 0x4A)));
+            }
+            else
+            {
+                _chatMoreMenu.Items.Add(CreateChatMenuItem("👤  View Profile", (_, __) => ViewProfile()));
+                _chatMoreMenu.Items.Add(new ToolStripSeparator());
+                _chatMoreMenu.Items.Add(CreateChatMenuItem("🗑  Clear History", (_, __) => ClearHistoryPrivate()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem("🗑  Delete Chat", (_, __) => DeleteChat(), Color.FromArgb(0xE2, 0x4B, 0x4A)));
+            }
 
             RefreshMuteMenuState();
         }
@@ -1573,6 +1585,115 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 LoadConversation(_activeConvId);
             else
                 UpdateChatEmptyStateUI();
+        }
+
+        private async void ViewProfile()
+        {
+            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+            try
+            {
+                var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
+                if (!res.IsSuccessStatusCode)
+                {
+                    MessageBox.Show(this, "Unable to load profile information.", "View Profile", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var opts = new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                };
+                var members = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(
+                    await res.Content.ReadAsStringAsync(), opts);
+
+                if (members == null || members.Count < 2)
+                {
+                    MessageBox.Show(this, "Unable to find the other user in this conversation.", "View Profile", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var other = members.FirstOrDefault(m => m.UserID != _currentUserId) ?? members[0];
+                if (other.User == null)
+                {
+                    MessageBox.Show(this, "User information is not available.", "View Profile", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                using var dlg = new frmUserProfile(
+                    other.User.DisplayName ?? "Unknown",
+                    other.User.Username ?? "unknown",
+                    other.User.UserID ?? other.UserID,
+                    other.User.BioText
+                );
+                dlg.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Error loading profile: {ex.Message}", "View Profile", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ClearHistoryPrivate()
+        {
+            var result = MessageBox.Show(this,
+                "Are you sure you want to clear chat history?",
+                "Clear History",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (result != DialogResult.Yes)
+                return;
+
+            try
+            {
+                foreach (var msg in _currentMsgs)
+                {
+                    _messageDates.Remove(msg.Id);
+                    _forwardMetadata.TryRemove(msg.Id, out _);
+                    _forwardOriginalSenderId.TryRemove(msg.Id, out _);
+                }
+                _currentMsgs.Clear();
+
+                // Update sidebar preview
+                int idx = _convs.FindIndex(c => c.Id == _activeConvId);
+                if (idx >= 0)
+                {
+                    var c = _convs[idx];
+                    _convs[idx] = (c.Id, c.Name, string.Empty, c.Time, c.Unread, c.IsGroup);
+                }
+
+                BuildMessages();
+                RefreshSidebarPreview();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Error clearing history: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void DeleteChat()
+        {
+            var result = MessageBox.Show(this,
+                $"Delete this chat?",
+                "Delete Chat",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (result != DialogResult.Yes)
+                return;
+
+            if (!await TryRemoveConversationOnServerAsync(_activeConvId))
+            {
+                MessageBox.Show(this,
+                    "Unable to delete the conversation right now.",
+                    "Delete Chat",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            RemoveConversationLocal(_activeConvId);
         }
 
         // Cache ảnh nền để không load lại mỗi lần paint
