@@ -715,7 +715,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
-                Height = 18,
+                Height = 22,
                 Location = new Point(66, 32),
                 BackColor = Color.Transparent,
                 AutoEllipsis = true
@@ -1561,7 +1561,7 @@ namespace SecureChat.Client
                 // Clear current messages
                 _currentMsgs.Clear();
                 _forwardMetadata.Clear();
-                
+
                 // Chọn conversation đầu tiên nếu còn
                 if (_convs.Count > 0)
                 {
@@ -2775,6 +2775,7 @@ namespace SecureChat.Client
                         }
                         break;
                     }
+
                 case "New Group":
                     {
                         try
@@ -2782,23 +2783,56 @@ namespace SecureChat.Client
                             using var dlg = new SecureChat.Client.Forms.Chat.frmCreateGroup();
                             dlg.StartPosition = FormStartPosition.CenterParent;
                             if (dlg.ShowDialog(this) != DialogResult.OK) break;
-                            if (string.IsNullOrWhiteSpace(dlg.ResultGroupName)) break;
-
-                            var http = ApiClient.Instance.GetHttpClient();
-                            var payload = new
+                            if (string.IsNullOrWhiteSpace(dlg.ResultGroupName))
                             {
-                                Name = dlg.ResultGroupName,
-                                MemberIds = dlg.ResultMemberIds
-                            };
-                            var body = new System.Net.Http.StringContent(
-                                System.Text.Json.JsonSerializer.Serialize(payload),
-                                System.Text.Encoding.UTF8, "application/json");
-                            var res = await http.PostAsync("api/conversations/group", body);
-                            if (!res.IsSuccessStatusCode)
-                            {
-                                MessageBox.Show(this, "Tạo nhóm thất bại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                MessageBox.Show(this, "Group name is required.", "Tạo nhóm", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                                 break;
                             }
+                            if (dlg.ResultMemberIds == null || dlg.ResultMemberIds.Count == 0)
+                            {
+                                MessageBox.Show(this, "Please select members for the group.", "Tạo nhóm", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                break;
+                            }
+
+                            var http = ApiClient.Instance.GetHttpClient();
+
+                            // Build Members payload expected by server: list of { UserID, EncryptedKey }
+                            var members = new List<object>();
+                            foreach (var id in dlg.ResultMemberIds)
+                                members.Add(new { UserID = id, EncryptedKey = "TBD" });
+
+                            // Ensure current user is included as a member
+                            if (!string.IsNullOrWhiteSpace(_currentUserId) && !dlg.ResultMemberIds.Contains(_currentUserId))
+                                members.Insert(0, new { UserID = _currentUserId, EncryptedKey = "TBD" });
+
+                            var payload = new
+                            {
+                                Type = SecureChat.Models.ConversationType.Group, // serializes to numeric enum
+                                Name = dlg.ResultGroupName,
+                                AvatarUrl = (string?)null,
+                                Members = members
+                            };
+
+                            var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                            var res = await http.PostAsync("api/conversations", content);
+
+                            if (!res.IsSuccessStatusCode)
+                            {
+                                string body = string.Empty;
+                                try { body = await res.Content.ReadAsStringAsync(); } catch { /* ignore */ }
+
+                                var msg = $"Tạo nhóm thất bại. HTTP {(int)res.StatusCode} {res.ReasonPhrase}";
+                                if (!string.IsNullOrWhiteSpace(body))
+                                    msg += $"\n\nServer response:\n{body}";
+
+                                MessageBox.Show(this, msg, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                System.Diagnostics.Debug.WriteLine($"Create group failed: {msg}");
+                                break;
+                            }
+
+                            // success — refresh conversations
                             await SyncConversationsAsync();
                         }
                         catch (Exception ex)
