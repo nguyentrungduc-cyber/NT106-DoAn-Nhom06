@@ -3983,9 +3983,12 @@ namespace SecureChat.Client
 
             int statusHeight = 16;
             int senderHeight = (!isOut && isGroup && !string.IsNullOrEmpty(sender)) ? 19 : 0;
-            int senderMinWidth = (!isOut && isGroup && !string.IsNullOrEmpty(sender))
-                ? (int)g.MeasureString(sender, TG.FontSemiBold(8f)).Width + pad * 2 + 10
-                : 0;
+            int senderMinWidth = 0;
+            if (!isOut && isGroup && !string.IsNullOrEmpty(sender))
+            {
+                using var gSender = _pnlMessages.CreateGraphics();
+                senderMinWidth = (int)gSender.MeasureString(sender, TG.FontSemiBold(8f)).Width + pad * 2 + 10;
+            }
             int replyBlockHeight = (replySender != null) ? 38 : 0;
 
             // --- FORWARD HEADER MEASUREMENT ---
