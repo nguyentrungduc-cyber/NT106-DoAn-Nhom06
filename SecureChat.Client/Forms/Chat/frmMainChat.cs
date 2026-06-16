@@ -3878,8 +3878,14 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 if (firstSep > 0)
                 {
                     replySender = payload[..firstSep];
-                    if (replySender != "You" && _senderDisplayNameMap.TryGetValue(replySender, out var dn) && !string.IsNullOrEmpty(dn))
-                        replySender = dn;
+                    // Resolve display name; if it's current user → "You"
+                    if (replySender != "You")
+                    {
+                        if (_senderDisplayNameMap.TryGetValue(replySender, out var dn) && !string.IsNullOrEmpty(dn))
+                            replySender = dn;
+                        else if (replySender == _currentUsername)
+                            replySender = "You";
+                    }
 
                     int lastSep = payload.LastIndexOf("::");
                     if (lastSep > firstSep)
@@ -5209,11 +5215,9 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 if (origMsg.Id != null)
                 {
                     replyToId = _replyingToMessageId;
-                    // Resolve display name: prefer _senderDisplayNameMap, fallback to raw username
-                    string origSender = string.IsNullOrEmpty(origMsg.Sender) ? "You" : origMsg.Sender;
-                    if (origSender != "You" && _senderDisplayNameMap.TryGetValue(origSender, out var dn) && !string.IsNullOrEmpty(dn))
-                        origSender = dn;
-                    // Format: reply::DisplayName::OriginalText::NewText
+                    // Store USERNAME in reply payload (never "You" - it's sender-relative)
+                    string origSender = string.IsNullOrEmpty(origMsg.Sender) ? _currentUsername : origMsg.Sender;
+                    // Format: reply::SenderUsername::OriginalText::NewText
                     finalMessageText = $"reply::{origSender}::{ExtractActualText(origMsg.Text)}::{text}";
                 }
             }
