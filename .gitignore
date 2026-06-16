@@ -430,3 +430,6 @@ SecureChat.Server/appsettings*.json
 
 # Uploaded files (test artifacts)
 SecureChat.Server/wwwroot/uploads/
+
+# Voice recording data
+SecureChat.Server/wwwroot/voice/*.dat
