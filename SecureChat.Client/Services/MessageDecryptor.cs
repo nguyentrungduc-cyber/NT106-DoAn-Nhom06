@@ -196,6 +196,17 @@ namespace SecureChat.Client.Services
                 return null;
             }
 
+            // Verify current user is in updates before caching
+            if (!string.IsNullOrWhiteSpace(CurrentUserId))
+            {
+                var myMember = members.FirstOrDefault(m => m.User?.UserID == CurrentUserId);
+                if (myMember is not null && !updates.Any(u => u.MemberId == myMember.MemberID))
+                {
+                    System.Diagnostics.Debug.WriteLine("[MessageDecryptor] Rekey: current user's encryption failed, refusing to cache");
+                    return null;
+                }
+            }
+
             // PATCH each member's encrypted key
             var api = ApiClient.Instance;
             foreach (var (memberId, encryptedB64) in updates)
@@ -323,20 +334,26 @@ namespace SecureChat.Client.Services
                 var data = JsonSerializer.Deserialize<KeyHistoryData>(json);
                 if (data is null) return;
 
-                foreach (var kvp in data.CurrentKeys)
+                if (data.CurrentKeys is not null)
                 {
-                    if (!string.IsNullOrWhiteSpace(kvp.Value))
-                        _conversationKeys[kvp.Key] = Convert.FromBase64String(kvp.Value);
+                    foreach (var kvp in data.CurrentKeys)
+                    {
+                        if (!string.IsNullOrWhiteSpace(kvp.Value))
+                            _conversationKeys[kvp.Key] = Convert.FromBase64String(kvp.Value);
+                    }
                 }
 
-                foreach (var kvp in data.OldKeys)
+                if (data.OldKeys is not null)
                 {
-                    var list = kvp.Value
-                        .Where(v => !string.IsNullOrWhiteSpace(v))
-                        .Select(Convert.FromBase64String)
-                        .ToList();
-                    if (list.Count > 0)
-                        _oldConversationKeys[kvp.Key] = list;
+                    foreach (var kvp in data.OldKeys)
+                    {
+                        var list = kvp.Value
+                            .Where(v => !string.IsNullOrWhiteSpace(v))
+                            .Select(Convert.FromBase64String)
+                            .ToList();
+                        if (list.Count > 0)
+                            _oldConversationKeys[kvp.Key] = list;
+                    }
                 }
             }
             catch

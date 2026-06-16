@@ -3588,9 +3588,10 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             var wrapper = new Panel { BackColor = Color.Transparent };
 
             string fwdFullText = $"Forwarded from {fwdDisplayName}";
+            int maxWidth = Math.Max(1, inner.Width);
             int fwdLabelHeight;
             var measureSize = TextRenderer.MeasureText(fwdFullText, TG.FontRegular(8.5f),
-                new Size(inner.Width, 0), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                new Size(maxWidth, 0), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
             fwdLabelHeight = measureSize.Height + 4;
 
             var fwdLabel = new Label
@@ -4229,7 +4230,7 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                     : _senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : msg.Sender;
 
                 // Xây nội dung forward: dùng rawContent (luôn là nội dung thật, không có prefix forward)
-                string rawContent = StripForwardPrefix(msg.Text);
+                string rawContent = StripForwardPrefix(msg.Text ?? string.Empty);
                 const string voicePrefix = "voice::";
                 const string filePrefix = "file::";
 
@@ -4754,63 +4755,77 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
         private async Task HandleSignalRMessageAsync(MessageResponse message)
         {
-            if (!TryTrackMessageId(message.MessageID))
-                return;
-
-            // Resolve memberId của user hiện tại trong conv để xác định "isOut".
-            // Nếu chưa biết (do chưa từng mở conv này) thì fetch /members/me.
-            if (!_myMemberIdByConv.TryGetValue(message.ConversationID, out var myMemberId))
+            try
             {
-                var (ok, me, _) = await _messageService.GetMyMembershipAsync(message.ConversationID);
-                if (ok && me is not null)
+                if (!TryTrackMessageId(message.MessageID))
+                    return;
+
+                // Resolve memberId của user hiện tại trong conv để xác định "isOut".
+                // Nếu chưa biết (do chưa từng mở conv này) thì fetch /members/me.
+                if (!_myMemberIdByConv.TryGetValue(message.ConversationID, out var myMemberId))
                 {
-                    myMemberId = me.MemberID;
-                    _myMemberIdByConv[message.ConversationID] = myMemberId;
+                    var (ok, me, _) = await _messageService.GetMyMembershipAsync(message.ConversationID);
+                    if (ok && me is not null)
+                    {
+                        myMemberId = me.MemberID;
+                        _myMemberIdByConv[message.ConversationID] = myMemberId;
+                    }
                 }
+
+                var dm = await _decryptor.ProcessAsync(message, myMemberId);
+
+                // Track message expiration nếu có ExpiresAt
+                if (message.ExpiresAt.HasValue)
+                {
+                    _expirationService.TrackMessage(message.MessageID, message.ExpiresAt.Value);
+                }
+
+                BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        if (!_allMsgs.TryGetValue(message.ConversationID, out var list))
+                        {
+                            list = new List<(string Id, string Text, bool Out, string Time, string Sender)>();
+                            _allMsgs[message.ConversationID] = list;
+                        }
+                        if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
+                            _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
+                        if (!string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(message.SenderUserID))
+                            _usernameToUserId[dm.Sender] = message.SenderUserID;
+                        if (!string.IsNullOrEmpty(message.OriginalSenderID) && !string.IsNullOrEmpty(message.OriginalSenderName))
+                        {
+                            _forwardMetadata[dm.Id] = message.OriginalSenderName;
+                            _forwardOriginalSenderId[dm.Id] = message.OriginalSenderID!;
+                        }
+                        _messageDates[dm.Id] = message.SentAt.ToLocalTime();
+                        list.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
+
+                        // Cập nhật preview ở sidebar (best-effort) và đưa lên đầu.
+                        int idx = _convs.FindIndex(c => c.Id == message.ConversationID);
+                        if (idx >= 0)
+                        {
+                            var c = _convs[idx];
+                            int unread = (message.ConversationID == _activeConvId || dm.Out) ? c.Unread : c.Unread + 1;
+                            string senderForPreview = dm.Out ? "" : dm.Sender;
+                            if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && _senderDisplayNameMap.TryGetValue(dm.Sender, out var dn) && !string.IsNullOrEmpty(dn))
+                                senderForPreview = dn;
+                            RefreshConversationItem(message.ConversationID, dm.Text, dm.Out, senderForPreview, dm.Time, unread, dm.Id);
+                        }
+
+                        if (message.ConversationID == _activeConvId)
+                            BuildMessages();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SignalR] UI update failed: {ex.Message}");
+                    }
+                }));
             }
-
-            var dm = await _decryptor.ProcessAsync(message, myMemberId);
-
-            // Track message expiration nếu có ExpiresAt
-            if (message.ExpiresAt.HasValue)
+            catch (Exception ex)
             {
-                _expirationService.TrackMessage(message.MessageID, message.ExpiresAt.Value);
+                System.Diagnostics.Debug.WriteLine($"[SignalR] HandleSignalRMessageAsync failed: {ex.Message}");
             }
-
-            BeginInvoke(new Action(() =>
-            {
-                if (!_allMsgs.TryGetValue(message.ConversationID, out var list))
-                {
-                    list = new List<(string Id, string Text, bool Out, string Time, string Sender)>();
-                    _allMsgs[message.ConversationID] = list;
-                }
-                if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
-                    _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
-                if (!string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(message.SenderUserID))
-                    _usernameToUserId[dm.Sender] = message.SenderUserID;
-                if (!string.IsNullOrEmpty(message.OriginalSenderID) && !string.IsNullOrEmpty(message.OriginalSenderName))
-                {
-                    _forwardMetadata[dm.Id] = message.OriginalSenderName;
-                    _forwardOriginalSenderId[dm.Id] = message.OriginalSenderID!;
-                }
-                _messageDates[dm.Id] = message.SentAt.ToLocalTime();
-                list.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
-
-                // Cập nhật preview ở sidebar (best-effort) và đưa lên đầu.
-                int idx = _convs.FindIndex(c => c.Id == message.ConversationID);
-                if (idx >= 0)
-                {
-                    var c = _convs[idx];
-                    int unread = (message.ConversationID == _activeConvId || dm.Out) ? c.Unread : c.Unread + 1;
-                    string senderForPreview = dm.Out ? "" : dm.Sender;
-                    if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && _senderDisplayNameMap.TryGetValue(dm.Sender, out var dn) && !string.IsNullOrEmpty(dn))
-                        senderForPreview = dn;
-                    RefreshConversationItem(message.ConversationID, dm.Text, dm.Out, senderForPreview, dm.Time, unread, dm.Id);
-                }
-
-                if (message.ConversationID == _activeConvId)
-                    BuildMessages();
-            }));
         }
 
         private Task HandleSignalRCallSignalAsync(string callId, string signal)
