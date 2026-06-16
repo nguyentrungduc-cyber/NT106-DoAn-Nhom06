@@ -1679,16 +1679,12 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 }
                 _currentMsgs.Clear();
 
-                // Update sidebar preview
-                int idx = _convs.FindIndex(c => c.Id == _activeConvId);
-                if (idx >= 0)
-                {
-                    var c = _convs[idx];
-                    _convs[idx] = (c.Id, c.Name, string.Empty, c.Time, c.Unread, c.IsGroup);
-                }
+                // Refresh sidebar: clear preview text and timestamp.
+                // RefreshConversationItem updates both the _convs tuple
+                // and the visible Label controls in the cached row.
+                RefreshConversationItem(_activeConvId, string.Empty, true, string.Empty, string.Empty);
 
                 BuildMessages();
-                RefreshSidebarPreview();
             }
             catch (Exception ex)
             {

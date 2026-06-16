@@ -156,6 +156,7 @@ namespace SecureChat.Controllers
 				return Forbid();
 
 			await messages.DeleteAllByConversationAsync(conversationID);
+			await conversations.ClearLastMessageAsync(conversationID);
 			return NoContent();
 		}
 

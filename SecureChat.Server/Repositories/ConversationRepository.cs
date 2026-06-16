@@ -62,6 +62,17 @@ namespace SecureChat.Repositories
 			await db.SaveChangesAsync();
 		}
 
+		public async Task ClearLastMessageAsync(string conversationID)
+		{
+			var conv = await db.Conversations.FindAsync(conversationID);
+			if (conv is null)
+				return;
+
+			conv.LastMessageID  = null;
+			conv.LastActivityAt = null;
+			await db.SaveChangesAsync();
+		}
+
 		public async Task DeleteAsync(string conversationID)
 		{
 			var conv = await db.Conversations
