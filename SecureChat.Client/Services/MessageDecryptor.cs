@@ -229,8 +229,8 @@ namespace SecureChat.Client.Services
                     }
                     catch (System.Security.Cryptography.CryptographicException)
                     {
-                        // Key mismatch — maybe a rekey happened since we last fetched.
-                        // Forget cache, force re-fetch (which triggers rekey if needed), retry.
+                        // Key mismatch — possibly a rekey happened.
+                        // Forget cache, force re-fetch, retry once.
                         System.Diagnostics.Debug.WriteLine(
                             $"[MessageDecryptor] Decrypt failed for {message.MessageID}, re-fetching key...");
                         ForgetConversation(message.ConversationID);
@@ -243,8 +243,13 @@ namespace SecureChat.Client.Services
                             }
                             catch
                             {
-                                // Still failed — show encrypted content as-is
+                                // Rekey đã xảy ra → key cũ không còn → không thể giải mã
+                                content = "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
                             }
+                        }
+                        else
+                        {
+                            content = "[Tin nhắn cũ không thể giải mã - khóa đã thay đổi]";
                         }
                     }
                 }
