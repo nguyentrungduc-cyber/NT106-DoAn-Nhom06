@@ -3578,7 +3578,9 @@ namespace SecureChat.Client
                 }
 
                 bool isGroup = _convs.Find(c => c.Id == _activeConvId).IsGroup;
-                var bubble = BuildBubble(msg.Text, msg.Out, msg.Time, msg.Sender, isGroup, msg.Id);
+                string bubbleSender = msg.Out ? "" :
+                    (_senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : msg.Sender);
+                var bubble = BuildBubble(msg.Text, msg.Out, msg.Time, bubbleSender, isGroup, msg.Id);
                 bubble.Tag = msg.Id;
 
                 bubble.Location = new Point(0, y);
