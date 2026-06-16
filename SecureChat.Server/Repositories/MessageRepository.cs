@@ -75,6 +75,18 @@ namespace SecureChat.Repositories
 			await db.SaveChangesAsync();
 		}
 
+		public async Task DeleteAllByConversationAsync(string conversationID)
+		{
+			var messages = await db.Messages
+				.Where(m => m.ConversationID == conversationID)
+				.ToListAsync();
+			if (messages.Count == 0)
+				return;
+
+			db.Messages.RemoveRange(messages);
+			await db.SaveChangesAsync();
+		}
+
 		/*
 		 * ATTACHMENTS
 		 */
