@@ -217,6 +217,11 @@ namespace SecureChat.Client.Services
             if (!string.IsNullOrEmpty(content) && !string.IsNullOrEmpty(message.ContentIV))
             {
                 var key = await EnsureConversationKeyAsync(message.ConversationID).ConfigureAwait(false);
+
+                // ekey tạo AES key mới → các tin nhắn cũ đã mã hóa bằng key cũ sẽ không bao giờ giải mã được nữa.
+                System.Diagnostics.Debug.WriteLine($"[Decrypt] key = {(key == null ? "NULL" : "OK")}, msgId = {message.MessageID}");
+
+
                 if (key is not null)
                 {
                     try
@@ -241,9 +246,9 @@ namespace SecureChat.Client.Services
                             {
                                 content = AesEncryption.DecryptText(content, message.ContentIV!, freshKey);
                             }
-                            catch
+                            catch (Exception ex)
                             {
-                                // Still failed — show encrypted content as-is
+                                System.Diagnostics.Debug.WriteLine($"[Decrypt] RetryFail msgId={message.MessageID}: {ex.Message}");
                             }
                         }
                     }
