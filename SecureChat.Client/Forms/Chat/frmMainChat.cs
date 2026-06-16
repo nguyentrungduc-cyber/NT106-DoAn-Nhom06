@@ -3574,8 +3574,16 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 return inner;
 
             string fwdDisplayName = fwdName;
-            if (!string.IsNullOrEmpty(_currentUserId) && _forwardOriginalSenderId.TryGetValue(messageId, out var origId) && origId == _currentUserId)
-                fwdDisplayName = "You";
+            if (!string.IsNullOrEmpty(_currentUserId))
+            {
+                bool isSelf = false;
+                if (_forwardOriginalSenderId.TryGetValue(messageId, out var origId))
+                    isSelf = origId == _currentUserId;
+                else if (_usernameToUserId.TryGetValue(fwdName, out var fwdUid))
+                    isSelf = fwdUid == _currentUserId;
+                if (isSelf)
+                    fwdDisplayName = "You";
+            }
 
             var wrapper = new Panel { BackColor = Color.Transparent };
 
@@ -4299,8 +4307,6 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
                 _forwardMetadata[messageResponse.MessageID] = senderName;
                 if (!string.IsNullOrEmpty(originalSenderId))
                     _forwardOriginalSenderId[messageResponse.MessageID] = originalSenderId;
-                else
-                    _forwardOriginalSenderId[messageResponse.MessageID] = _currentUserId;
 
                 // Nếu đang ở cuộc trò chuyện đích, thêm vào UI ngay
                 if (targetConversationId == _activeConvId)
@@ -5403,6 +5409,8 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             {
                 _hiddenMessageIds.Add(messageId);
                 _messageDates.Remove(messageId);
+                _forwardMetadata.TryRemove(messageId, out _);
+                _forwardOriginalSenderId.TryRemove(messageId, out _);
                 var index = _currentMsgs.FindIndex(m => m.Id == messageId);
                 if (index >= 0)
                 {
@@ -5447,6 +5455,11 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
             SecureChat.Shared.Security.KeyManager.Clear();
             _decryptor.ForgetAll();
+            _forwardMetadata.Clear();
+            _forwardOriginalSenderId.Clear();
+            _usernameToUserId.Clear();
+            _senderDisplayNameMap.Clear();
+            _allMsgs.Clear();
             _myMemberIdByConv.Clear();
             _syncedConversations.Clear();
             _hiddenMessageIds.Clear();
