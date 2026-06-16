@@ -1634,19 +1634,43 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
             }
         }
 
-        private void ClearHistoryPrivate()
+        private async void ClearHistoryPrivate()
         {
+            var conv = _convs.Find(c => c.Id == _activeConvId);
+            string otherName = conv.Name ?? "the other user";
+
             var result = MessageBox.Show(this,
-                "Are you sure you want to clear chat history?",
+                "Clear chat history?",
                 "Clear History",
-                MessageBoxButtons.YesNo,
+                MessageBoxButtons.YesNoCancel,
                 MessageBoxIcon.Warning);
 
             if (result != DialogResult.Yes)
                 return;
 
+            bool alsoForOther = MessageBox.Show(this,
+                $"Also clear for {otherName}?",
+                "Clear History",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) == DialogResult.Yes;
+
             try
             {
+                if (alsoForOther)
+                {
+                    var (clearOk, _, clearErr) = await ApiClient.Instance.PostAsync<object, object>(
+                        $"api/conversations/{_activeConvId}/clear", new { });
+                    if (!clearOk)
+                    {
+                        MessageBox.Show(this,
+                            $"Failed to clear chat on server: {clearErr}",
+                            "Clear History",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
+                }
+
                 foreach (var msg in _currentMsgs)
                 {
                     _messageDates.Remove(msg.Id);
@@ -1674,23 +1698,54 @@ using var dlg = new frmLeaveGroup(_lblChatName.Text, _currentDisplayName, member
 
         private async void DeleteChat()
         {
+            var conv = _convs.Find(c => c.Id == _activeConvId);
+            string otherName = conv.Name ?? "the other user";
+
             var result = MessageBox.Show(this,
-                $"Delete this chat?",
+                "Delete this chat?",
                 "Delete Chat",
-                MessageBoxButtons.YesNo,
+                MessageBoxButtons.YesNoCancel,
                 MessageBoxIcon.Warning);
 
             if (result != DialogResult.Yes)
                 return;
 
-            if (!await TryRemoveConversationOnServerAsync(_activeConvId))
+            bool alsoForOther = MessageBox.Show(this,
+                $"Also delete for {otherName}?",
+                "Delete Chat",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) == DialogResult.Yes;
+
+            bool serverOk;
+            if (alsoForOther)
             {
-                MessageBox.Show(this,
-                    "Unable to delete the conversation right now.",
-                    "Delete Chat",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
+                var (deletedOk, deletedErr) = await ApiClient.Instance.DeleteAsync(
+                    $"api/conversations/{_activeConvId}");
+                serverOk = deletedOk;
+                if (!serverOk)
+                {
+                    MessageBox.Show(this,
+                        $"Unable to delete the conversation: {deletedErr}",
+                        "Delete Chat",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+            else
+            {
+                var (leftOk, _, leftErr) = await ApiClient.Instance.PostAsync<object, object>(
+                    $"api/conversations/{_activeConvId}/leave", new { });
+                serverOk = leftOk;
+                if (!serverOk)
+                {
+                    MessageBox.Show(this,
+                        $"Unable to leave the conversation: {leftErr}",
+                        "Delete Chat",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
             }
 
             RemoveConversationLocal(_activeConvId);
