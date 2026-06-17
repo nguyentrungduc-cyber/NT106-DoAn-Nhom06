@@ -5,6 +5,8 @@ namespace SecureChat.DTOs
 {
 	public record UpdateProfileRequest(
 		[MaxLength(32)] string? DisplayName,
+		[MaxLength(64)] string? Email,
+		[MaxLength(32)] string? Username,
 		string? BioText
 	);
 

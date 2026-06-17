@@ -28,6 +28,10 @@ namespace SecureChat.DTOs
 		MemberRole Role = MemberRole.Member
 	);
 
+	public record LeaveConversationRequest(
+		string? NewOwnerMemberId = null
+	);
+
 	public record UpdateMemberRequest(
 		MemberRole? Role,
 		[MaxLength(64)] string? Nickname,
@@ -45,13 +49,17 @@ namespace SecureChat.DTOs
 		string? LastMessageID,
 		DateTime? LastActivityAt,
 		DateTime CreatedAt,
-		int MemberCount
+		int MemberCount,
+		string? LastMessageContent = null,
+		string? LastMessageSenderName = null
 	)
 	{
 		public static ConversationResponse From(Conversation c) => new(
 			c.ConversationID, c.Type, c.Name, c.AvatarURL,
 			c.CreatedBy, c.LastMessageID, c.LastActivityAt, c.CreatedAt,
-			c.Members.Count);
+			c.Members.Count(m => m.LeftAt == null),
+			c.LastMessage?.Content,
+			c.LastMessage?.Sender?.User?.DisplayName);
 	}
 
 	public record MemberResponse(
