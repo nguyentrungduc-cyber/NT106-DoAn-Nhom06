@@ -16,8 +16,8 @@ namespace SecureChat.Client.Components.Group
     public partial class ucSelectedUser : UserControl
     {
         // ── Palette ───────────────────────────────────────
-        private static readonly Color C_BG = Color.FromArgb(0x17, 0x21, 0x2B);
-        private static readonly Color C_TEXT = Color.FromArgb(0xF5, 0xF5, 0xF5);
+        private static readonly Color C_BG = Color.White;
+        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
         private static readonly Color C_BTN_NORMAL = Color.FromArgb(0xC8, 0xCC, 0xD4);
         private static readonly Color C_BTN_HOVER = Color.FromArgb(0xFF, 0x50, 0x50);
 

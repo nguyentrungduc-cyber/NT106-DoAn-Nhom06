@@ -261,26 +261,69 @@ namespace SecureChat.Client.Forms.Profile
                 _lblError.Text = string.Empty;
                 var name = _txtName.Text.Trim();
                 var username = _txtUsername.Text.Trim().TrimStart('@');
+                var email = _txtEmail.Text.Trim();
                 if (string.IsNullOrWhiteSpace(name))
                     throw new InvalidOperationException("Name is required.");
                 if (!string.IsNullOrEmpty(username) && !Regex.IsMatch(username, "^[a-zA-Z0-9_]{5,32}$"))
                     throw new InvalidOperationException("Username must be 5-32 chars [a-zA-Z0-9_].");
 
                 var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
-                var req = new { displayName = name };
-                var json = System.Text.Json.JsonSerializer.Serialize(req);
-                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-                var res = await http.PatchAsync("api/users/me", content);
+
+                // Upload avatar nếu đã chọn ảnh mới
+                string? avatarUrl = null;
+                if (!string.IsNullOrWhiteSpace(_profile.AvatarPath) && File.Exists(_profile.AvatarPath))
+                {
+                    try
+                    {
+                        using var fs = new FileStream(_profile.AvatarPath, FileMode.Open, FileAccess.Read);
+                        using var ms = new MemoryStream();
+                        await fs.CopyToAsync(ms);
+                        ms.Position = 0;
+
+                        using var formContent = new MultipartFormDataContent();
+                        formContent.Add(new ByteArrayContent(ms.ToArray()), "File", "avatar.jpg");
+                        var uploadRes = await http.PostAsync("api/files/upload", formContent);
+                        if (uploadRes.IsSuccessStatusCode)
+                        {
+                            var uploadJson = await uploadRes.Content.ReadAsStringAsync();
+                            using var uploadDoc = System.Text.Json.JsonDocument.Parse(uploadJson);
+                            avatarUrl = uploadDoc.RootElement.GetProperty("url").GetString();
+                        }
+                    }
+                    catch { }
+                }
+
+                // Update avatar trên server nếu có
+                if (avatarUrl != null)
+                {
+                    var avatarPayload = new { avatarUrl };
+                    var avatarJson = System.Text.Json.JsonSerializer.Serialize(avatarPayload);
+                    var avatarContent = new StringContent(avatarJson, System.Text.Encoding.UTF8, "application/json");
+                    await http.PatchAsync("api/users/me/avatar", avatarContent);
+                }
+
+                // Update profile (name, email, username)
+                var profilePayload = new { displayName = name, email, username };
+                var profileJson = System.Text.Json.JsonSerializer.Serialize(profilePayload);
+                var profileContent = new StringContent(profileJson, System.Text.Encoding.UTF8, "application/json");
+                var res = await http.PatchAsync("api/users/me", profileContent);
                 if (!res.IsSuccessStatusCode)
                 {
                     var err = await res.Content.ReadAsStringAsync();
+                    if ((int)res.StatusCode == 409)
+                        throw new InvalidOperationException("Username đã được sử dụng. Vui lòng chọn username khác.");
                     throw new InvalidOperationException($"Lỗi lưu hồ sơ: {err}");
                 }
 
                 _profile.FullName = name;
-                _profile.Email = _txtEmail.Text.Trim();
+                _profile.Email = email;
                 _profile.Username = username;
                 _profile.Birthday = _dtBirthday.Value;
+                if (avatarUrl != null)
+                {
+                    _profile.AvatarUrl = avatarUrl;
+                    _profile.AvatarPath = DownloadAndCacheAvatar(avatarUrl) ?? avatarUrl;
+                }
 
                 _lblInitial.Text = GetInitials(name);
                 _avatar.BackColor = TG.GetAvatarColor(name);
@@ -384,6 +427,32 @@ namespace SecureChat.Client.Forms.Profile
         {
             var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
             return enumerator.MoveNext() ? enumerator.GetTextElement() : string.Empty;
+        }
+
+        private static string? DownloadAndCacheAvatar(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return null;
+            try
+            {
+                var http = Services.ApiClient.Instance.GetHttpClient();
+                var cacheKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)));
+                var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SecureChat", "AvatarCache");
+                Directory.CreateDirectory(cacheDir);
+                var cachePath = Path.Combine(cacheDir, cacheKey + ".png");
+                if (File.Exists(cachePath))
+                    return cachePath;
+
+                using var response = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result;
+                if (!response.IsSuccessStatusCode) return null;
+                using var stream = response.Content.ReadAsStreamAsync().Result;
+                using var img = Image.FromStream(stream);
+                img.Save(cachePath, ImageFormat.Png);
+                return cachePath;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static void ClipCircle(PictureBox pb)

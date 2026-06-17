@@ -17,16 +17,16 @@ namespace SecureChat.Client.Components.Group
     public partial class ucUserItem : UserControl
     {
         // ═══════════════════════════════════════════════════
-        //  TELEGRAM DARK PALETTE
+        //  TELEGRAM LIGHT PALETTE
         // ═══════════════════════════════════════════════════
-        private static readonly Color C_BG_NORMAL = Color.FromArgb(0x17, 0x21, 0x2B);
-        private static readonly Color C_BG_HOVER = Color.FromArgb(0x20, 0x2D, 0x3C);
-        private static readonly Color C_BG_PRESSED = Color.FromArgb(0x25, 0x38, 0x4C);
-        private static readonly Color C_TEXT = Color.FromArgb(0xF5, 0xF5, 0xF5);
-        private static readonly Color C_SUBTEXT = Color.FromArgb(0x70, 0x84, 0x99);
+        private static readonly Color C_BG_NORMAL = Color.White;
+        private static readonly Color C_BG_HOVER = Color.FromArgb(0xF4, 0xF7, 0xFB);
+        private static readonly Color C_BG_PRESSED = Color.FromArgb(0xE8, 0xEE, 0xF5);
+        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
+        private static readonly Color C_SUBTEXT = Color.FromArgb(0x8A, 0x98, 0xA6);
         private static readonly Color C_ACCENT = Color.FromArgb(0x2A, 0xAB, 0xEE);
-        private static readonly Color C_SEPARATOR = Color.FromArgb(0x1E, 0x2C, 0x3C);
-        private static readonly Color C_CHECK_EMPTY = Color.FromArgb(0x4A, 0x5C, 0x6E);
+        private static readonly Color C_SEPARATOR = Color.FromArgb(0xE8, 0xEC, 0xF1);
+        private static readonly Color C_CHECK_EMPTY = Color.FromArgb(0xAA, 0xB4, 0xBE);
 
         // ═══════════════════════════════════════════════════
         //  STATE

@@ -11,34 +11,44 @@ namespace SecureChat.Client.Forms.Chat
     {
         private readonly string _groupName;
         private readonly List<string> _groupMembers;
+        private readonly List<string> _groupMemberIds;
         private readonly string _currentUserName;
         private string _appointedAdminName;
+        private string _appointedAdminMemberId;
 
         private Label _lblInfo = null!;
         private AvatarControl _rightAvatar = null!;
 
         public bool LeaveConfirmed { get; private set; }
         public string AppointedAdminName => _appointedAdminName;
+        public string AppointedAdminMemberId => _appointedAdminMemberId;
 
-        public frmLeaveGroup(string groupName, string nextOwnerName, IEnumerable<string>? groupMembers = null)
+        public frmLeaveGroup(string groupName, string nextOwnerName, IEnumerable<string>? groupMembers = null, IEnumerable<string>? groupMemberIds = null)
         {
             _groupName = string.IsNullOrWhiteSpace(groupName) ? "this group" : groupName.Trim();
-            _appointedAdminName = string.IsNullOrWhiteSpace(nextOwnerName) ? "Group member" : nextOwnerName.Trim();
+            _appointedAdminName = nextOwnerName?.Trim() ?? string.Empty;
 
-            _groupMembers = (groupMembers ?? Enumerable.Empty<string>())
+            var memberList = (groupMembers ?? Enumerable.Empty<string>())
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            _groupMembers = memberList;
+            _groupMemberIds = (groupMemberIds ?? Enumerable.Empty<string>()).ToList();
 
-            if (_groupMembers.Count == 0)
+            if (_groupMembers.Count == 0 && !string.IsNullOrWhiteSpace(_appointedAdminName))
                 _groupMembers.Add(_appointedAdminName);
 
-            if (!_groupMembers.Any(x => string.Equals(x, _appointedAdminName, StringComparison.OrdinalIgnoreCase)))
+            if (!string.IsNullOrWhiteSpace(_appointedAdminName) &&
+                !_groupMembers.Any(x => string.Equals(x, _appointedAdminName, StringComparison.OrdinalIgnoreCase)))
                 _groupMembers.Insert(0, _appointedAdminName);
 
+            // Khớp appointedAdminName với memberId
+            var idx = _groupMembers.IndexOf(_appointedAdminName);
+            _appointedAdminMemberId = idx >= 0 && idx < _groupMemberIds.Count ? _groupMemberIds[idx] : string.Empty;
+
             _currentUserName = _groupMembers.FirstOrDefault(x => !string.Equals(x, _appointedAdminName, StringComparison.OrdinalIgnoreCase))
-                ?? "You";
+                ?? (string.IsNullOrWhiteSpace(_appointedAdminName) ? "You" : _appointedAdminName);
 
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
             DoubleBuffered = true;
@@ -153,6 +163,8 @@ namespace SecureChat.Client.Forms.Chat
                 return;
 
             _appointedAdminName = dlg.SelectedAdminName.Trim();
+            var nameIdx = _groupMembers.IndexOf(_appointedAdminName);
+            _appointedAdminMemberId = nameIdx >= 0 && nameIdx < _groupMemberIds.Count ? _groupMemberIds[nameIdx] : string.Empty;
             RefreshOwnerPreview();
 
             if (!dlg.AppointAndLeaveConfirmed)
