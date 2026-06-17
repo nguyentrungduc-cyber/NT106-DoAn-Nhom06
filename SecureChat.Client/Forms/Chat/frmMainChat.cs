@@ -286,7 +286,7 @@ namespace SecureChat.Client
                             ? c.LastActivityAt.Value.ToLocalTime().ToString("h:mm tt")
                             : c.CreatedAt.ToLocalTime().ToString("h:mm tt");
 
-                        // Giữ preview cũ nếu có, nếu không thì dùng ... nếu có LastMessageID
+                        // Giữ preview cũ nếu có, nếu không thì dùng preview từ server
                         string preview = existingPreviews.TryGetValue(c.ConversationID, out var oldPreview)
                             ? oldPreview
                             : (c.LastMessageID != null ? "..." : string.Empty);
@@ -299,6 +299,7 @@ namespace SecureChat.Client
                         _convs.Add((c.ConversationID, convName, preview, time, 0, isGroup));
                     }
                     BuildConvList();
+                    RefreshSidebarPreview();
                 }));
             }
             catch (Exception ex)
@@ -825,7 +826,7 @@ namespace SecureChat.Client
 
             // Set width ngay lần đầu render
             int initWidth = _pnlConvList.ClientSize.Width > 0 ? _pnlConvList.ClientSize.Width : 280;
-            lblTime.Location = new Point(Math.Max(0, initWidth - lblTime.Width - 12), 12); // thêm dòng này
+            lblTime.Location = new Point(Math.Max(0, initWidth - lblTime.Width - 12), 12);
             lblName.Width = Math.Max(0, initWidth - 66 - 80);
             int initPreviewMargin = (unread > 0) ? 40 : 12;
             lblPreview.Width = Math.Max(0, initWidth - 66 - initPreviewMargin);
@@ -3666,7 +3667,8 @@ namespace SecureChat.Client
                         : (c.Type == ConversationType.Group ? "Group" : "Direct chat");
                     string time = c.LastActivityAt?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
                     bool isGroup = c.Type == ConversationType.Group;
-                    _convs.Add((c.ConversationID, display, string.Empty, time, 0, isGroup));
+                    string convPreview = c.LastMessageID != null ? "..." : string.Empty;
+                    _convs.Add((c.ConversationID, display, convPreview, time, 0, isGroup));
                 }
 
                 BuildConvList();
@@ -3676,6 +3678,7 @@ namespace SecureChat.Client
                     _activeConvId = _convs[0].Id;
                     BuildConvList();
                     LoadConversation(_activeConvId);
+                    RefreshSidebarPreview();
                 }
                 else
                 {
@@ -3879,7 +3882,12 @@ namespace SecureChat.Client
                     if (ctrl is Label lbl)
                     {
                         if (lbl.Name == "lblPreview") lbl.Text = preview;
-                        else if (lbl.Name == "lblTime") lbl.Text = timeStr;
+                        else if (lbl.Name == "lblTime")
+                        {
+                            lbl.Text = timeStr;
+                            // AutoSize thay đổi Width → cần reposition theo right-edge
+                            lbl.Location = new Point(row.Width - lbl.Width - 12, 12);
+                        }
                     }
                 }
                 _pnlConvList.Controls.SetChildIndex(row, 0);
