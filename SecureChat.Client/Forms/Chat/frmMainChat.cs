@@ -1429,7 +1429,7 @@ namespace SecureChat.Client
                     var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(json, opts);
                     if (list != null)
                         members = list.Select(m => new SecureChat.Client.Forms.Chat.MemberModel(
-    m.User?.DisplayName ?? m.Nickname ?? m.User?.Username ?? "Unknown",
+    m.User?.DisplayName ?? m.Nickname ?? "Unknown",
     "last seen recently",
     m.Role == SecureChat.Models.MemberRole.Owner ? "Admin" : "Member",
     null,
@@ -1577,13 +1577,24 @@ namespace SecureChat.Client
                             if (list != null)
                             {
                                 var others = list.Where(m => m.UserID != _currentUserId).ToList();
-                                memberNames = others.Select(m => m.User?.DisplayName ?? m.Nickname ?? m.User?.Username ?? "Unknown").ToList();
+                                memberNames = others.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
                                 memberIds = others.Select(m => m.MemberID).ToList();
                             }
                         }
                     }
-                    catch { }
-                    var defaultNextOwner = memberNames.Count > 0 ? memberNames[0] : "Group member";
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DeleteAndLeave] Failed to fetch members: {ex.Message}");
+                    }
+
+                    if (memberNames.Count == 0)
+                    {
+                        MessageBox.Show(this, "Cannot leave group: no other members available to appoint as the new admin.\n\nAdd more members first, then try again.", "No Members",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    var defaultNextOwner = memberNames[0];
                     using var dlg = new frmLeaveGroup(_lblChatName.Text, defaultNextOwner, memberNames.ToArray(), memberIds.ToArray());
                     if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
                         return;

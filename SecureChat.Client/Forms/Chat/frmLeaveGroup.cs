@@ -26,7 +26,7 @@ namespace SecureChat.Client.Forms.Chat
         public frmLeaveGroup(string groupName, string nextOwnerName, IEnumerable<string>? groupMembers = null, IEnumerable<string>? groupMemberIds = null)
         {
             _groupName = string.IsNullOrWhiteSpace(groupName) ? "this group" : groupName.Trim();
-            _appointedAdminName = string.IsNullOrWhiteSpace(nextOwnerName) ? "Group member" : nextOwnerName.Trim();
+            _appointedAdminName = nextOwnerName?.Trim() ?? string.Empty;
 
             var memberList = (groupMembers ?? Enumerable.Empty<string>())
                 .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -36,10 +36,11 @@ namespace SecureChat.Client.Forms.Chat
             _groupMembers = memberList;
             _groupMemberIds = (groupMemberIds ?? Enumerable.Empty<string>()).ToList();
 
-            if (_groupMembers.Count == 0)
+            if (_groupMembers.Count == 0 && !string.IsNullOrWhiteSpace(_appointedAdminName))
                 _groupMembers.Add(_appointedAdminName);
 
-            if (!_groupMembers.Any(x => string.Equals(x, _appointedAdminName, StringComparison.OrdinalIgnoreCase)))
+            if (!string.IsNullOrWhiteSpace(_appointedAdminName) &&
+                !_groupMembers.Any(x => string.Equals(x, _appointedAdminName, StringComparison.OrdinalIgnoreCase)))
                 _groupMembers.Insert(0, _appointedAdminName);
 
             // Khớp appointedAdminName với memberId
@@ -47,7 +48,7 @@ namespace SecureChat.Client.Forms.Chat
             _appointedAdminMemberId = idx >= 0 && idx < _groupMemberIds.Count ? _groupMemberIds[idx] : string.Empty;
 
             _currentUserName = _groupMembers.FirstOrDefault(x => !string.Equals(x, _appointedAdminName, StringComparison.OrdinalIgnoreCase))
-                ?? "You";
+                ?? (string.IsNullOrWhiteSpace(_appointedAdminName) ? "You" : _appointedAdminName);
 
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
             DoubleBuffered = true;
