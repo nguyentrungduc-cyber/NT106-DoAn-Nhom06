@@ -3927,7 +3927,7 @@ namespace SecureChat.Client
                 if (SecureChat.Shared.Security.KeyManager.TryGetAesKey(messageId, out var aesKey, out var aesIv))
                 {
                     double.TryParse(duration, out double durationSec);
-                    audioBubble.SetVoiceInfo(messageId, url, expectedSha256, aesKey, aesIv, durationSec, isOut);
+                    audioBubble.SetVoiceInfo(messageId, url, expectedSha256, aesKey ?? Array.Empty<byte>(), aesIv ?? Array.Empty<byte>(), durationSec, isOut);
                 }
                 else
                 {

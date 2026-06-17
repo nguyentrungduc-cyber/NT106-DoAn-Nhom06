@@ -26,7 +26,7 @@ namespace SecureChat.Client.Services
         private TaskCompletionSource<bool>? _tcs;
 
         // Timer cập nhật UI
-        private System.Windows.Forms.Timer? _positionTimer;
+        private System.Timers.Timer? _positionTimer;
 
         // Track messageId đang phát (để bubble biết có phải mình đang phát không)
         private string _currentMessageId = string.Empty;
@@ -205,8 +205,8 @@ namespace SecureChat.Client.Services
         private void StartPositionTimer()
         {
             StopPositionTimer();
-            _positionTimer          = new System.Windows.Forms.Timer { Interval = 250 };
-            _positionTimer.Tick    += OnPositionTick;
+            _positionTimer           = new System.Timers.Timer(250) { AutoReset = true };
+            _positionTimer.Elapsed  += (s, e) => OnPositionTick(s, EventArgs.Empty);
             _positionTimer.Start();
         }
 
