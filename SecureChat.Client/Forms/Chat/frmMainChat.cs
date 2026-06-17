@@ -76,6 +76,8 @@ namespace SecureChat.Client
         private readonly HashSet<string> _processedMessageIds = new();
         private readonly object _processedMessageIdsLock = new();
         private readonly HashSet<string> _hiddenMessageIds = new();
+        private bool _lastMessageSyncStarted = false;
+        private readonly object _lastMessageSyncLock = new();
 
         // Typing indicator state
         private System.Windows.Forms.Timer? _typingDebounceTimer;
@@ -105,6 +107,7 @@ namespace SecureChat.Client
         private string _currentDisplayName = string.Empty;
         private string _currentUsername = string.Empty;
         private string _currentEmail = string.Empty;
+        private string _currentAvatarUrl = string.Empty;
 
         private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new();
 
@@ -160,6 +163,7 @@ namespace SecureChat.Client
 
         private readonly Dictionary<string, bool> _settingsToggles = new();
         private readonly ConcurrentDictionary<string, string> _senderDisplayNameMap = new();
+        private readonly ConcurrentDictionary<string, string> _senderAvatarMap = new();
         private readonly ConcurrentDictionary<string, string> _usernameToUserId = new();
         private readonly ConcurrentDictionary<string, string> _forwardMetadata = new();
         private readonly ConcurrentDictionary<string, string> _forwardOriginalSenderId = new();
@@ -207,6 +211,7 @@ namespace SecureChat.Client
                         _currentDisplayName = me.DisplayName;
                         _currentUsername = me.Username;
                         _currentEmail = me.Email;
+                        _currentAvatarUrl = me.AvatarURL ?? string.Empty;
                         _decryptor.CurrentUserId = me.UserID;
                         _decryptor.CurrentUsername = me.Username;
                     }
@@ -258,6 +263,9 @@ namespace SecureChat.Client
 
             // Load danh sách hội thoại từ API thật
             await LoadConversationsAsync();
+
+            // Trigger background sync for sidebar previews
+            _ = SyncLastMessagePreviewsAsync();
         }
 
         private async Task LoadConversationsAsync()
@@ -286,10 +294,10 @@ namespace SecureChat.Client
                             ? c.LastActivityAt.Value.ToLocalTime().ToString("h:mm tt")
                             : c.CreatedAt.ToLocalTime().ToString("h:mm tt");
 
-                        // Giữ preview cũ nếu có, nếu không thì dùng preview từ server
+                        // Giữ preview cũ nếu có; nếu không thì dùng preview từ server
                         string preview = existingPreviews.TryGetValue(c.ConversationID, out var oldPreview)
                             ? oldPreview
-                            : (c.LastMessageID != null ? "..." : string.Empty);
+                            : string.Empty;
 
                         // Giữ thời gian cũ nếu không có LastActivityAt mới
                         if (c.LastActivityAt == null && existingTimes.TryGetValue(c.ConversationID, out var oldTime))
@@ -558,6 +566,7 @@ namespace SecureChat.Client
             var pnlSearch = new Panel { Height = 44, Dock = DockStyle.Top, BackColor = Color.White, Padding = new Padding(8, 6, 8, 4) };
             _tbSearch = new TelegramTextBox { Height = 32, Dock = DockStyle.Fill };
             _tbSearch.SetPlaceholder("🔍  Search");
+            _tbSearch.TextChanged += (_, __) => BuildConvList();
             pnlSearch.Controls.Add(_tbSearch);
 
             // ── Conversation list ─────────────────────
@@ -566,7 +575,6 @@ namespace SecureChat.Client
             _pnlEmptyState = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Visible = false };
             _lblEmptyState = new Label
             {
-                Text = "You have no conversations yet.",
                 Font = TG.FontSemiBold(10f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = true,
@@ -613,14 +621,17 @@ namespace SecureChat.Client
             _convRowCache.Clear();
             _pnlConvList.Controls.Clear();
 
-            // Nó dùng để xác định vị trí đặt hàng tiếp theo, giúp các hàng không bị đè lên nhau.
+            string search = _tbSearch?.Text?.Trim() ?? string.Empty;
+            bool hasSearch = !string.IsNullOrWhiteSpace(search);
+
             int y = 0;
 
-            // Duyệt qua từng cuộc trò chuyện trong danh sách dữ liệu.
             foreach (var c in _convs)
             {
+                if (hasSearch && c.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
                 var row = BuildConvRow(c.Id, c.Name, c.Preview, c.Time, c.Unread, c.IsGroup);
-                EnableDoubleBuffering(row); // <--- QUAN TRỌNG: 
+                EnableDoubleBuffering(row);
                 row.Location = new Point(0, y);
                 row.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
                 row.Width = _pnlConvList.ClientSize.Width;
@@ -633,12 +644,33 @@ namespace SecureChat.Client
 
         private void UpdateEmptyStateUI()
         {
-            bool hasConversations = _convs.Count > 0;
-            _pnlConvList.Visible = hasConversations;
-            _pnlEmptyState.Visible = !hasConversations;
+            string search = _tbSearch?.Text?.Trim() ?? string.Empty;
+            bool hasSearch = !string.IsNullOrWhiteSpace(search);
 
-            if (!hasConversations)
+            int visibleCount = 0;
+            if (hasSearch)
+            {
+                foreach (var c in _convs)
+                {
+                    if (c.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+                        visibleCount++;
+                }
+            }
+
+            bool hasConversations = _convs.Count > 0;
+            bool hasVisible = hasConversations && (!hasSearch || visibleCount > 0);
+
+            _pnlConvList.Visible = hasVisible;
+            _pnlEmptyState.Visible = !hasVisible;
+
+            if (!hasVisible)
+            {
+                if (hasSearch && hasConversations)
+                    _lblEmptyState.Text = "No conversations match your search.";
+                else
+                    _lblEmptyState.Text = "You have no conversations yet.";
                 LayoutEmptyState();
+            }
         }
 
         private void LayoutEmptyState()
@@ -702,7 +734,7 @@ namespace SecureChat.Client
             EnableDoubleBuffering(avatar); // <--- QUAN TRỌNG: Control tự vẽ rất cần cái này
             avatar.SetName(name);
             if (_convAvatarCache.TryGetValue(id, out var cachedImg) && cachedImg != null)
-                avatar.Photo = cachedImg;
+                avatar.Photo = new Bitmap(cachedImg);
             avatar.ShowOnline = false; // nếu có thì có chấm xanh nhỏ ở dưới phải avatar
 
             // Name + preview
@@ -1432,7 +1464,12 @@ namespace SecureChat.Client
                         members = list.Select(m => new SecureChat.Client.Forms.Chat.MemberModel(
     m.User?.DisplayName ?? m.Nickname ?? "Unknown",
     "last seen recently",
-    m.Role == SecureChat.Models.MemberRole.Owner ? "Admin" : "Member",
+    m.Role switch
+    {
+        SecureChat.Models.MemberRole.Owner => "Admin",
+        SecureChat.Models.MemberRole.Moderator => "Moderator",
+        _ => "Member"
+    },
     null,
     TG.GetAvatarColor(m.User?.DisplayName ?? "?"),
     m.MemberID
@@ -1532,11 +1569,12 @@ namespace SecureChat.Client
 
         private async void ClearHistory()
         {
+            var targetConvId = _activeConvId;
             using var dlg = new SecureChat.Client.Forms.Chat.frmClearHistory(_lblChatName.Text);
             if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.DeleteConfirmed)
                 return;
 
-            if (!await TryRemoveConversationOnServerAsync(_activeConvId))
+            if (!await TryRemoveConversationOnServerAsync(targetConvId))
             {
                 var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
                 MessageBox.Show(this,
@@ -1546,13 +1584,14 @@ namespace SecureChat.Client
                 return;
             }
 
-            RemoveConversationLocal(_activeConvId);
+            RemoveConversationLocal(targetConvId);
         }
 
         private async void DeleteAndLeave()
         {
             var currentConv = _convs.Find(c => c.Id == _activeConvId);
             bool isGroup = currentConv.IsGroup;
+            string targetConvId = _activeConvId;
 
             string? newOwnerMemberId = null;
 
@@ -1594,8 +1633,9 @@ namespace SecureChat.Client
                 else
                 {
                     // Không phải Owner → chỉ confirm rời nhóm
+                    string convName = string.IsNullOrWhiteSpace(currentConv.Name) ? "này" : currentConv.Name;
                     var result = MessageBox.Show(this,
-                        $"Bạn có chắc chắn muốn rời khỏi nhóm {_lblChatName.Text}?",
+                        $"Bạn có chắc chắn muốn rời khỏi nhóm {convName}?",
                         "Rời nhóm",
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Question);
@@ -1606,8 +1646,9 @@ namespace SecureChat.Client
             }
             else
             {
+                string convName = string.IsNullOrWhiteSpace(currentConv.Name) ? "người dùng này" : currentConv.Name;
                 var result = MessageBox.Show(this,
-                    $"Bạn có chắc chắn muốn xóa cuộc trò chuyện với {_lblChatName.Text}?\n\nTất cả tin nhắn sẽ bị xóa vĩnh viễn.",
+                    $"Bạn có chắc chắn muốn xóa cuộc trò chuyện với {convName}?\n\nTất cả tin nhắn sẽ bị xóa vĩnh viễn.",
                     "Xóa cuộc trò chuyện",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
@@ -1616,7 +1657,7 @@ namespace SecureChat.Client
                     return;
             }
 
-            if (!await TryRemoveConversationOnServerAsync(_activeConvId, newOwnerMemberId))
+            if (!await TryRemoveConversationOnServerAsync(targetConvId, newOwnerMemberId))
             {
                 var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
                 string errorTitle = isGroup
@@ -1634,7 +1675,7 @@ namespace SecureChat.Client
                 return;
             }
 
-            RemoveConversationLocal(_activeConvId);
+            RemoveConversationLocal(targetConvId);
         }
 
         private async Task<bool> TryRemoveConversationOnServerAsync(string conversationId, string? newOwnerMemberId = null)
@@ -1684,6 +1725,106 @@ namespace SecureChat.Client
             return false;
         }
 
+        private async Task RefreshAvatarForConversationAsync(string convId, string? avatarUrl)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(avatarUrl))
+                {
+                    // Avatar removed — clear cache and revert to initials
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (_convAvatarCache.TryGetValue(convId, out var oldCached))
+                        {
+                            oldCached?.Dispose();
+                            _convAvatarCache.Remove(convId);
+                        }
+                        if (_activeConvId == convId)
+                        {
+                            var old = _chatAvatar.Photo;
+                            if (old != null)
+                            {
+                                _chatAvatar.Photo = null;
+                                old.Dispose();
+                            }
+                            var conv = _convs.Find(c => c.Id == convId);
+                            if (conv != default)
+                                _chatAvatar.SetName(conv.Name);
+                            _chatAvatar.Invalidate();
+                        }
+                        if (_convRowCache.TryGetValue(convId, out var row))
+                        {
+                            foreach (Control c in row.Controls)
+                            {
+                                if (c is AvatarControl av)
+                                {
+                                    var oldAv = av.Photo;
+                                    if (oldAv != null)
+                                    {
+                                        av.Photo = null;
+                                        oldAv.Dispose();
+                                    }
+                                    var conv = _convs.Find(c => c.Id == convId);
+                                    if (conv != default)
+                                        av.SetName(conv.Name);
+                                    av.Invalidate();
+                                    break;
+                                }
+                            }
+                        }
+                    }));
+                    return;
+                }
+
+                var http = ApiClient.Instance.GetHttpClient();
+                var imgRes = await http.GetAsync(avatarUrl);
+                if (imgRes.IsSuccessStatusCode)
+                {
+                    using var imgStream = await imgRes.Content.ReadAsStreamAsync();
+                    var img = new Bitmap(imgStream);
+
+                    // Update chat header avatar
+                    if (_activeConvId == convId)
+                    {
+                        var old = _chatAvatar.Photo;
+                        if (old != null)
+                        {
+                            _chatAvatar.Photo = null;
+                            old.Dispose();
+                        }
+                        _chatAvatar.Photo = new Bitmap(img);
+                        _chatAvatar.Invalidate();
+                    }
+
+                    // Update cache for sidebar
+                    if (_convAvatarCache.TryGetValue(convId, out var oldCached))
+                        oldCached?.Dispose();
+                    _convAvatarCache[convId] = new Bitmap(img);
+
+                    // Force refresh visible row
+                    if (_convRowCache.TryGetValue(convId, out var row))
+                    {
+                        foreach (Control c in row.Controls)
+                        {
+                            if (c is AvatarControl av)
+                            {
+                                var oldAv = av.Photo;
+                                if (oldAv != null)
+                                {
+                                    av.Photo = null;
+                                    oldAv.Dispose();
+                                }
+                                av.Photo = new Bitmap(img);
+                                av.Invalidate();
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
         private void RemoveConversationLocal(string conversationId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
@@ -1698,6 +1839,13 @@ namespace SecureChat.Client
             // Xóa khỏi cache sync
             _syncedConversations.Remove(conversationId);
             _myMemberIdByConv.Remove(conversationId);
+
+            // Xóa avatar cache
+            if (_convAvatarCache.TryGetValue(conversationId, out var oldAvatar))
+            {
+                oldAvatar?.Dispose();
+                _convAvatarCache.Remove(conversationId);
+            }
 
             // Xóa conversation key khỏi decryptor cache
             _decryptor.ForgetConversation(conversationId);
@@ -1851,7 +1999,8 @@ namespace SecureChat.Client
 
         private async void DeleteChat()
         {
-            var conv = _convs.Find(c => c.Id == _activeConvId);
+            var targetConvId = _activeConvId;
+            var conv = _convs.Find(c => c.Id == targetConvId);
             string otherName = conv.Name ?? "the other user";
 
             var result = MessageBox.Show(this,
@@ -1873,7 +2022,7 @@ namespace SecureChat.Client
             if (alsoForOther)
             {
                 var (deletedOk, deletedErr) = await ApiClient.Instance.DeleteAsync(
-                    $"api/conversations/{_activeConvId}");
+                    $"api/conversations/{targetConvId}");
                 serverOk = deletedOk;
                 if (!serverOk)
                 {
@@ -1888,7 +2037,7 @@ namespace SecureChat.Client
             else
             {
                 var (leftOk, _, leftErr) = await ApiClient.Instance.PostAsync<object, object>(
-                    $"api/conversations/{_activeConvId}/leave", new { });
+                    $"api/conversations/{targetConvId}/leave", new { });
                 serverOk = leftOk;
                 if (!serverOk)
                 {
@@ -1901,7 +2050,7 @@ namespace SecureChat.Client
                 }
             }
 
-            RemoveConversationLocal(_activeConvId);
+            RemoveConversationLocal(targetConvId);
         }
 
         // Cache ảnh nền để không load lại mỗi lần paint
@@ -2996,12 +3145,13 @@ namespace SecureChat.Client
                     {
                         try
                         {
+                            var localAvatarPath = DownloadAndCacheAvatar(_currentAvatarUrl);
                             var profile = new SecureChat.Client.Models.ProfileModel
                             {
                                 FullName = _currentDisplayName,
                                 Email = _currentEmail,
                                 Username = _currentUsername,
-                                AvatarPath = string.Empty,
+                                AvatarPath = localAvatarPath ?? string.Empty,
                                 StatusText = "online"
                             };
                             using var myprofile = new SecureChat.Client.Forms.Profile.frmMyProfile(profile);
@@ -3011,6 +3161,9 @@ namespace SecureChat.Client
                                 _currentDisplayName = profile.FullName;
                                 _currentUsername = profile.Username;
                                 _currentEmail = profile.Email;
+                                if (!string.IsNullOrWhiteSpace(profile.AvatarUrl))
+                                    _currentAvatarUrl = profile.AvatarUrl;
+                                _decryptor.CurrentUsername = profile.Username;
                                 UpdateSettingsHeaderUI();
                             }
                         }
@@ -3176,12 +3329,13 @@ namespace SecureChat.Client
                     {
                         try
                         {
+                            var localAvatarPath = DownloadAndCacheAvatar(_currentAvatarUrl);
                             var profile = new SecureChat.Client.Models.ProfileModel
                             {
                                 FullName = _currentDisplayName,
                                 Email = _currentEmail,
                                 Username = _currentUsername,
-                                AvatarPath = string.Empty,
+                                AvatarPath = localAvatarPath ?? string.Empty,
                                 StatusText = "online"
                             };
                             using var settings = new SecureChat.Client.Forms.Settings.frmSettings(profile);
@@ -3192,6 +3346,9 @@ namespace SecureChat.Client
                                 _currentDisplayName = profile.FullName;
                                 _currentUsername = profile.Username;
                                 _currentEmail = profile.Email;
+                                if (!string.IsNullOrWhiteSpace(profile.AvatarUrl))
+                                    _currentAvatarUrl = profile.AvatarUrl;
+                                _decryptor.CurrentUsername = profile.Username;
                                 UpdateSettingsHeaderUI();
                             }
                             else if (dr == DialogResult.No)
@@ -3240,9 +3397,67 @@ namespace SecureChat.Client
         private void UpdateSettingsHeaderUI()
         {
             if (_settingsAvatar != null)
+            {
                 _settingsAvatar.SetName(_currentDisplayName);
+                LoadAvatarToControl(_settingsAvatar, _currentAvatarUrl);
+            }
             if (_lblSettingsUserName != null)
                 _lblSettingsUserName.Text = _currentDisplayName;
+        }
+
+        private static string GetAvatarCacheDir()
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SecureChat", "AvatarCache");
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        private string? DownloadAndCacheAvatar(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return null;
+            try
+            {
+                var http = Services.ApiClient.Instance.GetHttpClient();
+                var cacheKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)));
+                var cachePath = Path.Combine(GetAvatarCacheDir(), cacheKey + ".png");
+                if (File.Exists(cachePath))
+                    return cachePath;
+
+                using var response = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result;
+                if (!response.IsSuccessStatusCode) return null;
+                using var stream = response.Content.ReadAsStreamAsync().Result;
+                using var img = Image.FromStream(stream);
+                img.Save(cachePath, System.Drawing.Imaging.ImageFormat.Png);
+                return cachePath;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private void LoadAvatarToControl(AvatarControl ctrl, string url)
+        {
+            try
+            {
+                var localPath = DownloadAndCacheAvatar(url);
+                if (localPath != null && File.Exists(localPath))
+                {
+                    var old = ctrl.Photo;
+                    if (old != null)
+                    {
+                        ctrl.Photo = null;
+                        old.Dispose();
+                    }
+                    using var fs = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    using var img = Image.FromStream(fs);
+                    ctrl.Photo = new Bitmap(img);
+                    ctrl.Invalidate();
+                }
+            }
+            catch
+            {
+            }
         }
 
         // ════════════════════════════════════════════
@@ -3326,11 +3541,14 @@ namespace SecureChat.Client
             // Đảm bảo có list (rỗng nếu chưa sync) trước khi vẽ.
             BuildMessages();
 
-            // Sync tin nhắn từ MariaDB (chỉ làm 1 lần / conv) rồi join SignalR group
-            // để nhận realtime cho các tin sau đó.
-            await SyncMessagesForActiveConversationAsync(convId);
-            await JoinConversationSignalRAsync(convId);
-            await LoadPinsAsync(convId);
+			// Sync tin nhắn từ MariaDB (chỉ làm 1 lần / conv) rồi join SignalR group
+			// để nhận realtime cho các tin sau đó.
+			await SyncMessagesForActiveConversationAsync(convId);
+			await JoinConversationSignalRAsync(convId);
+			await LoadPinsAsync(convId);
+
+			// Trigger background preview sync for all conversations after opening any conversation
+			_ = SyncLastMessagePreviewsAsync();
         }
 
         // ════════════════════════════════════════════
@@ -3373,6 +3591,13 @@ namespace SecureChat.Client
                     return;
 
                 var isGroup = conv.IsGroup;
+
+                // Populate _senderAvatarMap for all members
+                foreach (var m in members)
+                {
+                    if (m.User != null && !string.IsNullOrWhiteSpace(m.User.Username) && !string.IsNullOrWhiteSpace(m.User.AvatarURL))
+                        _senderAvatarMap[m.User.Username] = m.User.AvatarURL;
+                }
 
                 BeginInvoke(new Action(() =>
                 {
@@ -3484,7 +3709,12 @@ namespace SecureChat.Client
             {
                 var displayName = m.User?.DisplayName ?? m.Nickname ?? "Unknown";
                 var status = m.User?.ShowOnlineStatus == true ? "online" : "offline";
-                var role = m.Role.ToString();
+                var role = m.Role switch
+                {
+                    SecureChat.Models.MemberRole.Owner => "Admin",
+                    SecureChat.Models.MemberRole.Moderator => "Moderator",
+                    _ => "Member"
+                };
 
                 var item = new ucGroupMemberItem
                 {
@@ -3598,10 +3828,10 @@ namespace SecureChat.Client
                     string time = c.LastActivityAt?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
                     bool isGroup = c.Type == ConversationType.Group;
 
-                    // Giữ preview cũ nếu có
+                    // Giữ preview cũ nếu có (sẽ được background sync cập nhật sau)
                     string convPreview = existingPreviews.TryGetValue(c.ConversationID, out var oldPreview)
                         ? oldPreview
-                        : (c.LastMessageID != null ? "..." : string.Empty);
+                        : string.Empty;
 
                     if (c.LastActivityAt == null && existingTimes.TryGetValue(c.ConversationID, out var oldTime))
                         time = oldTime;
@@ -3610,6 +3840,13 @@ namespace SecureChat.Client
                 }
 
                 BuildConvList();
+
+                // Trigger background avatar loading for conversations with avatar URLs
+                foreach (var c in list)
+                {
+                    if (!string.IsNullOrWhiteSpace(c.AvatarURL))
+                        _ = RefreshAvatarForConversationAsync(c.ConversationID, c.AvatarURL);
+                }
 
                 if (_convs.Count > 0)
                 {
@@ -3879,6 +4116,88 @@ namespace SecureChat.Client
                 var latest = msgs[^1];
                 string senderForPreview = latest.Out ? "" : latest.Sender;
                 RefreshConversationItem(c.Id, latest.Text, latest.Out, senderForPreview, latest.Time, messageId: latest.Id);
+            }
+        }
+
+        /// <summary>
+        /// Background sync: fetch and decrypt the last message for every conversation
+        /// that currently shows no preview (e.g. "..." or empty). Called after login
+        /// and after any conversation is opened.
+        /// </summary>
+        private async Task SyncLastMessagePreviewsAsync()
+        {
+            // Ensure only one background sync runs at a time
+            lock (_lastMessageSyncLock)
+            {
+                if (_lastMessageSyncStarted) return;
+                _lastMessageSyncStarted = true;
+            }
+            try
+            {
+                // Collect conversations that need preview sync
+                var needSync = new List<(string Id, bool IsGroup)>();
+            for (int i = 0; i < _convs.Count; i++)
+            {
+                var c = _convs[i];
+                if (string.IsNullOrWhiteSpace(c.Preview))
+                {
+                    needSync.Add((c.Id, c.IsGroup));
+                }
+            }
+
+            foreach (var (convId, isGroup) in needSync)
+            {
+                try
+                {
+                    var (ok, page, _) = await _messageService.GetMessagesAsync(convId, 1, null);
+                    if (!ok || page is null || page.Count == 0) continue;
+
+                    var latest = page[^1];
+
+                    // Need myMemberId to determine isOut
+                    if (!_myMemberIdByConv.TryGetValue(convId, out var myMemberId))
+                    {
+                        var (memOk, me, _) = await _messageService.GetMyMembershipAsync(convId);
+                        if (memOk && me is not null)
+                        {
+                            myMemberId = me.MemberID;
+                            _myMemberIdByConv[convId] = myMemberId;
+                        }
+                    }
+
+                    var dm = await _decryptor.ProcessAsync(latest, myMemberId);
+
+                    // Cache AES key and forward metadata
+                    if (latest.Attachments != null)
+                    {
+                        foreach (var att in latest.Attachments)
+                            HandleHybridEncryptedAttachment(latest.MessageID, att);
+                    }
+                    if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && !string.IsNullOrEmpty(dm.SenderDisplayName))
+                        _senderDisplayNameMap[dm.Sender] = dm.SenderDisplayName;
+                    if (!string.IsNullOrEmpty(latest.OriginalSenderID) && !string.IsNullOrEmpty(latest.OriginalSenderName))
+                    {
+                        _forwardMetadata[dm.Id] = latest.OriginalSenderName;
+                        _forwardOriginalSenderId[dm.Id] = latest.OriginalSenderID!;
+                    }
+
+                    string senderForPreview = dm.Out ? "" : (!string.IsNullOrEmpty(dm.SenderDisplayName) ? dm.SenderDisplayName : dm.Sender);
+
+                    BeginInvoke(new Action(() =>
+                        RefreshConversationItem(convId, dm.Text, dm.Out, senderForPreview, dm.Time, messageId: dm.Id)));
+                }
+                catch
+                {
+                    // Silently skip failed conversations
+                }
+            }
+            }
+            finally
+            {
+                lock (_lastMessageSyncLock)
+                {
+                    _lastMessageSyncStarted = false;
+                }
             }
         }
 
@@ -5221,6 +5540,144 @@ namespace SecureChat.Client
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
             _signalRClient.UserTyping += HandleUserTypingAsync;
             _signalRClient.UserStoppedTyping += HandleUserStoppedTypingAsync;
+            _signalRClient.ConversationCreated += async convId =>
+            {
+                var (ok, conv, _) = await _messageService.GetConversationAsync(convId);
+                if (!ok || conv is null) return;
+                BeginInvoke(new Action(() =>
+                {
+                    if (_convs.Any(c => c.Id == convId)) return;
+                    bool isGroup = conv.Type == ConversationType.Group;
+                    string display = !string.IsNullOrWhiteSpace(conv.Name)
+                        ? conv.Name!
+                        : (isGroup ? "Group" : "Direct chat");
+                    string time = conv.LastActivityAt?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
+                    _convs.Insert(0, (convId, display, string.Empty, time, 0, isGroup));
+                    BuildConvList();
+                    // Trigger avatar loading if the conversation has an avatar URL
+                    if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
+                        _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
+                }));
+            };
+            _signalRClient.ProfileUpdated += async (userId, displayName, username, avatarUrl) =>
+            {
+                string capturedUrl = avatarUrl;
+                string capturedUsername = username;
+                string capturedUserId = userId;
+                BeginInvoke(new Action(() =>
+                {
+                    if (!string.IsNullOrWhiteSpace(displayName) && !string.IsNullOrWhiteSpace(username))
+                    {
+                        _senderDisplayNameMap[username] = displayName;
+                    }
+                    if (!string.IsNullOrWhiteSpace(username))
+                    {
+                        _senderAvatarMap[username] = capturedUrl ?? string.Empty;
+                    }
+                    if (userId == _currentUserId)
+                    {
+                        _currentAvatarUrl = avatarUrl ?? string.Empty;
+                        UpdateSettingsHeaderUI();
+                    }
+                    // If this is a profile update for another user in a direct conversation,
+                    // find and refresh the conversation avatar
+                    if (!string.IsNullOrWhiteSpace(capturedUserId))
+                    {
+                        foreach (var c in _convs)
+                        {
+                            if (!c.IsGroup && !string.IsNullOrWhiteSpace(c.Name))
+                            {
+                                // For direct conversations, the conversation name is the other user's display name.
+                                // Check if the display name or username matches.
+                                if ((!string.IsNullOrWhiteSpace(displayName) && c.Name == displayName)
+                                    || (_senderDisplayNameMap.TryGetValue(capturedUsername, out var dn) && c.Name == dn)
+                                    || c.Name == capturedUsername)
+                                {
+                                    _ = RefreshAvatarForConversationAsync(c.Id, capturedUrl);
+                                }
+                            }
+                        }
+                    }
+                    // Refresh sidebar previews in case display name changed
+                    RefreshAllSidebarPreviews();
+                }));
+            };
+            _signalRClient.ConversationDeleted += async convId =>
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (_convs.RemoveAll(c => c.Id == convId) > 0)
+                    {
+                        _allMsgs.Remove(convId);
+                        _syncedConversations.Remove(convId);
+                        _myMemberIdByConv.Remove(convId);
+                        _convAvatarCache.Remove(convId);
+
+                        if (_activeConvId == convId)
+                        {
+                            _activeConvId = _convs.Count > 0 ? _convs[0].Id : string.Empty;
+                            if (string.IsNullOrEmpty(_activeConvId))
+                                UpdateChatEmptyStateUI();
+                            else
+                                LoadConversation(_activeConvId);
+                        }
+                        BuildConvList();
+                    }
+                }));
+            };
+            _signalRClient.ConversationUpdated += async convId =>
+            {
+                var (ok, conv, _) = await _messageService.GetConversationAsync(convId);
+                if (!ok || conv is null) return;
+                BeginInvoke(new Action(() =>
+                {
+                    var idx = _convs.FindIndex(c => c.Id == convId);
+                    if (idx < 0) return;
+                    var old = _convs[idx];
+                    string display = !string.IsNullOrWhiteSpace(conv.Name) ? conv.Name! : (old.IsGroup ? "Group" : "Conversation");
+                    _convs[idx] = (convId, display, old.Preview, old.Time, old.Unread, old.IsGroup);
+
+                    // Always refresh avatar URL for all conversations (both active and inactive)
+                    if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
+                    {
+                        _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
+                    }
+
+                    // Update chat header if active
+                    if (_activeConvId == convId)
+                    {
+                        _lblChatName.Text = display;
+                        _chatAvatar.SetName(display);
+                    }
+                    BuildConvList();
+                }));
+            };
+            _signalRClient.MemberAdded += async (convId, userId) =>
+            {
+                // Fetch and cache the conversation if we don't have it yet
+                var (ok, conv, _) = await _messageService.GetConversationAsync(convId);
+                if (!ok || conv is null) return;
+                BeginInvoke(new Action(() =>
+                {
+                    var idx = _convs.FindIndex(c => c.Id == convId);
+                    if (idx < 0) return;
+                    var old = _convs[idx];
+                    _convs[idx] = (convId, old.Name, old.Preview, old.Time, old.Unread, old.IsGroup);
+
+                    // Refresh right sidebar if open and showing this conversation
+                    if (_isSidebarOpen && _activeConvId == convId)
+                        _ = LoadRightSidebarContentAsync();
+                }));
+            };
+            _signalRClient.MemberRemoved += async (convId, userId) =>
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    // Refresh right sidebar if open and showing this conversation
+                    if (_isSidebarOpen && _activeConvId == convId)
+                        _ = LoadRightSidebarContentAsync();
+                }));
+            };
             _signalRClient.Reconnected += async _ =>
             {
                 await ReRegisterPublicKeyAsync();
@@ -5979,6 +6436,7 @@ namespace SecureChat.Client
             _forwardOriginalSenderId.Clear();
             _usernameToUserId.Clear();
             _senderDisplayNameMap.Clear();
+            _senderAvatarMap.Clear();
             _allMsgs.Clear();
             _myMemberIdByConv.Clear();
             _syncedConversations.Clear();

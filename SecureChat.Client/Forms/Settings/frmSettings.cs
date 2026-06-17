@@ -446,10 +446,49 @@ namespace SecureChat.Client.Forms.Settings
             try
             {
                 if (string.IsNullOrWhiteSpace(avatarPath)) return null;
-                if (!File.Exists(avatarPath)) return null;
-                using var fs = new FileStream(avatarPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                using var img = Image.FromStream(fs);
-                return new Bitmap(img);
+                if (File.Exists(avatarPath))
+                {
+                    using var fs = new FileStream(avatarPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    using var img = Image.FromStream(fs);
+                    return new Bitmap(img);
+                }
+                if (avatarPath.StartsWith("/") || avatarPath.StartsWith("http"))
+                {
+                    var local = DownloadAndCacheAvatar(avatarPath);
+                    if (local != null && File.Exists(local))
+                    {
+                        using var fs = new FileStream(local, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        using var img = Image.FromStream(fs);
+                        return new Bitmap(img);
+                    }
+                }
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string? DownloadAndCacheAvatar(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return null;
+            try
+            {
+                var http = ApiClient.Instance.GetHttpClient();
+                var cacheKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)));
+                var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SecureChat", "AvatarCache");
+                Directory.CreateDirectory(cacheDir);
+                var cachePath = Path.Combine(cacheDir, cacheKey + ".png");
+                if (File.Exists(cachePath))
+                    return cachePath;
+
+                using var response = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result;
+                if (!response.IsSuccessStatusCode) return null;
+                using var stream = response.Content.ReadAsStreamAsync().Result;
+                using var img = Image.FromStream(stream);
+                img.Save(cachePath, System.Drawing.Imaging.ImageFormat.Png);
+                return cachePath;
             }
             catch
             {

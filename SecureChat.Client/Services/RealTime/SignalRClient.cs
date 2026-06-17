@@ -19,6 +19,12 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<Exception?, Task>? Closed;
         public event Func<Exception?, Task>? Reconnecting;
         public event Func<string?, Task>? Reconnected;
+        public event Func<string, Task>? ConversationCreated;
+        public event Func<string, string?, string?, string?, Task>? ProfileUpdated;
+        public event Func<string, Task>? ConversationDeleted;
+        public event Func<string, Task>? ConversationUpdated;
+        public event Func<string, string, Task>? MemberAdded;
+        public event Func<string, string, Task>? MemberRemoved;
 
         public bool IsConnected => _connection.State == HubConnectionState.Connected;
 
@@ -87,6 +93,42 @@ namespace SecureChat.Client.Services.RealTime
             {
                 if (UserStoppedTyping is not null)
                     await UserStoppedTyping.Invoke(conversationId, username);
+            });
+
+            _connection.On<string>("ConversationCreated", async conversationId =>
+            {
+                if (ConversationCreated is not null)
+                    await ConversationCreated.Invoke(conversationId);
+            });
+
+            _connection.On<string, string, string, string>("ProfileUpdated", async (userId, displayName, username, avatarUrl) =>
+            {
+                if (ProfileUpdated is not null)
+                    await ProfileUpdated.Invoke(userId, displayName, username, avatarUrl);
+            });
+
+            _connection.On<string>("ConversationDeleted", async conversationId =>
+            {
+                if (ConversationDeleted is not null)
+                    await ConversationDeleted.Invoke(conversationId);
+            });
+
+            _connection.On<string>("ConversationUpdated", async conversationId =>
+            {
+                if (ConversationUpdated is not null)
+                    await ConversationUpdated.Invoke(conversationId);
+            });
+
+            _connection.On<string, string>("MemberAdded", async (conversationId, userId) =>
+            {
+                if (MemberAdded is not null)
+                    await MemberAdded.Invoke(conversationId, userId);
+            });
+
+            _connection.On<string, string>("MemberRemoved", async (conversationId, userId) =>
+            {
+                if (MemberRemoved is not null)
+                    await MemberRemoved.Invoke(conversationId, userId);
             });
         }
 

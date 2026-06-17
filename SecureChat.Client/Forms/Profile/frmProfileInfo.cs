@@ -320,7 +320,10 @@ namespace SecureChat.Client.Forms.Profile
                 _profile.Username = username;
                 _profile.Birthday = _dtBirthday.Value;
                 if (avatarUrl != null)
-                    _profile.AvatarPath = avatarUrl;
+                {
+                    _profile.AvatarUrl = avatarUrl;
+                    _profile.AvatarPath = DownloadAndCacheAvatar(avatarUrl) ?? avatarUrl;
+                }
 
                 _lblInitial.Text = GetInitials(name);
                 _avatar.BackColor = TG.GetAvatarColor(name);
@@ -424,6 +427,32 @@ namespace SecureChat.Client.Forms.Profile
         {
             var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
             return enumerator.MoveNext() ? enumerator.GetTextElement() : string.Empty;
+        }
+
+        private static string? DownloadAndCacheAvatar(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return null;
+            try
+            {
+                var http = Services.ApiClient.Instance.GetHttpClient();
+                var cacheKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)));
+                var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SecureChat", "AvatarCache");
+                Directory.CreateDirectory(cacheDir);
+                var cachePath = Path.Combine(cacheDir, cacheKey + ".png");
+                if (File.Exists(cachePath))
+                    return cachePath;
+
+                using var response = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result;
+                if (!response.IsSuccessStatusCode) return null;
+                using var stream = response.Content.ReadAsStreamAsync().Result;
+                using var img = Image.FromStream(stream);
+                img.Save(cachePath, ImageFormat.Png);
+                return cachePath;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static void ClipCircle(PictureBox pb)
