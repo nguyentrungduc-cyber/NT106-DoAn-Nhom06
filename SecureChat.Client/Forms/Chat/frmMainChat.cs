@@ -1429,7 +1429,7 @@ namespace SecureChat.Client
                     var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(json, opts);
                     if (list != null)
                         members = list.Select(m => new SecureChat.Client.Forms.Chat.MemberModel(
-    m.User?.DisplayName ?? m.Nickname ?? "Unknown",
+    m.User?.DisplayName ?? m.Nickname ?? m.User?.Username ?? "Unknown",
     "last seen recently",
     m.Role == SecureChat.Models.MemberRole.Owner ? "Admin" : "Member",
     null,
@@ -1577,7 +1577,7 @@ namespace SecureChat.Client
                             if (list != null)
                             {
                                 var others = list.Where(m => m.UserID != _currentUserId).ToList();
-                                memberNames = others.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
+                                memberNames = others.Select(m => m.User?.DisplayName ?? m.Nickname ?? m.User?.Username ?? "Unknown").ToList();
                                 memberIds = others.Select(m => m.MemberID).ToList();
                             }
                         }
@@ -3652,13 +3652,26 @@ namespace SecureChat.Client
 
             BeginInvoke(new Action(() =>
             {
-                // Có data thật -> drop mock và replace.
+                // Lưu preview/thời gian hiện tại trước khi rebuild
+                var existingPreviews = new Dictionary<string, string>();
+                var existingTimes = new Dictionary<string, string>();
+                foreach (var ec in _convs)
+                {
+                    existingPreviews[ec.Id] = ec.Preview;
+                    existingTimes[ec.Id] = ec.Time;
+                }
+
+                // Chỉ rebuild _convs, KHÔNG clear _allMsgs/_syncedConversations
                 _convs.Clear();
-                _allMsgs.Clear();
-                _forwardMetadata.Clear();
-                _forwardOriginalSenderId.Clear();
-                _syncedConversations.Clear();
-                _myMemberIdByConv.Clear();
+
+                // Xoá cache của các conversation không còn trong danh sách
+                var newIds = new HashSet<string>(list.Select(c => c.ConversationID));
+                foreach (var key in _allMsgs.Keys.Where(k => !newIds.Contains(k)).ToList())
+                    _allMsgs.Remove(key);
+                foreach (var key in _syncedConversations.Where(k => !newIds.Contains(k)).ToList())
+                    _syncedConversations.Remove(key);
+                foreach (var key in _myMemberIdByConv.Keys.Where(k => !newIds.Contains(k)).ToList())
+                    _myMemberIdByConv.Remove(key);
 
                 foreach (var c in list)
                 {
@@ -3667,7 +3680,15 @@ namespace SecureChat.Client
                         : (c.Type == ConversationType.Group ? "Group" : "Direct chat");
                     string time = c.LastActivityAt?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
                     bool isGroup = c.Type == ConversationType.Group;
-                    string convPreview = c.LastMessageID != null ? "..." : string.Empty;
+
+                    // Giữ preview cũ nếu có
+                    string convPreview = existingPreviews.TryGetValue(c.ConversationID, out var oldPreview)
+                        ? oldPreview
+                        : (c.LastMessageID != null ? "..." : string.Empty);
+
+                    if (c.LastActivityAt == null && existingTimes.TryGetValue(c.ConversationID, out var oldTime))
+                        time = oldTime;
+
                     _convs.Add((c.ConversationID, display, convPreview, time, 0, isGroup));
                 }
 

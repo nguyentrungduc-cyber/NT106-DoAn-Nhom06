@@ -123,7 +123,7 @@
                     foreach (var m in admins)
                     {
                         var row = BuildAdminRow(
-                            m.User?.DisplayName ?? m.Nickname ?? "Unknown",
+                            m.User?.DisplayName ?? m.Nickname ?? m.User?.Username ?? "Unknown",
                             m.Role.ToString());
                         row.Location = new Point(0, y);
                         _pnlAdmins.Controls.Add(row);
