@@ -167,8 +167,8 @@ namespace SecureChat.Client.Services
 				    var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
 				    return (true, data, string.Empty);
 				}
-
-				return (false, default, $"Lỗi server: {responseStr}");
+                System.Diagnostics.Debug.WriteLine($"[PostAsync] {endpoint} → {response.StatusCode}: {responseStr}");
+                return (false, default, $"Lỗi server: {responseStr}");
 			}
 			catch (Exception ex)
 			{
