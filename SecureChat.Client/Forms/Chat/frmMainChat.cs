@@ -775,44 +775,8 @@ namespace SecureChat.Client
                 AutoSize = true,
                 BackColor = Color.Transparent,
             };
-            // Nhãn hiển thị số lượng tin nhắn chưa đọc.
-            // Nó chỉ hiện lên khi unread > 0.
-            var lblUnread = new Label
-            {
-                // Nếu > 99 thì cho rộng ra một chút (ví dụ 28px) để chứa vừa dấu "+"
-                Size = unread > 99 ? new Size(30, 25) : new Size(22, 22),
-                AutoSize = false,
-                BackColor = Color.Transparent,
-
-
-                ForeColor = Color.White,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Font = TG.FontSemiBold(8f),
-                Visible = unread > 0,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            // Đoạn code này tự tay vẽ (custom draw) một hình tròn màu xanh (TG.Blue) đè lên nhãn và viết số lượng tin nhắn vào giữa.
-            // Nếu số lượng lớn hơn 99, nó tự động đổi thành "99+".
-            lblUnread.Paint += (s, e) =>
-            {
-                if (!lblUnread.Visible) return;
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var brush = new SolidBrush(TG.Blue);
-
-                // Vẽ hình nền tròn hoặc bầu dục nếu số dài
-                e.Graphics.FillEllipse(brush, 0, 0, lblUnread.Width - 1, lblUnread.Height - 1);
-
-                // LOGIC QUAN TRỌNG: Kiểm tra lại biến unread ở đây
-                string txt = unread > 99 ? "99+" : unread.ToString();
-
-                using var fore = new SolidBrush(Color.White);
-                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                e.Graphics.DrawString(txt, lblUnread.Font, fore, lblUnread.ClientRectangle, sf);
-            };
-
-
             // Add controls
-            pnl.Controls.AddRange(new Control[] { avatar, lblName, lblPreview, lblTime, lblUnread });
+            pnl.Controls.AddRange(new Control[] { avatar, lblName, lblPreview, lblTime });
 
             // Click behavior
             // Định nghĩa hành động khi người dùng bấm vào dòng chat: Cập nhật ID đang kích hoạt, vẽ lại danh sách và tải nội dung tin nhắn của cuộc trò chuyện đó.
@@ -828,15 +792,8 @@ namespace SecureChat.Client
             pnl.Resize += (s, e) =>
             {
                 lblName.Width = Math.Max(0, pnl.Width - 66 - 80);
-
-                // NẾU CÓ TIN NHẮN CHƯA ĐỌC: Trừ đi độ rộng của Badge (khoảng 35-40px tính cả lề)
-                // NẾU KHÔNG CÓ: Chỉ trừ lề phải 12px
-                int previewRightMargin = (unread > 0) ? 40 : 12;
-                lblPreview.Width = Math.Max(0, pnl.Width - 66 - previewRightMargin);
-
+                lblPreview.Width = Math.Max(0, pnl.Width - 66 - 12);
                 lblTime.Location = new Point(pnl.Width - lblTime.Width - 12, 12);
-                lblUnread.Location = new Point(pnl.Width - lblUnread.Width - 12, 34);
-
 
                 // Update colors for active state
                 if (isActive())
@@ -853,16 +810,13 @@ namespace SecureChat.Client
                     lblPreview.ForeColor = TG.TextSecondary;
                     lblTime.ForeColor = TG.TextTime;
                 }
-
-                lblUnread.BringToFront(); // đảm bảo 99+ không bị đè
             };
 
             // Set width ngay lần đầu render
             int initWidth = _pnlConvList.ClientSize.Width > 0 ? _pnlConvList.ClientSize.Width : 280;
             lblTime.Location = new Point(Math.Max(0, initWidth - lblTime.Width - 12), 12);
             lblName.Width = Math.Max(0, initWidth - 66 - 80);
-            int initPreviewMargin = (unread > 0) ? 40 : 12;
-            lblPreview.Width = Math.Max(0, initWidth - 66 - initPreviewMargin);
+            lblPreview.Width = Math.Max(0, initWidth - 66 - 12);
 
             // Truyền sự kiện (Event Propagation)/hover for child controls
             // Trong WinForms, khi bạn click vào một Label nằm bên trong Panel, sự kiện Click của Panel sẽ không tự kích hoạt.
@@ -4101,7 +4055,8 @@ namespace SecureChat.Client
             if (msgs.Count == 0) return;
 
             var latest = msgs[^1];
-            string senderForPreview = latest.Out ? "" : latest.Sender;
+            string senderForPreview = latest.Out ? "" :
+                (_senderDisplayNameMap.TryGetValue(latest.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : latest.Sender);
             RefreshConversationItem(_activeConvId, latest.Text, latest.Out, senderForPreview, latest.Time, messageId: latest.Id);
         }
 
@@ -4114,7 +4069,8 @@ namespace SecureChat.Client
                     continue;
 
                 var latest = msgs[^1];
-                string senderForPreview = latest.Out ? "" : latest.Sender;
+                string senderForPreview = latest.Out ? "" :
+                    (_senderDisplayNameMap.TryGetValue(latest.Sender, out var dn) && !string.IsNullOrEmpty(dn) ? dn : latest.Sender);
                 RefreshConversationItem(c.Id, latest.Text, latest.Out, senderForPreview, latest.Time, messageId: latest.Id);
             }
         }
@@ -4868,7 +4824,7 @@ namespace SecureChat.Client
                 {
                     float tickX = x + bw - pad - 22;
                     using var tickFont = new Font("Segoe UI Symbol", 8f, FontStyle.Bold);
-                    e.Graphics.DrawString("✓✓", tickFont, new SolidBrush(TG.Blue), tickX, ty - 1);
+                    e.Graphics.DrawString("✓", tickFont, new SolidBrush(TG.Blue), tickX, ty - 1);
                 }
 
                 // 5. Self-destruct timer indicator (nếu message có expiration)
