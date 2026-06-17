@@ -138,7 +138,7 @@ namespace SecureChat.Controllers
 
 			// Lấy conversation để check loại (DM hay group)
 			var conversation = await conversations.GetByIdAsync(conversationID);
-			bool isDm = conversation?.IsGroup == false;
+			bool isDm = conversation?.Type == ConversationType.Direct;
 
 			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID))
 			{

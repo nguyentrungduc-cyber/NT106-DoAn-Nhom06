@@ -70,7 +70,7 @@ namespace SecureChat.Server.Hubs
             // Telegram-style block: với DM, lấy connection của từng member,
             // bỏ qua người chặn/bị chặn — không broadcast đến họ
             var conversation = await conversations.GetByIdAsync(conversationId);
-            if (conversation?.IsGroup == false)
+            if (conversation?.Type == ConversationType.Direct)
             {
                 var activeMembers = await conversations.GetActiveMembersAsync(conversationId);
                 foreach (var m in activeMembers.Where(m => m.UserID != Me))
