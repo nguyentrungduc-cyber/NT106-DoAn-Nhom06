@@ -3387,9 +3387,23 @@ namespace SecureChat.Client
             _activeConvId = convId;
             UpdateChatEmptyStateUI();
 
+            // Luôn clear ảnh header cũ trước khi chuyển conversation
+            var oldHeaderPhoto = _chatAvatar.Photo;
+            if (oldHeaderPhoto != null)
+            {
+                _chatAvatar.Photo = null;
+                oldHeaderPhoto.Dispose();
+            }
+
             _chatAvatar.SetName(conv.Name);
             _lblChatName.Text = conv.Name;
             RestoreChatStatus();
+
+            // Set ảnh header từ cache nếu có (tạo bản sao riêng để tránh shared reference)
+            if (_convAvatarCache.TryGetValue(convId, out var cachedImg) && cachedImg != null)
+                _chatAvatar.Photo = new Bitmap(cachedImg);
+
+            _chatAvatar.Invalidate();
 
             // Đảm bảo có list (rỗng nếu chưa sync) trước khi vẽ.
             BuildMessages();
