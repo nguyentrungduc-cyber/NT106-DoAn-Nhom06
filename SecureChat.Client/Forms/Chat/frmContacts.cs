@@ -96,6 +96,7 @@ namespace SecureChat.Client
         private Panel _pnlSentRequests = new();  // Panel lời mời đã gửi (field để refresh sau khi load API)
         private TabPage _tpIncoming = new();
         private TabPage _tpSent = new();
+        private TabPage _tpBlocked = new();
         // Panel cho 2 tab con được khai báo cục bộ
         // Trong lập trình WinForms, thay vì tìm cách chèn thêm 1 dòng vào giữa một cái Panel đang có sẵn, người ta thường chọn cách xóa sạch và vẽ lại:
 
@@ -1045,15 +1046,15 @@ namespace SecureChat.Client
 
             _tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
             _tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            var tabBlocked = new TabPage($"Đã chặn ({blockedCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };  // ✅ FIX: Thêm ({blockedCount})
+            _tpBlocked = new TabPage($"Đã chặn ({blockedCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
 
-            _requestSubTabs.TabPages.AddRange(new[] { _tpIncoming, _tpSent, tabBlocked });
+            _requestSubTabs.TabPages.AddRange(new[] { _tpIncoming, _tpSent, _tpBlocked });
 
             // Gán Panel cho tab "Đã chặn"
             _pnlBlockedUsers.Dock = DockStyle.Fill;
             _pnlBlockedUsers.AutoScroll = true;
-            _pnlBlockedUsers.Resize += Pnl_UpdateRowsWidth;  // ✅ FIX: Thêm Resize handler
-            tabBlocked.Controls.Add(_pnlBlockedUsers);
+            _pnlBlockedUsers.Resize += Pnl_UpdateRowsWidth;
+            _tpBlocked.Controls.Add(_pnlBlockedUsers);
             LoadBlockedUsers();  // ✅ FIX: Gọi hàm load dữ liệu
 
             // ============ TAB "Đã nhận" ============
@@ -1520,6 +1521,10 @@ namespace SecureChat.Client
         {
             _pnlBlockedUsers.Controls.Clear();
 
+            // Cập nhật số đếm trên tab
+            _tpBlocked.Text = $"Đã chặn ({_blockedUsers.Count})";
+            _requestSubTabs.Invalidate();
+
             if (_blockedUsers.Count == 0)
             {
                 var lbl = new Label
@@ -1556,6 +1561,8 @@ namespace SecureChat.Client
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10) };
             avatar.SetName(c.DisplayName);
 
+            // FIX: tính width đúng = tổng panel - left offset avatar - right btn - margins
+            const int btnW = 80, rightMargin = 12, gap = 8, nameLeft = 58;
             var lblName = new Label
             {
                 Text = c.DisplayName,
@@ -1563,8 +1570,8 @@ namespace SecureChat.Client
                 ForeColor = TG.TextName,
                 AutoSize = false,
                 Height = 20,
-                Location = new Point(58, 10),
-                Width = initialWidth - 158,
+                Location = new Point(nameLeft, 20),
+                Width = Math.Max(0, initialWidth - nameLeft - btnW - rightMargin - gap),
                 BackColor = Color.Transparent,
             };
 
@@ -1625,11 +1632,31 @@ namespace SecureChat.Client
             pnl.Controls.AddRange(new Control[] { avatar, lblName, btnUnblock });
             pnl.Paint += (s, e) => e.Graphics.DrawLine(new Pen(TG.DividerLight), 58, 59, pnl.Width, 59);
 
+            // Resize handler — đặt button sát phải, label lấp đầy khoảng còn lại
+            EventHandler resizeHandler = (s, e) =>
+            {
+                if (pnl.ClientSize.Width <= 0) return;
+                const int rMargin = 12;
+                btnUnblock.Left = pnl.ClientSize.Width - btnUnblock.Width - rMargin;
+                btnUnblock.Top  = (60 - btnUnblock.Height) / 2;
+                int available = btnUnblock.Left - lblName.Left - 8;
+                lblName.Width = Math.Max(0, available);
+                pnl.Refresh();
+            };
+            pnl.Resize += resizeHandler;
+            pnl.HandleCreated += resizeHandler;
+            // Gọi thêm ParentChanged để chắc chắn chạy sau khi add vào panel cha
+            pnl.ParentChanged += resizeHandler;
+
             // Hover effect
             foreach (Control ctrl in pnl.Controls)
             {
                 ctrl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-                ctrl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+                ctrl.MouseLeave += (s, e) =>
+                {
+                    if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
+                        pnl.BackColor = Color.White;
+                };
             }
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
             pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
