@@ -919,6 +919,7 @@ namespace SecureChat.Client
                     await _signalRClient.NotifyCallIncomingAsync(_activeConvId, callData.CallID, _currentDisplayName, 1);
 
                     var callForm = new Forms.Call.frmVideoCall(_lblChatName.Text, callData.CallID, _activeConvId, _signalRClient);
+                    callForm.FormClosed += (_, __) => this.Activate();
                     callForm.Show();
                 }
                 catch (Exception ex)
@@ -5797,6 +5798,7 @@ namespace SecureChat.Client
             BeginInvoke(new Action(() =>
             {
                 var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!);
+                callForm.FormClosed += (_, __) => this.Activate();
                 callForm.Show();
             }));
         }
