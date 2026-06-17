@@ -3973,6 +3973,10 @@ namespace SecureChat.Client
 
         private string GetSidebarPreviewText(string rawText, string? messageId = null)
         {
+            // Recalled message
+            if (!string.IsNullOrEmpty(rawText) && rawText.StartsWith("recalled::"))
+                return "Tin nhắn đã được thu hồi";
+
             // Kiểm tra forward metadata
             if (!string.IsNullOrEmpty(messageId) && _forwardMetadata.ContainsKey(messageId))
                 return "Forwarded message";
@@ -4394,6 +4398,65 @@ namespace SecureChat.Client
 
                 panel.PerformLayout();
                 return WrapForwardIfNeeded(panel, messageId, isOut);
+            }
+
+            // recalled::
+            const string recallPrefix = "recalled::";
+            if (!string.IsNullOrEmpty(text) && text.StartsWith(recallPrefix, StringComparison.Ordinal))
+            {
+                var recallPnl = new Panel { BackColor = Color.Transparent };
+                int recallPad = 12;
+                int recallLeft = (!isOut && isGroup) ? 44 : 10;
+                int recallMaxW = 360;
+                if (_pnlMessages != null && _pnlMessages.ClientSize.Width > 0)
+                    recallMaxW = Math.Max(220, (int)(_pnlMessages.ClientSize.Width * 0.66f) - _pnlMessages.Padding.Horizontal);
+
+                string recallText = "Tin nhắn đã được thu hồi";
+                Size recallTextSz;
+                using (var g = _pnlMessages.CreateGraphics())
+                {
+                    recallTextSz = TextRenderer.MeasureText(g, recallText, TG.FontRegular(9.5f),
+                        new Size(recallMaxW - recallPad * 2, 0), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                }
+                int recallBw = Math.Min(recallMaxW, (int)recallTextSz.Width + recallPad * 2 + 20);
+                int recallBh = (int)recallTextSz.Height + recallPad * 2 + 16;
+                recallPnl.Height = recallBh + 16;
+
+                recallPnl.Paint += (s, e) =>
+                {
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+
+                    int rx = isOut ? recallPnl.ClientSize.Width - recallBw - 10 : recallLeft;
+                    int ry = 4;
+                    Color rBg = isOut ? TG.MsgOutBg : TG.MsgInBg;
+
+                    using var shadowBrush = new SolidBrush(Color.FromArgb(20, 0, 0, 0));
+                    using var shadowPath = RoundedPanel.GetRoundedPath(new Rectangle(rx + 1, ry + 2, recallBw, recallBh), TG.RadiusBubble);
+                    e.Graphics.FillPath(shadowBrush, shadowPath);
+
+                    using var bubblePath = RoundedPanel.GetRoundedPath(new Rectangle(rx, ry, recallBw, recallBh), TG.RadiusBubble);
+                    e.Graphics.FillPath(new SolidBrush(rBg), bubblePath);
+
+                    var rTail = isOut
+                        ? new[] { new Point(rx + recallBw, ry + recallBh - 8), new Point(rx + recallBw + 5, ry + recallBh), new Point(rx + recallBw, ry + recallBh) }
+                        : new[] { new Point(rx, ry + recallBh - 8), new Point(rx - 5, ry + recallBh), new Point(rx, ry + recallBh) };
+                    e.Graphics.FillPolygon(new SolidBrush(rBg), rTail);
+
+                    using var iconFont = new Font("Segoe UI Symbol", 12f);
+                    float iconX = rx + recallPad;
+                    float iconY = ry + (recallBh - 24f) / 2;
+                    e.Graphics.DrawString("\u21A9", iconFont, new SolidBrush(Color.FromArgb(153, 153, 153)), iconX, iconY);
+
+                    float rTextX = iconX + 28;
+                    float rTextY = ry + (recallBh - recallTextSz.Height) / 2;
+                    using var paintFont = new Font("Segoe UI", 9.5f, FontStyle.Italic);
+                    TextRenderer.DrawText(e.Graphics, recallText, paintFont,
+                        new Rectangle((int)rTextX, (int)rTextY, recallMaxW - recallPad * 2 - 30, recallTextSz.Height),
+                        Color.FromArgb(153, 153, 153), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                };
+
+                return recallPnl;
             }
 
             // file::url::name::size
@@ -4842,6 +4905,7 @@ namespace SecureChat.Client
                 Forward = id => OnForwardMessage(id),
                 Copy = id => OnCopyMessage(id),
                 Edit = isOut ? (id => OnEditMessage(id)) : null,
+                Recall = isOut ? (id => OnRecallMessage(id)) : null,
                 Pin = id =>
                 {
                     if (_pinnedMessageIds.Contains(id)) OnUnpinMessage(id);
@@ -5178,6 +5242,43 @@ namespace SecureChat.Client
             RefreshSidebarPreview();
         }
 
+        private async void OnRecallMessage(string messageId)
+        {
+            var msgIndex = _currentMsgs.FindIndex(m => m.Id == messageId);
+            if (msgIndex < 0) return;
+
+            var dialog = ShowTelegramDialog("Thu hồi tin nhắn?", "Thu hồi cho tất cả mọi người", "Thu hồi", Color.FromArgb(0xE2, 0x4B, 0x4A));
+            if (dialog.Result != DialogResult.Yes) return;
+
+            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+            var res = await http.PostAsync($"api/conversations/{_activeConvId}/messages/{messageId}/recall", null);
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                MessageBox.Show(this, $"Lỗi thu hồi: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            // Update local state
+            _currentMsgs[msgIndex] = (messageId, "recalled::", _currentMsgs[msgIndex].Out, _currentMsgs[msgIndex].Time, _currentMsgs[msgIndex].Sender);
+
+            // Broadcast recall to other members via SignalR
+            if (_signalRClient is not null)
+            {
+                try
+                {
+                    await _signalRClient.RecallMessageAsync(_activeConvId, messageId);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"SignalR recall broadcast failed: {ex.Message}");
+                }
+            }
+
+            BuildMessages();
+            RefreshSidebarPreview();
+        }
+
         private async Task LoadPinsAsync(string convId)
         {
             try
@@ -5481,6 +5582,7 @@ namespace SecureChat.Client
                 () => Task.FromResult(SecureChat.Client.Services.ApiClient.Instance.CurrentAccessToken));
 
             _signalRClient.MessageReceived += HandleSignalRMessageAsync;
+            _signalRClient.MessageRecalled += HandleSignalRRecalledAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
             _signalRClient.UserTyping += HandleUserTypingAsync;
@@ -5728,6 +5830,49 @@ namespace SecureChat.Client
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[SignalR] HandleSignalRMessageAsync failed: {ex.Message}");
+            }
+        }
+
+        private async Task HandleSignalRRecalledAsync(MessageResponse message)
+        {
+            try
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        // Update in _allMsgs for the recalled message's conversation
+                        if (_allMsgs.TryGetValue(message.ConversationID, out var list))
+                        {
+                            int idx = list.FindIndex(m => m.Id == message.MessageID);
+                            if (idx >= 0)
+                            {
+                                var old = list[idx];
+                                list[idx] = (old.Id, "recalled::", old.Out, old.Time, old.Sender);
+                            }
+                        }
+
+                        // Update sidebar preview
+                        int convIdx = _convs.FindIndex(c => c.Id == message.ConversationID);
+                        if (convIdx >= 0)
+                        {
+                            var c = _convs[convIdx];
+                            RefreshConversationItem(message.ConversationID, "Tin nhắn đã được thu hồi", false, "", DateTime.Now.ToLocalTime().ToString("h:mm tt"), c.Unread);
+                        }
+
+                        // Re-render if this is the active conversation
+                        if (message.ConversationID == _activeConvId)
+                            BuildMessages();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SignalR] Recall UI update failed: {ex.Message}");
+                    }
+                }));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SignalR] HandleSignalRRecalledAsync failed: {ex.Message}");
             }
         }
 

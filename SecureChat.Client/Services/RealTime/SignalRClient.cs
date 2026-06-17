@@ -10,8 +10,9 @@ namespace SecureChat.Client.Services.RealTime
         private const string DefaultBaseUrl = "http://localhost:5097";
         private readonly HubConnection _connection;
 
-        public event Func<MessageResponse, Task>? MessageReceived;
-        public event Func<string, string, Task>? CallSignalReceived;
+		public event Func<MessageResponse, Task>? MessageReceived;
+		public event Func<MessageResponse, Task>? MessageRecalled;
+		public event Func<string, string, Task>? CallSignalReceived;
         public event Func<string, string, int, string, Task>? CallIncoming;
         public event Func<string, byte[], Task>? VideoFrameReceived;
         public event Func<string, string, Task>? UserTyping;
@@ -63,6 +64,12 @@ namespace SecureChat.Client.Services.RealTime
             {
                 if (MessageReceived is not null)
                     await MessageReceived.Invoke(message);
+            });
+
+            _connection.On<MessageResponse>("MessageRecalled", async message =>
+            {
+                if (MessageRecalled is not null)
+                    await MessageRecalled.Invoke(message);
             });
 
             _connection.On<string, string>("CallSignalReceived", async (callId, signal) =>
@@ -175,6 +182,16 @@ namespace SecureChat.Client.Services.RealTime
             ArgumentNullException.ThrowIfNull(message);
 
             return _connection.InvokeAsync("SendMessage", conversationId, message);
+        }
+
+        public Task RecallMessageAsync(string conversationId, string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new ArgumentException("ConversationId is required.", nameof(conversationId));
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new ArgumentException("MessageId is required.", nameof(messageId));
+
+            return _connection.InvokeAsync("RecallMessage", conversationId, messageId);
         }
 
         public Task JoinCallAsync(string callId)
