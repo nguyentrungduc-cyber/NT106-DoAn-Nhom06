@@ -10,6 +10,7 @@ using SecureChat.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, SecureChat.Server.Hubs.UserIdProvider>();
 
 var connStr = builder.Configuration.GetConnectionString("Default")
 	?? throw new InvalidOperationException("Connection string 'Default' not found.");

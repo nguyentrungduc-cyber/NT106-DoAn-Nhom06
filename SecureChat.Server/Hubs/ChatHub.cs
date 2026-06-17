@@ -67,24 +67,28 @@ namespace SecureChat.Server.Hubs
             if (member is null || member.LeftAt is not null)
                 throw new HubException("You are not a member of this conversation.");
 
-            // Telegram-style block: với DM, lấy connection của từng member,
-            // bỏ qua người chặn/bị chặn — không broadcast đến họ
             var conversation = await conversations.GetByIdAsync(conversationId);
             if (conversation?.Type == ConversationType.Direct)
             {
+                // DM: gửi từng người, bỏ qua nếu bị chặn (Telegram-style)
+                // Clients.User() hoạt động nhờ UserIdProvider đã đăng ký
                 var activeMembers = await conversations.GetActiveMembersAsync(conversationId);
-                foreach (var m in activeMembers.Where(m => m.UserID != Me))
+                foreach (var m in activeMembers)
                 {
+                    if (m.UserID == Me)
+                    {
+                        // Gửi lại cho chính người gửi (multi-device)
+                        await Clients.Caller.SendAsync("MessageReceived", message);
+                        continue;
+                    }
                     if (await friends.IsBlockedEitherWayAsync(Me, m.UserID))
                         continue; // im lặng, không deliver
                     await Clients.User(m.UserID).SendAsync("MessageReceived", message);
                 }
-                // Gửi lại cho chính người gửi (để hiển thị trên các tab khác)
-                await Clients.Caller.SendAsync("MessageReceived", message);
             }
             else
             {
-                // Group chat: broadcast bình thường
+                // Group chat: broadcast bình thường, không check block
                 await Clients.Group(conversationId).SendAsync("MessageReceived", message);
             }
         }
