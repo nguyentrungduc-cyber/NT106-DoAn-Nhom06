@@ -2867,88 +2867,8 @@ namespace SecureChat.Client
                 Location = new Point(80, 52),
                 BackColor = Color.Transparent,
             };
-            var lblEmojiStatus = new Label
-            {
-                Text = "Set Emoji Status",
-                Font = TG.FontRegular(8.5f),
-                ForeColor = Color.FromArgb(160, 220, 255),
-                AutoSize = false,
-                Height = 16,
-                Location = new Point(80, 76),
-                BackColor = Color.Transparent,
-                Cursor = Cursors.Hand,
-            };
 
-            var btnChevron = new Button
-            {
-                Text = "▾",
-                FlatStyle = FlatStyle.Flat,
-                Font = TG.FontRegular(11f),
-                ForeColor = Color.White,
-                Size = new Size(28, 28),
-                BackColor = Color.Transparent,
-                Cursor = Cursors.Hand,
-                TextAlign = ContentAlignment.MiddleCenter,
-            };
-            btnChevron.FlatAppearance.BorderSize = 0;
-
-            // ── Add Account row (ẩn mặc định, hiện khi bấm chevron) ──
-            var pnlAddAccount = new Panel
-            {
-                Height = 48,
-                BackColor = Color.White,
-                Cursor = Cursors.Hand,
-                Visible = false,
-                Dock = DockStyle.Top,
-            };
-            pnlAddAccount.Paint += (s, e) =>
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                // Vẽ circle xanh với dấu +
-                var rect = new Rectangle(14, 12, 24, 24);
-                using var brush = new SolidBrush(TG.Blue);
-                e.Graphics.FillEllipse(brush, rect);
-                using var pen = new Pen(Color.White, 2f);
-                e.Graphics.DrawLine(pen, 26, 18, 26, 30); // dọc
-                e.Graphics.DrawLine(pen, 20, 24, 32, 24); // ngang
-                // Divider
-                e.Graphics.DrawLine(new Pen(TG.DividerLight), 56, 47, pnlAddAccount.Width, 47);
-            };
-            var lblAddAccount = new Label
-            {
-                Text = "Add Account",
-                Font = TG.FontRegular(10f),
-                ForeColor = TG.TextPrimary,
-                AutoSize = false,
-                Height = 48,
-                Location = new Point(56, 0),
-                TextAlign = ContentAlignment.MiddleLeft,
-                BackColor = Color.Transparent,
-            };
-            pnlAddAccount.Controls.Add(lblAddAccount);
-            pnlAddAccount.Resize += (s, e) => lblAddAccount.Width = Math.Max(0, pnlAddAccount.Width - 56);
-            pnlAddAccount.MouseEnter += (s, e) => pnlAddAccount.BackColor = TG.SidebarHover;
-            pnlAddAccount.MouseLeave += (s, e) => pnlAddAccount.BackColor = Color.White;
-            lblAddAccount.MouseEnter += (s, e) => pnlAddAccount.BackColor = TG.SidebarHover;
-            lblAddAccount.MouseLeave += (s, e) => pnlAddAccount.BackColor = Color.White;
-
-            // Toggle chevron + hiện/ẩn Add Account
-            Action toggleAccountPanel = () =>
-            {
-                pnlAddAccount.Visible = !pnlAddAccount.Visible;
-                btnChevron.Text = pnlAddAccount.Visible ? "▲" : "▾";
-            };
-            btnChevron.Click += (s, e) => toggleAccountPanel();
-            _settingsAvatar.Click += (s, e) => toggleAccountPanel();
-            _lblSettingsUserName.Click += (s, e) => toggleAccountPanel();
-
-            _pnlSettingsHeader.Controls.AddRange(new Control[] { btnClose, _settingsAvatar, _lblSettingsUserName, lblEmojiStatus, btnChevron });
-            _pnlSettingsHeader.Resize += (s, e) =>
-            {
-                _lblSettingsUserName.Width = _pnlSettingsHeader.Width - 84 - 36;
-                lblEmojiStatus.Width = _pnlSettingsHeader.Width - 84 - 36;
-                btnChevron.Location = new Point(_pnlSettingsHeader.Width - 36, 52);
-            };
+            _pnlSettingsHeader.Controls.AddRange(new Control[] { btnClose, _settingsAvatar, _lblSettingsUserName });
 
             // ── Menu items ────────────────────────────
             var menuItems = new (string Emoji, string Label, bool HasToggle)[]
@@ -2956,7 +2876,6 @@ namespace SecureChat.Client
     ("👤", "My Profile",      false),
     ("👥", "New Group",       false),
     ("🪪", "Contacts",        false),
-    ("📞", "Calls",           false),
     ("🔖", "Saved Messages",  false),
     ("⚙️", "Settings",        false),
     ("🌙", "Night Mode",      true),
@@ -3000,7 +2919,6 @@ namespace SecureChat.Client
 
             _pnlSettingsMenu.Controls.Add(pnlMenuList);
             _pnlSettingsMenu.Controls.Add(lblVersion);
-            _pnlSettingsMenu.Controls.Add(pnlAddAccount);   // dock Top, nằm dưới header
             _pnlSettingsMenu.Controls.Add(_pnlSettingsHeader);
         }
 
@@ -3090,18 +3008,10 @@ namespace SecureChat.Client
                             myprofile.StartPosition = FormStartPosition.CenterParent;
                             if (myprofile.ShowDialog(this) == DialogResult.OK)
                             {
-                                var http = ApiClient.Instance.GetHttpClient();
-                                var req = new { displayName = profile.FullName };
-                                var json = System.Text.Json.JsonSerializer.Serialize(req);
-                                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-                                var res = await http.PatchAsync("api/users/me", content);
-                                if (res.IsSuccessStatusCode)
-                                {
-                                    _currentDisplayName = profile.FullName;
-                                    _currentUsername = profile.Username;
-                                    _currentEmail = profile.Email;
-                                    UpdateSettingsHeaderUI();
-                                }
+                                _currentDisplayName = profile.FullName;
+                                _currentUsername = profile.Username;
+                                _currentEmail = profile.Email;
+                                UpdateSettingsHeaderUI();
                             }
                         }
                         catch (Exception ex)
@@ -3255,11 +3165,6 @@ namespace SecureChat.Client
                         {
                             MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         }
-                        break;
-                    }
-                case "Calls":
-                    {
-                        MessageBox.Show(this, "Calls feature coming soon.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         break;
                     }
                 case "Saved Messages":

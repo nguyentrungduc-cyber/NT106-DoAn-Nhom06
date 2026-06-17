@@ -34,6 +34,14 @@ namespace SecureChat.Controllers
 				user.DisplayName = req.DisplayName;
 			if (req.BioText is not null)
 				user.BioText     = req.BioText;
+			if (req.Email is not null)
+				user.Email       = req.Email;
+			if (req.Username is not null)
+			{
+				if (await users.ExistsByUsernameAsync(req.Username))
+					return Conflict(new { error = "Username đã được sử dụng." });
+				user.Username = req.Username;
+			}
 
 			await users.UpdateAsync(user);
 			return Ok(UserResponse.From(user));
