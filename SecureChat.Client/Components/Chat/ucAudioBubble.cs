@@ -131,7 +131,6 @@ namespace SecureChat.Client.Components.Chat
                 Maximum     = 100,
                 Value       = 0,
                 TickStyle   = TickStyle.None,
-                BackColor   = Color.Transparent,
             };
             _trackBar.MouseDown += (s, e) => { _seekingByUser = true; };
             _trackBar.MouseUp   += TrackBar_MouseUp;
