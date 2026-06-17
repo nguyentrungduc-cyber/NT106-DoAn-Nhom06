@@ -1,16 +1,18 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Hubs;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations")]
-	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages) : BaseController
+	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, IHubContext<ChatHub> hubContext) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -261,6 +263,26 @@ namespace SecureChat.Controllers
 			}
 
 			await conversations.LeaveMemberAsync(member.MemberID);
+
+			// Gửi thông báo hệ thống cho các thành viên còn lại
+			try
+			{
+				var displayName = member.User?.DisplayName ?? "A member";
+				var sysMsg = new Message
+				{
+					MessageID      = NewID(),
+					ConversationID = conversationID,
+					Type           = MessageType.SystemNotification,
+					Content        = $"{displayName} has left the group",
+					SentAt         = DateTime.UtcNow,
+					SenderID       = null
+				};
+				var created = await messages.CreateAsync(sysMsg);
+				var msgResponse = SecureChat.DTOs.MessageResponse.From(created);
+				await hubContext.Clients.Group(conversationID).SendAsync("MessageReceived", msgResponse);
+			}
+			catch { /* best-effort notification */ }
+
 			return NoContent();
 		}
 

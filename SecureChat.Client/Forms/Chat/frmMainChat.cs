@@ -1556,31 +1556,50 @@ namespace SecureChat.Client
 
             if (isGroup)
             {
-                var memberNames = new List<string>();
-                var memberIds = new List<string>();
-                try
+                // Kiểm tra role của mình trong group
+                var http = ApiClient.Instance.GetHttpClient();
+                var (memOk, myMembership, _) = await _messageService.GetMyMembershipAsync(_activeConvId);
+
+                if (memOk && myMembership != null && myMembership.Role == SecureChat.Models.MemberRole.Owner)
                 {
-                    var http = ApiClient.Instance.GetHttpClient();
-                    var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
-                    if (res.IsSuccessStatusCode)
+                    // Là Owner → phải appoint admin mới
+                    var memberNames = new List<string>();
+                    var memberIds = new List<string>();
+                    try
                     {
-                        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                        var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(
-                            await res.Content.ReadAsStringAsync(), opts);
-                        if (list != null)
+                        var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
+                        if (res.IsSuccessStatusCode)
                         {
-                            var others = list.Where(m => m.UserID != _currentUserId).ToList();
-                            memberNames = others.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
-                            memberIds = others.Select(m => m.MemberID).ToList();
+                            var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                            var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(
+                                await res.Content.ReadAsStringAsync(), opts);
+                            if (list != null)
+                            {
+                                var others = list.Where(m => m.UserID != _currentUserId).ToList();
+                                memberNames = others.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
+                                memberIds = others.Select(m => m.MemberID).ToList();
+                            }
                         }
                     }
+                    catch { }
+                    var defaultNextOwner = memberNames.Count > 0 ? memberNames[0] : "Group member";
+                    using var dlg = new frmLeaveGroup(_lblChatName.Text, defaultNextOwner, memberNames.ToArray(), memberIds.ToArray());
+                    if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
+                        return;
+                    newOwnerMemberId = dlg.AppointedAdminMemberId;
                 }
-                catch { }
-                var defaultNextOwner = memberNames.Count > 0 ? memberNames[0] : "Group member";
-                using var dlg = new frmLeaveGroup(_lblChatName.Text, defaultNextOwner, memberNames.ToArray(), memberIds.ToArray());
-                if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.LeaveConfirmed)
-                    return;
-                newOwnerMemberId = dlg.AppointedAdminMemberId;
+                else
+                {
+                    // Không phải Owner → chỉ confirm rời nhóm
+                    var result = MessageBox.Show(this,
+                        $"Bạn có chắc chắn muốn rời khỏi nhóm {_lblChatName.Text}?",
+                        "Rời nhóm",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+
+                    if (result != DialogResult.Yes)
+                        return;
+                }
             }
             else
             {
@@ -1620,22 +1639,31 @@ namespace SecureChat.Client
             if (string.IsNullOrWhiteSpace(conversationId))
                 return false;
 
+            // Nếu đang chuyển quyền Owner (rời nhóm), bỏ qua DELETE → chỉ LEAVE
+            if (!string.IsNullOrWhiteSpace(newOwnerMemberId))
+            {
+                var leavePayload = new SecureChat.DTOs.LeaveConversationRequest { NewOwnerMemberId = newOwnerMemberId };
+                var (leftOk, _, leftErr) = await ApiClient.Instance.PostAsync<SecureChat.DTOs.LeaveConversationRequest, object>(
+                    $"api/conversations/{conversationId}/leave", leavePayload);
+                return leftOk;
+            }
+
             var (deletedOk, deletedErr) = await ApiClient.Instance.DeleteAsync($"api/conversations/{conversationId}");
             if (deletedOk)
                 return true;
 
-            var leavePayload = new SecureChat.DTOs.LeaveConversationRequest { NewOwnerMemberId = newOwnerMemberId };
-            var (leftOk, _, leftErr) = await ApiClient.Instance.PostAsync<SecureChat.DTOs.LeaveConversationRequest, object>(
-                $"api/conversations/{conversationId}/leave", leavePayload);
+            var leavePayload2 = new SecureChat.DTOs.LeaveConversationRequest { NewOwnerMemberId = newOwnerMemberId };
+            var (leftOk2, _, leftErr2) = await ApiClient.Instance.PostAsync<SecureChat.DTOs.LeaveConversationRequest, object>(
+                $"api/conversations/{conversationId}/leave", leavePayload2);
 
-            if (leftOk)
+            if (leftOk2)
                 return true;
 
-            if (!string.IsNullOrWhiteSpace(leftErr))
+            if (!string.IsNullOrWhiteSpace(leftErr2))
             {
                 var resources = new System.ComponentModel.ComponentResourceManager(typeof(frmMainChat));
                 MessageBox.Show(this,
-                    leftErr,
+                    leftErr2,
                     resources.GetString("ChatLeaveTitle") ?? "Leave conversation",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
@@ -3148,6 +3176,34 @@ namespace SecureChat.Client
                                 MessageBox.Show(this, msg, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                                 System.Diagnostics.Debug.WriteLine($"Create group failed: {msg}");
                                 break;
+                            }
+
+                            // success — lấy ID nhóm mới
+                            string? newConvId = null;
+                            try
+                            {
+                                var createdJson = await res.Content.ReadAsStringAsync();
+                                using var createdDoc = System.Text.Json.JsonDocument.Parse(createdJson);
+                                newConvId = createdDoc.RootElement.GetProperty("conversationID").GetString();
+                            }
+                            catch { }
+
+                            // Đồng bộ avatar nếu có
+                            if (avatarUrl != null && !string.IsNullOrWhiteSpace(newConvId))
+                            {
+                                try
+                                {
+                                    var imgRes = await http.GetAsync(avatarUrl);
+                                    if (imgRes.IsSuccessStatusCode)
+                                    {
+                                        using var imgStream = await imgRes.Content.ReadAsStreamAsync();
+                                        var img = new Bitmap(imgStream);
+                                        if (_convAvatarCache.TryGetValue(newConvId, out var oldImg))
+                                            oldImg?.Dispose();
+                                        _convAvatarCache[newConvId] = new Bitmap(img);
+                                    }
+                                }
+                                catch { }
                             }
 
                             // success — refresh conversations
