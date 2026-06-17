@@ -10,7 +10,7 @@ namespace SecureChat.Controllers
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations/{conversationID}/messages")]
-	public class MessageController(MessageRepository messages, ConversationRepository conversations) : BaseController
+	public class MessageController(MessageRepository messages, ConversationRepository conversations, FriendRepository friends) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -135,12 +135,25 @@ namespace SecureChat.Controllers
 			await conversations.SetLastMessageAsync(conversationID, msg.MessageID, msg.SentAt);
 
 			var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+
+			// Lấy conversation để check loại (DM hay group)
+			var conversation = await conversations.GetByIdAsync(conversationID);
+			bool isDm = conversation?.IsGroup == false;
+
 			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID))
+			{
+				// Telegram-style block: với DM, nếu 1 trong 2 chặn nhau
+				// thì KHÔNG tạo MessageStatus (không deliver) nhưng vẫn lưu DB
+				// → người gửi thấy 1 tick mãi, không biết bị chặn
+				if (isDm && await friends.IsBlockedEitherWayAsync(Me, m.UserID))
+					continue;
+
 				await messages.CreateStatusAsync(new MessageStatus {
 					StatusID  = NewID(),
 					MessageID = msg.MessageID,
 					MemberID  = m.MemberID
 				});
+			}
 
 			var loaded = await messages.GetByIdAsync(msg.MessageID);
 			return CreatedAtAction(nameof(GetMessage), new { conversationID, messageID = msg.MessageID }, MessageResponse.From(loaded!));
