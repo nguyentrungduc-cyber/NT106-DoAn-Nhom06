@@ -1558,7 +1558,6 @@ namespace SecureChat.Client
             if (isGroup)
             {
                 // Kiểm tra role của mình trong group
-                var http = ApiClient.Instance.GetHttpClient();
                 var (memOk, myMembership, _) = await _messageService.GetMyMembershipAsync(_activeConvId);
 
                 if (memOk && myMembership != null && myMembership.Role == SecureChat.Models.MemberRole.Owner)
@@ -1566,25 +1565,16 @@ namespace SecureChat.Client
                     // Là Owner → phải appoint admin mới
                     var memberNames = new List<string>();
                     var memberIds = new List<string>();
-                    try
+                    var (memListOk, memList, memListErr) = await _messageService.GetMembersAsync(_activeConvId);
+                    if (memListOk && memList != null)
                     {
-                        var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
-                        if (res.IsSuccessStatusCode)
-                        {
-                            var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                            var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(
-                                await res.Content.ReadAsStringAsync(), opts);
-                            if (list != null)
-                            {
-                                var others = list.Where(m => m.UserID != _currentUserId).ToList();
-                                memberNames = others.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
-                                memberIds = others.Select(m => m.MemberID).ToList();
-                            }
-                        }
+                        var others = memList.Where(m => m.UserID != _currentUserId).ToList();
+                        memberNames = others.Select(m => m.User?.DisplayName ?? m.Nickname ?? "Unknown").ToList();
+                        memberIds = others.Select(m => m.MemberID).ToList();
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        System.Diagnostics.Debug.WriteLine($"[DeleteAndLeave] Failed to fetch members: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"[DeleteAndLeave] Failed to fetch members: {memListErr}");
                     }
 
                     if (memberNames.Count == 0)
