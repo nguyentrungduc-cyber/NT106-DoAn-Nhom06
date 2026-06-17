@@ -40,6 +40,9 @@ namespace SecureChat.Client
 
         public string ConversationId { get; set; } = string.Empty; // ID cuộc hội thoại (dùng cho Group)
         public int MemberCount { get; set; } // Số thành viên (dùng cho Group)
+
+        public string FriendshipId { get; set; } = string.Empty; // ID của quan hệ bạn bè (dùng để Unfriend)
+        public string BlockId { get; set; } = string.Empty;       // ID của bản ghi block (dùng để Unblock)
     }
 
     // Model cho một lời mời kết bạn:
@@ -174,6 +177,7 @@ namespace SecureChat.Client
                             Username = f.Friend.Username,
                             IsOnline = f.Friend.ShowOnlineStatus,
                             Status = FriendStatus.Friend,
+                            FriendshipId = f.FriendshipID,
                         }).ToList();
                     }
                 }
@@ -255,6 +259,7 @@ namespace SecureChat.Client
                             Username = b.Blocked.Username,
                             IsOnline = false,
                             Status = FriendStatus.Blocked,
+                            BlockId = b.BlockID,
                         }).ToList();
                     }
                 }
@@ -623,6 +628,68 @@ namespace SecureChat.Client
                 Cursor = Cursors.Hand
             };
 
+            // 4b. Nút ⋮ (3 chấm) — menu Hủy kết bạn / Chặn
+            var btnMore = new TelegramButton
+            {
+                Text = "⋮",
+                Width = 28,
+                Height = 28,
+                Font = TG.FontSemiBold(13f),
+                Radius = TG.RadiusSmall,
+                NormalColor = Color.White,
+                TextColor = TG.TextSecondary,
+                Cursor = Cursors.Hand
+            };
+
+            btnMore.Click += async (s, e) =>
+            {
+                var menu = new ContextMenuStrip();
+                menu.Font = TG.FontRegular(9.5f);
+                menu.RenderMode = ToolStripRenderMode.System;
+
+                var itemUnfriend = new ToolStripMenuItem("  🙍  Hủy kết bạn");
+                itemUnfriend.ForeColor = TG.TextName;
+                itemUnfriend.Click += async (_, __) =>
+                {
+                    var confirm = MessageBox.Show(
+                        $"Hủy kết bạn với {c.DisplayName}?",
+                        "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    if (confirm != DialogResult.Yes) return;
+
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.DeleteAsync($"api/friends/{c.FriendshipId}");
+                    if (res.IsSuccessStatusCode)
+                        await LoadContactsFromApiAsync();
+                    else
+                        MessageBox.Show("Hủy kết bạn thất bại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                };
+
+                var itemBlock = new ToolStripMenuItem("  🚫  Chặn người này");
+                itemBlock.ForeColor = Color.FromArgb(0xE2, 0x4B, 0x4A);
+                itemBlock.Click += async (_, __) =>
+                {
+                    var confirm = MessageBox.Show(
+                        $"Chặn {c.DisplayName}? Người này sẽ không thể nhắn tin cho bạn.",
+                        "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                    if (confirm != DialogResult.Yes) return;
+
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var body = new StringContent(
+                        System.Text.Json.JsonSerializer.Serialize(new { BlockedID = c.UserId }),
+                        System.Text.Encoding.UTF8, "application/json");
+                    var res = await http.PostAsync("api/friends/blocked", body);
+                    if (res.IsSuccessStatusCode)
+                        await LoadContactsFromApiAsync();
+                    else
+                        MessageBox.Show("Chặn người dùng thất bại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                };
+
+                menu.Items.Add(itemUnfriend);
+                menu.Items.Add(new ToolStripSeparator());
+                menu.Items.Add(itemBlock);
+                menu.Show(btnMore, new Point(0, btnMore.Height));
+            };
+
             btnMsg.Click += async (s, e) =>
             {
                 btnMsg.Enabled = false;
@@ -743,9 +810,12 @@ namespace SecureChat.Client
                 }
             };
 
-            int initRightMargin = 15;
+            int initRightMargin = 8;
+            btnMore.Location = new Point(
+                initialWidth - btnMore.Width - initRightMargin,
+                (62 - btnMore.Height) / 2);
             btnMsg.Location = new Point(
-                initialWidth - btnMsg.Width - initRightMargin,
+                btnMore.Left - btnMsg.Width - 4,
                 (62 - btnMsg.Height) / 2);
             int initTextWidth = btnMsg.Left - 62 - 10;
             lblName.Width = Math.Max(0, initTextWidth);
@@ -784,7 +854,7 @@ namespace SecureChat.Client
 
 
             // 5. Thêm các control vào panel
-            pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg });
+            pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnMsg, btnMore });
             // 6. Vẽ đường kẻ chia hàng (Divider)
             pnl.Paint += (s, e) =>
             {
@@ -798,11 +868,15 @@ namespace SecureChat.Client
             // 7. Xử lý co giãn (Responsive)
             pnl.Resize += (s, e) =>
             {
-                int textLeft = lblName.Left;
-                int textWidth = pnl.Width - textLeft - 12;
+                int rightMargin = 8;
+                btnMore.Left = pnl.Width - btnMore.Width - rightMargin;
+                btnMore.Top  = (62 - btnMore.Height) / 2;
+                btnMsg.Left  = btnMore.Left - btnMsg.Width - 4;
+                btnMsg.Top   = (62 - btnMsg.Height) / 2;
 
+                int textWidth = btnMsg.Left - lblName.Left - 10;
                 lblName.Width = Math.Max(0, textWidth);
-                lblSub.Width = Math.Max(0, textWidth);
+                lblSub.Width  = Math.Max(0, textWidth);
 
                 pnl.Invalidate(); // Vẽ lại đường kẻ divider khi co giãn
             };
@@ -1520,14 +1594,15 @@ namespace SecureChat.Client
             {
                 try
                 {
-                    if (string.IsNullOrWhiteSpace(c.UserId))
+                    if (string.IsNullOrWhiteSpace(c.BlockId))
                     {
-                        MessageBox.Show("UserId is empty; cannot unblock.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show("BlockId is empty; cannot unblock.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
-                    var res = await http.DeleteAsync($"api/friends/block/{c.UserId}");
+                    // FIX: đúng path "blocked" (không phải "block") và đúng tham số blockID (không phải userId)
+                    var res = await http.DeleteAsync($"api/friends/blocked/{c.BlockId}");
                     var body = await res.Content.ReadAsStringAsync();
 
                     if (res.IsSuccessStatusCode)
@@ -1538,12 +1613,12 @@ namespace SecureChat.Client
                     }
                     else
                     {
-                        MessageBox.Show($"Unblock failed ({(int)res.StatusCode}): {body}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show($"Bỏ chặn thất bại ({(int)res.StatusCode}): {body}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Unblock request failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Bỏ chặn thất bại: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
 
