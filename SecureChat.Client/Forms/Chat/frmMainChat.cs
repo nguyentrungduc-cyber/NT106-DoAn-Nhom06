@@ -300,6 +300,7 @@ namespace SecureChat.Client
                     }
                     BuildConvList();
                     RefreshSidebarPreview();
+                    RefreshAllSidebarPreviews();
                 }));
             }
             catch (Exception ex)
@@ -2372,7 +2373,12 @@ namespace SecureChat.Client
                                     _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
                                     if (msgRes.ExpiresAt.HasValue)
                                         _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
-                                    this.BeginInvoke(new Action(() => BuildMessages()));
+                                    this.BeginInvoke(new Action(() =>
+                                    {
+                                        BuildMessages();
+                                        var time = msgRes.SentAt.ToLocalTime().ToString("h:mm tt");
+                                        RefreshConversationItem(_activeConvId, payload, true, "", time, messageId: msgRes.MessageID);
+                                    }));
                                 }
                             }
 
@@ -2617,7 +2623,12 @@ namespace SecureChat.Client
                                             _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
                                             if (msgRes.ExpiresAt.HasValue)
                                                 _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
-                                            this.BeginInvoke(new Action(() => BuildMessages()));
+                                            this.BeginInvoke(new Action(() =>
+                                            {
+                                                BuildMessages();
+                                                var time = msgRes.SentAt.ToLocalTime().ToString("h:mm tt");
+                                                RefreshConversationItem(_activeConvId, payload, true, "", time, messageId: msgRes.MessageID);
+                                            }));
                                         }
                                     }
 
@@ -3701,6 +3712,7 @@ namespace SecureChat.Client
                     BuildConvList();
                     LoadConversation(_activeConvId);
                     RefreshSidebarPreview();
+                    RefreshAllSidebarPreviews();
                 }
                 else
                 {
@@ -3948,7 +3960,21 @@ namespace SecureChat.Client
 
             var latest = msgs[^1];
             string senderForPreview = latest.Out ? "" : latest.Sender;
-            RefreshConversationItem(_activeConvId, latest.Text, latest.Out, senderForPreview, latest.Time);
+            RefreshConversationItem(_activeConvId, latest.Text, latest.Out, senderForPreview, latest.Time, messageId: latest.Id);
+        }
+
+        private void RefreshAllSidebarPreviews()
+        {
+            for (int i = 0; i < _convs.Count; i++)
+            {
+                var c = _convs[i];
+                if (!_allMsgs.TryGetValue(c.Id, out var msgs) || msgs.Count == 0)
+                    continue;
+
+                var latest = msgs[^1];
+                string senderForPreview = latest.Out ? "" : latest.Sender;
+                RefreshConversationItem(c.Id, latest.Text, latest.Out, senderForPreview, latest.Time, messageId: latest.Id);
+            }
         }
 
         private void BuildMessages()
