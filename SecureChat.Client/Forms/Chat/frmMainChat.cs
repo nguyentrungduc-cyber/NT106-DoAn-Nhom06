@@ -5244,39 +5244,60 @@ namespace SecureChat.Client
 
         private async void OnRecallMessage(string messageId)
         {
-            var msgIndex = _currentMsgs.FindIndex(m => m.Id == messageId);
-            if (msgIndex < 0) return;
-
-            var dialog = ShowTelegramDialog("Thu hồi tin nhắn?", "Thu hồi cho tất cả mọi người", "Thu hồi", Color.FromArgb(0xE2, 0x4B, 0x4A));
-            if (dialog.Result != DialogResult.Yes) return;
-
-            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
-            var res = await http.PostAsync($"api/conversations/{_activeConvId}/messages/{messageId}/recall", null);
-            if (!res.IsSuccessStatusCode)
+            try
             {
-                var err = await res.Content.ReadAsStringAsync();
-                MessageBox.Show(this, $"Lỗi thu hồi: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
+                var msgIndex = _currentMsgs.FindIndex(m => m.Id == messageId);
+                if (msgIndex < 0) return;
+
+                var dialog = ShowTelegramDialog("Thu hồi tin nhắn?", "Thu hồi cho tất cả mọi người", "Thu hồi", Color.FromArgb(0xE2, 0x4B, 0x4A));
+                if (dialog.Result != DialogResult.Yes) return;
+
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var res = await http.PostAsync($"api/conversations/{_activeConvId}/messages/{messageId}/recall", null);
+                if (!res.IsSuccessStatusCode)
+                {
+                    var err = await res.Content.ReadAsStringAsync();
+                    MessageBox.Show(this, $"Lỗi thu hồi: {err}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Update local state
+                _currentMsgs[msgIndex] = (messageId, "recalled::", _currentMsgs[msgIndex].Out, _currentMsgs[msgIndex].Time, _currentMsgs[msgIndex].Sender);
+
+                // Unpin if pinned
+                if (_pinnedMessageIds.Remove(messageId))
+                    UpdatePinnedBar();
+
+                // Clean up associated metadata
+                _forwardMetadata.TryRemove(messageId, out _);
+                _forwardOriginalSenderId.TryRemove(messageId, out _);
+                _messageDates.Remove(messageId);
+
+                // Broadcast recall to other members via SignalR
+                if (_signalRClient is not null && _signalRClient.IsConnected)
+                {
+                    try
+                    {
+                        await _signalRClient.RecallMessageAsync(_activeConvId, messageId);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[Recall] SignalR broadcast failed: {ex.Message}");
+                    }
+                }
+                else if (_signalRClient is not null && !_signalRClient.IsConnected)
+                {
+                    System.Diagnostics.Debug.WriteLine("[Recall] SignalR not connected — broadcast skipped. Other clients will see recall after refresh.");
+                }
+
+                BuildMessages();
+                RefreshSidebarPreview();
             }
-
-            // Update local state
-            _currentMsgs[msgIndex] = (messageId, "recalled::", _currentMsgs[msgIndex].Out, _currentMsgs[msgIndex].Time, _currentMsgs[msgIndex].Sender);
-
-            // Broadcast recall to other members via SignalR
-            if (_signalRClient is not null)
+            catch (Exception ex)
             {
-                try
-                {
-                    await _signalRClient.RecallMessageAsync(_activeConvId, messageId);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"SignalR recall broadcast failed: {ex.Message}");
-                }
+                System.Diagnostics.Debug.WriteLine($"[Recall] OnRecallMessage failed: {ex.Message}");
+                MessageBox.Show(this, $"Lỗi thu hồi: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-
-            BuildMessages();
-            RefreshSidebarPreview();
         }
 
         private async Task LoadPinsAsync(string convId)
@@ -5401,6 +5422,7 @@ namespace SecureChat.Client
         private string GetPinnedDisplayText(string? text)
         {
             if (text is null) return "(media)";
+            if (text.StartsWith("recalled::")) return "Recalled message";
             string cleaned = ExtractActualText(text);
             if (cleaned.StartsWith("voice::")) return "📞 Voice message";
             if (cleaned.StartsWith("file::")) return "📎 File";
@@ -5851,6 +5873,15 @@ namespace SecureChat.Client
                                 list[idx] = (old.Id, "recalled::", old.Out, old.Time, old.Sender);
                             }
                         }
+
+                        // Unpin if pinned
+                        if (_pinnedMessageIds.Remove(message.MessageID))
+                            UpdatePinnedBar();
+
+                        // Clean up associated metadata
+                        _forwardMetadata.TryRemove(message.MessageID, out _);
+                        _forwardOriginalSenderId.TryRemove(message.MessageID, out _);
+                        _messageDates.Remove(message.MessageID);
 
                         // Update sidebar preview
                         int convIdx = _convs.FindIndex(c => c.Id == message.ConversationID);
