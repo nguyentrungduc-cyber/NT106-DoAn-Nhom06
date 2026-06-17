@@ -389,6 +389,11 @@ namespace SecureChat.Client.Services
             if (!string.IsNullOrEmpty(content) && !string.IsNullOrEmpty(message.ContentIV))
             {
                 var key = await EnsureConversationKeyAsync(message.ConversationID).ConfigureAwait(false);
+
+                // ekey tạo AES key mới → các tin nhắn cũ đã mã hóa bằng key cũ sẽ không bao giờ giải mã được nữa.
+                System.Diagnostics.Debug.WriteLine($"[Decrypt] key = {(key == null ? "NULL" : "OK")}, msgId = {message.MessageID}");
+
+
                 if (key is not null)
                 {
                     try

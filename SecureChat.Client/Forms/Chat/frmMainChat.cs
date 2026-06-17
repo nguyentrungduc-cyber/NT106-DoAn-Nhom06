@@ -45,7 +45,7 @@ namespace SecureChat.Client
 
         //private Panel _pnlMessages; // vùng hiển thị bong bóng tin nhắn
         private ChatPanel _pnlMessages;
-        private readonly VoicePlaybackService _voicePlaybackService = new();
+        private readonly VoicePlaybackService _voicePlaybackService = new(); // shared singleton – passed into each ucAudioBubble
 
         private Panel _pnlInputBar; // thanh nhập tin nhắn bên dưới
         private TelegramTextBox _tbMessage; // TextBox gõ tin nhắn
@@ -4359,50 +4359,38 @@ namespace SecureChat.Client
                 string expectedSha256 = parts.Length > 3 ? parts[3] : string.Empty;
 
                 var panel = new Panel { BackColor = Color.Transparent };
-                var fileCtrl = new ucFileBubble
+
+                // ── ucAudioBubble: Play/Pause + seekbar + duration ──────────────
+                var audioBubble = new SecureChat.Client.Components.Chat.ucAudioBubble(_voicePlaybackService);
+
+                // Resolve AES key now (hoặc defer khi bấm Play — service tự handle)
+                if (SecureChat.Shared.Security.KeyManager.TryGetAesKey(messageId, out var aesKey, out var aesIv))
                 {
-                    FileName = string.IsNullOrWhiteSpace(fileName) ? "Voice message" : fileName,
-                    FileSize = $"{duration}s",
-                    IsOutgoing = isOut,
-                    Top = 4,
-                };
-
-
-                fileCtrl.FileClicked += async (s, e) =>
+                    double.TryParse(duration, out double durationSec);
+                    audioBubble.SetVoiceInfo(messageId, url, expectedSha256, aesKey ?? Array.Empty<byte>(), aesIv ?? Array.Empty<byte>(), durationSec, isOut);
+                }
+                else
                 {
-                    // Hybrid encryption: Use KeyManager for AES key lookup
-                    if (!SecureChat.Shared.Security.KeyManager.TryGetAesKey(messageId, out var key, out var iv))
-                    {
-                        BeginInvoke(new Action(() => MessageBox.Show(this, "Voice key not available for this message.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
-                        return;
-                    }
-                    try
-                    {
-                        await _voicePlaybackService.PlayAsync(url, expectedSha256, key, iv);
-                    }
-                    catch (Exception ex)
-                    {
-                        BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
-                    }
-                };
+                    // Key chưa có (tin nhắn cũ, chưa trao đổi key) — fallback hiển thị cơ bản
+                    double.TryParse(duration, out double durationSec);
+                    audioBubble.SetVoiceInfo(messageId, url, expectedSha256,
+                        Array.Empty<byte>(), Array.Empty<byte>(), durationSec, isOut);
+                }
 
-                fileCtrl.Anchor = isOut ? AnchorStyles.Right : AnchorStyles.Left;
-                fileCtrl.Width = Math.Min(360, Math.Max(220, (int)(_pnlMessages.ClientSize.Width * 0.45f)));
-                panel.Height = fileCtrl.Height + 8;
+                audioBubble.Top    = 4;
+                audioBubble.Anchor = isOut ? AnchorStyles.Right : AnchorStyles.Left;
+                audioBubble.Width  = Math.Min(360, Math.Max(260, (int)(_pnlMessages.ClientSize.Width * 0.45f)));
+                panel.Height       = audioBubble.Height + 8;
                 panel.Resize += (s, e) =>
                 {
                     int leftOffset = (!isOut && isGroup) ? 44 : 10;
                     if (isOut)
-                    {
-                        fileCtrl.Left = Math.Max(10, panel.ClientSize.Width - fileCtrl.Width - 10);
-                    }
+                        audioBubble.Left = Math.Max(10, panel.ClientSize.Width - audioBubble.Width - 10);
                     else
-                    {
-                        fileCtrl.Left = leftOffset;
-                    }
+                        audioBubble.Left = leftOffset;
                 };
 
-                panel.Controls.Add(fileCtrl);
+                panel.Controls.Add(audioBubble);
 
                 panel.PerformLayout();
                 return WrapForwardIfNeeded(panel, messageId, isOut);
