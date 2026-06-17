@@ -96,13 +96,16 @@ namespace SecureChat.Controllers
 			});
 
 			foreach (var entry in req.Members)
+			{
+				var role = entry.UserID == Me ? MemberRole.Owner : MemberRole.Member;
 				await conversations.AddMemberAsync(new ConversationMember {
 					MemberID       = NewID(),
 					ConversationID = conv.ConversationID,
 					UserID         = entry.UserID,
 					EncryptedKey   = entry.EncryptedKey,
-					Role           = MemberRole.Member
+					Role           = role
 				});
+			}
 
 			var loaded = await conversations.GetByIdWithMembersAsync(conv.ConversationID);
 			return CreatedAtAction(nameof(GetConversation), new { conversationID = conv.ConversationID }, ConversationResponse.From(loaded!));
@@ -235,11 +238,27 @@ namespace SecureChat.Controllers
 		}
 
 		[HttpPost("{conversationID}/leave")]
-		public async Task<IActionResult> LeaveConversation(string conversationID)
+		public async Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
 		{
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return NotFound();
+
+			// Nếu là Owner, cần chuyển quyền trước khi rời
+			if (member.Role == MemberRole.Owner)
+			{
+				if (req is null || string.IsNullOrWhiteSpace(req.NewOwnerMemberId))
+				{
+					return BadRequest(new { error = "Owner must appoint a new admin before leaving." });
+				}
+
+				var newOwner = await conversations.GetActiveMembersAsync(conversationID);
+				var target = newOwner.FirstOrDefault(m => m.MemberID == req.NewOwnerMemberId && m.MemberID != member.MemberID);
+				if (target is null)
+					return BadRequest(new { error = "Selected member not found or is the current owner." });
+
+				await conversations.UpdateRoleAsync(target.MemberID, MemberRole.Owner);
+			}
 
 			await conversations.LeaveMemberAsync(member.MemberID);
 			return NoContent();

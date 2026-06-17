@@ -39,6 +39,7 @@ namespace SecureChat.Client.Forms.Chat
         public event Action? AddMemberRequested;
         private string _conversationId = string.Empty;
         private string _currentUserDisplayName = string.Empty;
+        private List<string> _memberIds = new();
 
         public frmGroupInfo()
         {
@@ -282,7 +283,7 @@ namespace SecureChat.Client.Forms.Chat
 
         private void OpenEditGroup()
         {
-            using var f = new frmEditGroup(_lblName.Text, string.Empty);
+            using var f = new frmEditGroup(_conversationId, _lblName.Text);
             if (f.ShowDialog(this) != DialogResult.OK) return;
 
             _lblName.Text = f.GroupName;
@@ -295,15 +296,38 @@ namespace SecureChat.Client.Forms.Chat
                 .Select(item => item.DisplayName)
                 .ToList();
 
-            using var f = new frmLeaveGroup(_lblName.Text, _currentUserDisplayName, memberNames);
+            var memberIds = new List<string>(_memberIds);
+
+            // Exclude current user from admin appointment list
+            var currentIdx = memberNames.FindIndex(n => n.Equals(_currentUserDisplayName, StringComparison.OrdinalIgnoreCase));
+            string defaultNextOwner;
+            if (currentIdx >= 0)
+            {
+                memberNames.RemoveAt(currentIdx);
+                if (currentIdx < memberIds.Count)
+                    memberIds.RemoveAt(currentIdx);
+                defaultNextOwner = memberNames.Count > 0 ? memberNames[0] : "Group member";
+            }
+            else
+            {
+                defaultNextOwner = _currentUserDisplayName;
+            }
+
+            using var f = new frmLeaveGroup(_lblName.Text, defaultNextOwner, memberNames, memberIds);
             if (f.ShowDialog(this) != DialogResult.OK || !f.LeaveConfirmed) return;
 
             try
             {
                 var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var payload = new
+                {
+                    newOwnerMemberId = f.AppointedAdminMemberId
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
                 var res = await http.PostAsync(
                     $"api/conversations/{_conversationId}/leave",
-                    null);
+                    content);
 
                 if (res.IsSuccessStatusCode)
                     Close();
@@ -334,6 +358,7 @@ namespace SecureChat.Client.Forms.Chat
             _pnlList.SuspendLayout();
             DisposeOldMemberItems();
             _pnlList.Controls.Clear();
+            _memberIds = members.Select(m => m.MemberId).ToList();
             int y = 0;
             foreach (var m in members)
             {
@@ -391,5 +416,5 @@ namespace SecureChat.Client.Forms.Chat
         }
     }
 
-    public record MemberModel(string Name, string Status, string Role, Image? Avatar, Color AvatarColor);
+    public record MemberModel(string Name, string Status, string Role, Image? Avatar, Color AvatarColor, string MemberId = "");
 }

@@ -28,6 +28,10 @@ namespace SecureChat.DTOs
 		MemberRole Role = MemberRole.Member
 	);
 
+	public record LeaveConversationRequest(
+		string? NewOwnerMemberId = null
+	);
+
 	public record UpdateMemberRequest(
 		MemberRole? Role,
 		[MaxLength(64)] string? Nickname,
