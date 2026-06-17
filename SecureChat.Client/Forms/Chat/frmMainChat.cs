@@ -1061,9 +1061,18 @@ namespace SecureChat.Client
             _pnlPinnedBar.Controls.Add(_btnUnpin);
             void LayoutPinBar()
             {
-                _lblPinnedText.Width = Math.Max(100, _pnlPinnedBar.Width - 72);
-                downArrow.Location = new Point(_pnlPinnedBar.Width - 42, 7);
-                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - 28, 4);
+                // Layout từ phải sang trái: [✕ 24px] [▾ 24px] [text phần còn lại]
+                const int btnW   = 24;
+                const int arrowW = 24;
+                const int pad    = 6;
+
+                _btnUnpin.Size     = new Size(btnW, 20);
+                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - pad - btnW, 4);
+
+                downArrow.Location = new Point(_btnUnpin.Left - arrowW - 2,
+                                               (_pnlPinnedBar.Height - downArrow.Height) / 2);
+
+                _lblPinnedText.Width = Math.Max(80, downArrow.Left - 12);
             }
             _pnlPinnedBar.Resize += (_, __) => LayoutPinBar();
             _pnlPinnedBar.VisibleChanged += (_, __) => { if (_pnlPinnedBar.Visible) LayoutPinBar(); };
