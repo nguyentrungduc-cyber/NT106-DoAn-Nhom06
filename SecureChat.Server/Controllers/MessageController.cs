@@ -167,6 +167,29 @@ namespace SecureChat.Controllers
 			return Ok(MessageResponse.From(loaded!));
 		}
 
+		[HttpPost("{messageID}/recall")]
+		public async Task<IActionResult> RecallMessage(string conversationID, string messageID)
+		{
+			var member = await GetActiveMember(conversationID);
+			if (member is null)
+				return Forbid();
+
+			var msg = await messages.GetByIdAsync(messageID);
+			if (msg is null || msg.ConversationID != conversationID)
+				return NotFound();
+			if (msg.SenderID != member.MemberID)
+				return Forbid();
+			if (msg.DeletedAt is not null)
+				return BadRequest(new { error = "Tin nhắn đã bị xóa." });
+			if (msg.RecalledAt is not null)
+				return BadRequest(new { error = "Tin nhắn đã được thu hồi." });
+
+			await messages.RecallAsync(messageID);
+			var loaded = await messages.GetByIdAsync(messageID);
+
+			return Ok(MessageResponse.From(loaded!));
+		}
+
 		[HttpDelete("{messageID}")]
 		public async Task<IActionResult> DeleteMessage(string conversationID, string messageID)
 		{

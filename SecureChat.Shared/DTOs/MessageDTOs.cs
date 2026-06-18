@@ -61,6 +61,7 @@ namespace SecureChat.DTOs
 		DateTime? EditedAt,
 		DateTime? DeletedAt,
 		DateTime? ExpiresAt,
+		DateTime? RecalledAt,
 		List<AttachmentResponse>? Attachments,
 		List<string>? MentionedMemberIDs
 	)
@@ -73,7 +74,7 @@ namespace SecureChat.DTOs
 			m.OriginalSenderID, m.OriginalSender?.DisplayName,
 			m.ReplyToID,
 			m.Type, m.Content ?? "", m.ContentIV ?? "",
-			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt,
+			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt, m.RecalledAt,
 			m.Attachments.Select(AttachmentResponse.From).ToList(),
 			m.Mentions?.Select(mention => mention.MemberID).ToList()
 		);
