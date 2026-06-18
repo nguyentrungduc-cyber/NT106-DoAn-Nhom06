@@ -72,6 +72,7 @@ namespace SecureChat.Client.Forms.Call
         private string _callId = string.Empty;
         private string _conversationId = string.Empty;
         private SignalRClient? _signalRClient;
+        private bool _cleanupDone;
 
         // drag state for local preview
         private bool isDragging;
@@ -116,6 +117,9 @@ namespace SecureChat.Client.Forms.Call
             _videoHandler = new VideoHandler();
             _videoHandler.FrameCaptured += OnVideoHandlerFrame;
             _videoHandler.CameraError += OnVideoHandlerError;
+
+            int cameraIdx = LoadCameraIndexFromSettings();
+            _videoHandler.Configure(cameraIndex: cameraIdx);
 
             Shown += (_, __) => _ = _videoHandler.StartAsync();
             FormClosed += (_, __) => Cleanup();
@@ -876,6 +880,15 @@ namespace SecureChat.Client.Forms.Call
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Replay buffered call signals received before this form was fully initialized.
+        /// </summary>
+        public void ReplayPendingSignals(System.Collections.Concurrent.ConcurrentQueue<string> signals)
+        {
+            while (signals != null && signals.TryDequeue(out var signal))
+                _ = OnRemoteCallSignal(_callId, signal);
+        }
+
         private async Task JoinCallGroupAsync()
         {
             try
@@ -912,8 +925,74 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         //  CLEANUP
         // ═════════════════════════════════════════════════════════════════════════
+        private static int LoadCameraIndexFromSettings()
+        {
+            try
+            {
+                var path = System.IO.Path.Combine(AppContext.BaseDirectory, "speakerscamera.config");
+                if (!System.IO.File.Exists(path)) return 0;
+
+                var text = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8);
+                var parts = text.Contains('\u001F') ? text.Split('\u001F') : text.Split('|');
+                var cameraName = parts.Length >= 7 ? parts[5] : null;
+                if (string.IsNullOrWhiteSpace(cameraName) || cameraName == "Default") return 0;
+
+                var nameToIndex = new Dictionary<string, int>();
+                int friendlyCursor = 0;
+                var friendlyNames = GetFriendlyCameraNames();
+
+                for (int i = 0; i < 8; i++)
+                {
+                    try
+                    {
+                        using var probe = new OpenCvSharp.VideoCapture(i);
+                        if (!probe.IsOpened()) continue;
+
+                        string label = friendlyCursor < friendlyNames.Count
+                            ? friendlyNames[friendlyCursor++]
+                            : $"Camera {i + 1}";
+
+                        if (nameToIndex.ContainsKey(label))
+                            label = $"{label} ({i + 1})";
+
+                        nameToIndex[label] = i;
+                        probe.Release();
+                    }
+                    catch { }
+                }
+
+                if (nameToIndex.TryGetValue(cameraName, out var idx))
+                    return idx;
+                return 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static List<string> GetFriendlyCameraNames()
+        {
+            var names = new List<string>();
+            try
+            {
+                using var searcher = new System.Management.ManagementObjectSearcher(
+                    "SELECT Name FROM Win32_PnPEntity WHERE PNPClass = 'Image'");
+                foreach (System.Management.ManagementObject obj in searcher.Get())
+                {
+                    var name = obj["Name"]?.ToString()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name))
+                        names.Add(name);
+                }
+            }
+            catch { }
+            return names;
+        }
+
         private void Cleanup()
         {
+            if (_cleanupDone) return;
+            _cleanupDone = true;
             _cts.Cancel();
             frameTimer.Stop();
             clockTimer.Stop();

@@ -181,12 +181,18 @@ namespace SecureChat.Server.Hubs
         /// <summary>
         /// Leave a call group.
         /// </summary>
-        public Task LeaveCall(string callId)
+        public async Task LeaveCall(string callId)
         {
             if (string.IsNullOrWhiteSpace(callId))
                 throw new HubException("CallId is required.");
 
-            return Groups.RemoveFromGroupAsync(Context.ConnectionId, callId);
+            var call = await calls.GetByIdAsync(callId);
+            if (call is null)
+                throw new HubException("Call not found.");
+            if (!IsCallParticipant(call))
+                throw new HubException("You are not a participant of this call.");
+
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, callId);
         }
 
         /// <summary>
@@ -205,7 +211,7 @@ namespace SecureChat.Server.Hubs
             if (!IsCallParticipant(call))
                 throw new HubException("You are not a participant of this call.");
 
-            await Clients.Group(callId).SendAsync("CallSignalReceived", callId, signal);
+            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, signal);
         }
 
         /// <summary>
@@ -216,13 +222,19 @@ namespace SecureChat.Server.Hubs
             if (string.IsNullOrWhiteSpace(callId))
                 throw new HubException("CallId is required.");
 
+            var call = await calls.GetByIdAsync(callId);
+            if (call is null)
+                throw new HubException("Call not found.");
+            if (!IsCallParticipant(call))
+                throw new HubException("You are not a participant of this call.");
+
             await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("VideoFrameReceived", callId, frameData);
         }
 
         /// <summary>
         /// Notify all members in a conversation that an incoming call is happening.
         /// </summary>
-        public async Task NotifyCallIncoming(string conversationId, string callId, string callerName, int callType)
+        public async Task NotifyCallIncoming(string conversationId, string callId, string callerName, CallType callType)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new HubException("ConversationId is required.");

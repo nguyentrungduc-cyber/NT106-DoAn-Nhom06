@@ -57,7 +57,7 @@ namespace SecureChat.Controllers
 
 			var existing = await calls.GetActiveCallAsync(conversationID);
 			if (existing is not null)
-				await calls.EndCallAsync(existing.CallID);
+				return Conflict(new { error = "Đã có cuộc gọi đang diễn ra trong cuộc hội thoại này." });
 
 			var call = await calls.CreateCallAsync(new CallLog {
 				CallID = NewID(),
@@ -162,7 +162,7 @@ namespace SecureChat.Controllers
 		}
 
 		[HttpPut("{callID}/participants/{participantID}")]
-		public async Task<IActionResult> UpdateParticipant(string conversationID, string callID, string participantID, [FromBody] UpdateCallStatusRequest req)
+		public async Task<IActionResult> UpdateParticipant(string conversationID, string callID, string participantID, [FromBody] UpdateParticipantStatusRequest req)
 		{
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
@@ -173,7 +173,7 @@ namespace SecureChat.Controllers
 			if (call.StartedBy != member.MemberID && member.MemberID != participantID)
 				return Forbid();
 
-			var participant = await calls.UpdateParticipantStatusAsync(participantID, callID, (CallParticipantStatus)(int)req.Status);
+			var participant = await calls.UpdateParticipantStatusAsync(participantID, callID, req.Status);
 
 			return Ok(new ParticipantResponse(participant.ParticipantID, participant.CallID,
 						null, participant.Status, participant.JoinedAt, participant.LeftAt));

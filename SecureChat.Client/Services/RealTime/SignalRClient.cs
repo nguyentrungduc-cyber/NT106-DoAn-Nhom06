@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR.Client;
 using SecureChat.DTOs;
+using SecureChat.Models;
 
 namespace SecureChat.Client.Services.RealTime
 {
@@ -263,7 +264,7 @@ namespace SecureChat.Client.Services.RealTime
             return _connection.InvokeAsync("UnpinMessage", conversationId, messageId);
         }
 
-        public Task NotifyCallIncomingAsync(string conversationId, string callId, string callerName, int callType)
+        public Task NotifyCallIncomingAsync(string conversationId, string callId, string callerName, CallType callType)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new ArgumentException("ConversationId is required.", nameof(conversationId));

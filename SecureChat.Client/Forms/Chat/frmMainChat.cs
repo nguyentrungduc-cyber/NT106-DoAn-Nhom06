@@ -924,7 +924,7 @@ namespace SecureChat.Client
                         return;
                     }
 
-                    await _signalRClient.NotifyCallIncomingAsync(_activeConvId, callData.CallID, _currentDisplayName, 1);
+                    await _signalRClient.NotifyCallIncomingAsync(_activeConvId, callData.CallID, _currentDisplayName, SecureChat.Models.CallType.Video);
 
                     var callForm = new Forms.Call.frmVideoCall(_lblChatName.Text, callData.CallID, _activeConvId, _signalRClient);
                     callForm.FormClosed += (_, __) => this.Activate();
@@ -6008,8 +6008,15 @@ namespace SecureChat.Client
             }
         }
 
+        private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _pendingCallSignals = new();
+
         private Task HandleSignalRCallSignalAsync(string callId, string signal)
         {
+            if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(signal))
+                return Task.CompletedTask;
+
+            var queue = _pendingCallSignals.GetOrAdd(callId, _ => new ConcurrentQueue<string>());
+            queue.Enqueue(signal);
             return Task.CompletedTask;
         }
 
@@ -6063,7 +6070,13 @@ namespace SecureChat.Client
             BeginInvoke(new Action(() =>
             {
                 var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!);
-                callForm.FormClosed += (_, __) => this.Activate();
+                callForm.FormClosed += (s, e) =>
+                {
+                    _pendingCallSignals.TryRemove(callId, out _);
+                    this.Activate();
+                };
+                if (_pendingCallSignals.TryRemove(callId, out var pending))
+                    callForm.ReplayPendingSignals(pending);
                 callForm.Show();
             }));
         }
