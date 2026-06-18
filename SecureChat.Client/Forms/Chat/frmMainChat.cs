@@ -5790,7 +5790,7 @@ namespace SecureChat.Client
                     if (_messageDates.Remove(tempMessageId))
                         _messageDates[messageResponse.MessageID] = messageResponse.SentAt.ToLocalTime();
                     // Chuyển delivery status từ tempId sang realId
-                    _msgDelivery.Remove(tempMessageId);
+                    _msgDelivery.TryRemove(tempMessageId, out _);
                     _msgDelivery[messageResponse.MessageID] = SecureChat.DTOs.DeliveryStatus.Sent;
                     string timeStr = messageResponse.SentAt.ToLocalTime().ToString("h:mm tt");
                     _currentMsgs[index] = (
