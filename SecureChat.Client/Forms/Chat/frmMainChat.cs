@@ -134,7 +134,7 @@ namespace SecureChat.Client
 
         private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new();
         // Track delivery status cho từng messageId
-        private readonly Dictionary<string, SecureChat.DTOs.DeliveryStatus> _msgDelivery = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SecureChat.DTOs.DeliveryStatus> _msgDelivery = new();
         private readonly Dictionary<string, DateTime> _messageDates = new();
 
 
@@ -5102,6 +5102,7 @@ namespace SecureChat.Client
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
             _signalRClient.UserTyping += HandleUserTypingAsync;
             _signalRClient.UserStoppedTyping += HandleUserStoppedTypingAsync;
+            _signalRClient.MessageStatusUpdated += HandleMessageStatusUpdatedAsync;
             _signalRClient.Reconnected += async _ =>
             {
                 await ReRegisterPublicKeyAsync();
@@ -5372,6 +5373,46 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() => RestoreChatStatus()));
             }
+
+            return Task.CompletedTask;
+        }
+
+        private Task HandleMessageStatusUpdatedAsync(string messageId, string status)
+        {
+            if (string.IsNullOrWhiteSpace(messageId) || string.IsNullOrWhiteSpace(status))
+                return Task.CompletedTask;
+
+            // Cập nhật _msgDelivery dictionary
+            var newDelivery = status switch
+            {
+                "Read"      => SecureChat.DTOs.DeliveryStatus.Read,
+                "Delivered" => SecureChat.DTOs.DeliveryStatus.Delivered,
+                _           => SecureChat.DTOs.DeliveryStatus.Sent,
+            };
+
+            // Chỉ upgrade (Sent→Delivered→Read), không downgrade
+            var upgraded = false;
+            _msgDelivery.AddOrUpdate(messageId,
+                addValueFactory:    _ => { upgraded = true; return newDelivery; },
+                updateValueFactory: (_, cur) =>
+                {
+                    if (cur < newDelivery) { upgraded = true; return newDelivery; }
+                    return cur;
+                });
+            if (!upgraded) return Task.CompletedTask;
+
+            // Repaint bubble tương ứng trên UI thread
+            BeginInvoke(new Action(() =>
+            {
+                foreach (Control c in _pnlMessages.Controls)
+                {
+                    if (c.Tag is string tag && tag == messageId)
+                    {
+                        c.Invalidate(true); // trigger OnPaint lại — tick sẽ đọc _msgDelivery mới
+                        break;
+                    }
+                }
+            }));
 
             return Task.CompletedTask;
         }
