@@ -8,7 +8,7 @@ using SecureChat.Repositories;
 namespace SecureChat.Server.Hubs
 {
     [Authorize]
-    public sealed class ChatHub(ConversationRepository conversations, CallRepository calls, ILogger<ChatHub> logger) : Hub
+    public sealed class ChatHub(ConversationRepository conversations, MessageRepository messages, CallRepository calls, ILogger<ChatHub> logger) : Hub
     {
         private string Me => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
@@ -70,10 +70,33 @@ namespace SecureChat.Server.Hubs
             await Clients.Group(conversationId).SendAsync("MessageReceived", message);
         }
 
-        /// <summary>
-        /// Notify group that the current user is typing.
-        /// </summary>
-        public async Task UserTyping(string conversationId)
+		/// <summary>
+		/// Broadcast a recalled message to a conversation group.
+		/// </summary>
+		public async Task RecallMessage(string conversationId, string messageId)
+		{
+			if (string.IsNullOrWhiteSpace(conversationId))
+				throw new HubException("ConversationId is required.");
+			if (string.IsNullOrWhiteSpace(messageId))
+				throw new HubException("MessageId is required.");
+
+			var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+			if (member is null || member.LeftAt is not null)
+				throw new HubException("You are not a member of this conversation.");
+
+			var msg = await messages.GetByIdAsync(messageId);
+			if (msg is null || msg.ConversationID != conversationId)
+				throw new HubException("Message not found.");
+			if (msg.RecalledAt is null)
+				throw new HubException("Message has not been recalled.");
+
+			await Clients.Group(conversationId).SendAsync("MessageRecalled", MessageResponse.From(msg));
+		}
+
+		/// <summary>
+		/// Notify group that the current user is typing.
+		/// </summary>
+		public async Task UserTyping(string conversationId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new HubException("ConversationId is required.");
