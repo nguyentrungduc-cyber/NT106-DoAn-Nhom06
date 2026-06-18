@@ -377,6 +377,24 @@ namespace SecureChat.Client.Services
         {
             ArgumentNullException.ThrowIfNull(message);
 
+            bool isOut = !string.IsNullOrWhiteSpace(myMemberId)
+                ? string.Equals(message.SenderID, myMemberId, StringComparison.Ordinal)
+                : !string.IsNullOrWhiteSpace(message.SenderUsername)
+                    && string.Equals(message.SenderUsername, CurrentUsername,
+                        StringComparison.Ordinal);
+
+            // If the message was recalled, return immediately — no decryption needed
+            if (message.RecalledAt is not null)
+            {
+                return new DecryptedMessage(
+                    message.MessageID,
+                    "recalled::",
+                    isOut,
+                    message.SentAt.ToLocalTime().ToString("h:mm tt"),
+                    message.SenderUsername ?? string.Empty,
+                    message);
+            }
+
             // 1. Hybrid AES key cho từng attachment (file / voice).
             if (message.Attachments is not null)
             {
@@ -437,12 +455,6 @@ namespace SecureChat.Client.Services
                     }
                 }
             }
-
-            bool isOut = !string.IsNullOrWhiteSpace(myMemberId)
-                ? string.Equals(message.SenderID, myMemberId, StringComparison.Ordinal)
-                : !string.IsNullOrWhiteSpace(message.SenderUsername)
-                    && string.Equals(message.SenderUsername, CurrentUsername, // ← đổi CurrentUserId → CurrentUsername
-                        StringComparison.Ordinal);
 
             return new DecryptedMessage(
                 message.MessageID,

@@ -351,10 +351,13 @@ namespace SecureChat.Client
                     }
 
                     bool isOut = m.SenderID == _currentUserId;
-                    string text = m.Content ?? "";
 
-                    // Thử giải mã AES nếu ContentIV tồn tại và key có trong cache
-                    if (!string.IsNullOrEmpty(m.ContentIV) && m.ContentIV != "TBD")
+                    // If the message was recalled, show recall placeholder
+                    bool isRecalled = m.RecalledAt is not null;
+                    string text = isRecalled ? "recalled::" : (m.Content ?? "");
+
+                    // Skip decryption for recalled messages
+                    if (!isRecalled && !string.IsNullOrEmpty(m.ContentIV) && m.ContentIV != "TBD")
                     {
                         try
                         {
