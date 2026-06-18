@@ -5369,8 +5369,21 @@ namespace SecureChat.Client
             _pinnedMessageIds.Add(messageId);
             UpdatePinnedBar();
             BuildMessages();
-        }
 
+            // Broadcast pin to other members via SignalR
+            if (_signalRClient is not null && _signalRClient.IsConnected)
+            {
+                try
+                {
+                    await _signalRClient.PinMessageAsync(_activeConvId, messageId, _currentUserId);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Pin] SignalR broadcast failed: {ex.Message}");
+                }
+            }
+        }
+ 
         private async void OnUnpinMessage(string? messageId = null)
         {
             if (string.IsNullOrWhiteSpace(messageId))
@@ -5394,6 +5407,19 @@ namespace SecureChat.Client
             _pinnedMessageIds.Remove(messageId);
             UpdatePinnedBar();
             BuildMessages();
+
+            // Broadcast unpin to other members via SignalR
+            if (_signalRClient is not null && _signalRClient.IsConnected)
+            {
+                try
+                {
+                    await _signalRClient.UnpinMessageAsync(_activeConvId, messageId);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Unpin] SignalR broadcast failed: {ex.Message}");
+                }
+            }
         }
 
         private void UpdatePinnedBar()
@@ -5766,6 +5792,30 @@ namespace SecureChat.Client
                     // Refresh right sidebar if open and showing this conversation
                     if (_isSidebarOpen && _activeConvId == convId)
                         _ = LoadRightSidebarContentAsync();
+                }));
+            };
+            _signalRClient.MessagePinned += async (convId, messageId, pinnedBy) =>
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (_pinnedMessageIds.Add(messageId))
+                    {
+                        UpdatePinnedBar();
+                        if (_activeConvId == convId)
+                            BuildMessages();
+                    }
+                }));
+            };
+            _signalRClient.MessageUnpinned += async (convId, messageId) =>
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (_pinnedMessageIds.Remove(messageId))
+                    {
+                        UpdatePinnedBar();
+                        if (_activeConvId == convId)
+                            BuildMessages();
+                    }
                 }));
             };
             _signalRClient.Reconnected += async _ =>

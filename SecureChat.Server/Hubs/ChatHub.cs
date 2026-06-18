@@ -93,10 +93,44 @@ namespace SecureChat.Server.Hubs
 			await Clients.Group(conversationId).SendAsync("MessageRecalled", MessageResponse.From(msg));
 		}
 
-		/// <summary>
-		/// Notify group that the current user is typing.
-		/// </summary>
-		public async Task UserTyping(string conversationId)
+        /// <summary>
+        /// Broadcast a pin event to a conversation group.
+        /// </summary>
+        public async Task PinMessage(string conversationId, string messageId, string pinnedBy)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new HubException("ConversationId is required.");
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new HubException("MessageId is required.");
+
+            var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+            if (member is null || member.LeftAt is not null)
+                throw new HubException("You are not a member of this conversation.");
+
+            await Clients.Group(conversationId).SendAsync("MessagePinned", conversationId, messageId, pinnedBy);
+        }
+
+        /// <summary>
+        /// Broadcast an unpin event to a conversation group.
+        /// </summary>
+        public async Task UnpinMessage(string conversationId, string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new HubException("ConversationId is required.");
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new HubException("MessageId is required.");
+
+            var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+            if (member is null || member.LeftAt is not null)
+                throw new HubException("You are not a member of this conversation.");
+
+            await Clients.Group(conversationId).SendAsync("MessageUnpinned", conversationId, messageId);
+        }
+
+        /// <summary>
+        /// Notify group that the current user is typing.
+        /// </summary>
+        public async Task UserTyping(string conversationId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new HubException("ConversationId is required.");
