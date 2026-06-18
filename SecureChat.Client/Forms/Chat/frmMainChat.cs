@@ -388,6 +388,10 @@ namespace SecureChat.Client
                         _forwardMetadata[m.MessageID] = m.OriginalSenderName;
                         _forwardOriginalSenderId[m.MessageID] = m.OriginalSenderID!;
                     }
+                    if (m.ExpiresAt.HasValue)
+                    {
+                        _expirationService.TrackMessage(m.MessageID, m.ExpiresAt.Value);
+                    }
                     _messageDates[m.MessageID] = m.SentAt.ToLocalTime();
                     _allMsgs[convId].Add((m.MessageID, text, isOut, time, sender));
                 }
@@ -5803,6 +5807,13 @@ namespace SecureChat.Client
             {
                 if (!TryTrackMessageId(message.MessageID))
                     return;
+
+                // Cache AES key từ attachment nếu có (giống LoadMessagesAsync)
+                if (message.Attachments is not null)
+                {
+                    foreach (var att in message.Attachments)
+                        HandleHybridEncryptedAttachment(message.MessageID, att);
+                }
 
                 // Resolve memberId của user hiện tại trong conv để xác định "isOut".
                 // Nếu chưa biết (do chưa từng mở conv này) thì fetch /members/me.
