@@ -16,6 +16,8 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, byte[], Task>? VideoFrameReceived;
         public event Func<string, string, Task>? UserTyping;
         public event Func<string, string, Task>? UserStoppedTyping;
+        public event Func<string, string, Task>? MessageStatusUpdated; // (messageId, status: "Delivered"|"Read")
+        public event Func<string, string, Task>? MessageStatusUpdated; // (messageId, status: "Delivered"|"Read")
         public event Func<Exception?, Task>? Closed;
         public event Func<Exception?, Task>? Reconnecting;
         public event Func<string?, Task>? Reconnected;
@@ -87,6 +89,18 @@ namespace SecureChat.Client.Services.RealTime
             {
                 if (UserStoppedTyping is not null)
                     await UserStoppedTyping.Invoke(conversationId, username);
+            });
+
+            _connection.On<string, string>("MessageStatusUpdated", async (messageId, status) =>
+            {
+                if (MessageStatusUpdated is not null)
+                    await MessageStatusUpdated.Invoke(messageId, status);
+            });
+
+            _connection.On<string, string>("MessageStatusUpdated", async (messageId, status) =>
+            {
+                if (MessageStatusUpdated is not null)
+                    await MessageStatusUpdated.Invoke(messageId, status);
             });
         }
 
