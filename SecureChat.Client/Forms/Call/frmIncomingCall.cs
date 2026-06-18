@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using SecureChat.Models;
 
 namespace SecureChat.Client.Forms.Call
 {
@@ -17,7 +18,7 @@ namespace SecureChat.Client.Forms.Call
         private static readonly Color TgBlue = Color.FromArgb(0x2C, 0xA5, 0xE0);
         private static readonly Color TgBg = Color.White;
 
-        public frmIncomingCall(string callerName, int callType)
+        public frmIncomingCall(string callerName, CallType callType)
         {
             Text = "Incoming Call";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -64,7 +65,7 @@ namespace SecureChat.Client.Forms.Call
             _lblCaller.Location = new Point((ClientSize.Width - _lblCaller.Width) / 2, 112);
             Controls.Add(_lblCaller);
 
-            string callTypeText = callType == 1 ? "Video call" : "Voice call";
+            string callTypeText = callType == CallType.Video ? "Video call" : "Voice call";
             _lblInfo = new Label
             {
                 Text = $"{callTypeText} incoming...",

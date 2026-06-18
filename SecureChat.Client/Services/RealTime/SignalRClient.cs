@@ -14,7 +14,7 @@ namespace SecureChat.Client.Services.RealTime
 		public event Func<MessageResponse, Task>? MessageReceived;
 		public event Func<MessageResponse, Task>? MessageRecalled;
 		public event Func<string, string, Task>? CallSignalReceived;
-        public event Func<string, string, int, string, Task>? CallIncoming;
+		public event Func<string, string, CallType, string, Task>? CallIncoming;
         public event Func<string, string, byte[], Task>? VideoFrameReceived;
         public event Func<string, string, byte[], Task>? AudioDataReceived;
         public event Func<string, string, Task>? UserTyping;
@@ -82,7 +82,7 @@ namespace SecureChat.Client.Services.RealTime
                     await CallSignalReceived.Invoke(callId, signal);
             });
 
-            _connection.On<string, string, int, string>("CallIncoming", async (callId, callerName, callType, conversationId) =>
+            _connection.On<string, string, CallType, string>("CallIncoming", async (callId, callerName, callType, conversationId) =>
             {
                 if (CallIncoming is not null)
                     await CallIncoming.Invoke(callId, callerName, callType, conversationId);

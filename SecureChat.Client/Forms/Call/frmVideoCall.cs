@@ -1273,6 +1273,7 @@ namespace SecureChat.Client.Forms.Call
             frameTimer.Dispose();
             clockTimer.Dispose();
             overlayTimer.Dispose();
+            previewSnapTimer.Stop();
             previewSnapTimer.Dispose();
             _cts.Dispose();
         }

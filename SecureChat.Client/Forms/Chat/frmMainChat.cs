@@ -6020,7 +6020,7 @@ namespace SecureChat.Client
             return Task.CompletedTask;
         }
 
-        private async Task HandleCallIncomingAsync(string callId, string callerName, int callType, string conversationId)
+        private async Task HandleCallIncomingAsync(string callId, string callerName, CallType callType, string conversationId)
         {
             if (IsDisposed) return;
 
