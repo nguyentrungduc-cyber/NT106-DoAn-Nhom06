@@ -59,6 +59,10 @@ namespace SecureChat.Controllers
 			if (existing is not null)
 				return Conflict(new { error = "Đã có cuộc gọi đang diễn ra trong cuộc hội thoại này." });
 
+			var existingUserCall = await calls.GetActiveCallByMemberAsync(member.MemberID);
+			if (existingUserCall is not null)
+				return Conflict(new { error = "Bạn đang có cuộc gọi trong cuộc hội thoại khác." });
+
 			var call = await calls.CreateCallAsync(new CallLog {
 				CallID = NewID(),
 				ConversationID = conversationID,
@@ -117,6 +121,10 @@ namespace SecureChat.Controllers
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
+
+			var existingUserCall = await calls.GetActiveCallByMemberAsync(member.MemberID);
+			if (existingUserCall is not null && existingUserCall.CallID != callID)
+				return Conflict(new { error = "Bạn đang có cuộc gọi trong cuộc hội thoại khác." });
 
 			var call = await calls.GetByIdAsync(callID);
 			if (call is null || call.ConversationID != conversationID)

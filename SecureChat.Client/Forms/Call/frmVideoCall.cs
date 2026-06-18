@@ -73,6 +73,7 @@ namespace SecureChat.Client.Forms.Call
         private string _conversationId = string.Empty;
         private SignalRClient? _signalRClient;
         private bool _cleanupDone;
+        private bool _leaveInitiated;
 
         // drag state for local preview
         private bool isDragging;
@@ -133,15 +134,20 @@ namespace SecureChat.Client.Forms.Call
 
             _signalRClient.CallSignalReceived += OnRemoteCallSignal;
             _signalRClient.VideoFrameReceived += OnVideoFrameReceived;
+            _signalRClient.Reconnected += OnSignalRReconnected;
 
             Shown += (_, __) => _ = JoinCallGroupAsync();
-            FormClosing += async (_, __) => await LeaveCallAsync();
+            FormClosing += async (_, __) =>
+            {
+                if (!_leaveInitiated) await LeaveCallAsync();
+            };
             FormClosed += (_, __) =>
             {
                 if (_signalRClient != null)
                 {
                     _signalRClient.CallSignalReceived -= OnRemoteCallSignal;
                     _signalRClient.VideoFrameReceived -= OnVideoFrameReceived;
+                    _signalRClient.Reconnected -= OnSignalRReconnected;
                 }
             };
         }
@@ -298,6 +304,7 @@ namespace SecureChat.Client.Forms.Call
             btnCamera.Click += (_, __) => ToggleCamera();
             btnHangUp.Click += async (_, __) =>
             {
+                _leaveInitiated = true;
                 await LeaveCallAsync();
                 Close();
             };
@@ -589,11 +596,11 @@ namespace SecureChat.Client.Forms.Call
             if (bmp == null || IsDisposed) return;
             void Apply()
             {
-                if (IsDisposed) return;
+                if (IsDisposed) { bmp.Dispose(); return; }
                 lock (remoteLock)
                 {
                     var old = picRemoteVideo.Image;
-                    picRemoteVideo.Image = new Bitmap(bmp);
+                    picRemoteVideo.Image = bmp;
                     old?.Dispose();
                 }
                 if (!hasRemoteVideo)
@@ -637,6 +644,7 @@ namespace SecureChat.Client.Forms.Call
             isMuted = !isMuted;
             btnMic.IsActive = isMuted;
             btnMic.Invalidate();
+            _ = _signalRClient?.SendCallSignalAsync(_callId, isMuted ? "MIC_OFF" : "MIC_ON");
         }
 
         private void ToggleCamera()
@@ -646,6 +654,8 @@ namespace SecureChat.Client.Forms.Call
             btnCamera.IsActive = !isCameraOn;
             btnCamera.Invalidate();
             allowCapture = isCameraOn && isFormActive && WindowState != FormWindowState.Minimized;
+
+            _ = _signalRClient?.SendCallSignalAsync(_callId, isCameraOn ? "CAM_ON" : "CAM_OFF");
 
             if (_videoHandler == null) return;
 
@@ -850,7 +860,8 @@ namespace SecureChat.Client.Forms.Call
                 {
                     using var ms = new MemoryStream(frameData);
                     using var bmp = new Bitmap(ms);
-                    UpdateRemoteFrame(bmp);
+                    var copy = new Bitmap(bmp);
+                    UpdateRemoteFrame(copy);
                 }
                 catch { }
             });
@@ -868,13 +879,37 @@ namespace SecureChat.Client.Forms.Call
                     Close();
                 }));
             }
+            else if (signal == "CALL_LEFT")
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    lblStatus.Text = "Other participant left";
+                    if (!hasRemoteVideo) hasRemoteVideo = false;
+                }));
+            }
             else if (signal == "CALL_JOINED")
             {
                 BeginInvoke(new Action(() =>
                 {
                     lblStatus.Text = "Video call";
-                    hasRemoteVideo = false;
-                    pnlAvatar.Visible = true;
+                    lastRemoteFrameUtc = DateTime.UtcNow;
+                }));
+            }
+            else if (signal == "MIC_OFF" || signal == "MIC_ON")
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    btnMic.IsActive = signal == "MIC_OFF";
+                    btnMic.Invalidate();
+                }));
+            }
+            else if (signal == "CAM_OFF" || signal == "CAM_ON")
+            {
+                bool remoteCamOn = signal == "CAM_ON";
+                BeginInvoke(new Action(() =>
+                {
+                    btnCamera.IsActive = !remoteCamOn;
+                    btnCamera.Invalidate();
                 }));
             }
             return Task.CompletedTask;
@@ -899,6 +934,11 @@ namespace SecureChat.Client.Forms.Call
             catch { }
         }
 
+        private async Task OnSignalRReconnected(string? connectionId)
+        {
+            _ = JoinCallGroupAsync();
+        }
+
         private async Task LeaveCallAsync()
         {
             try
@@ -915,7 +955,7 @@ namespace SecureChat.Client.Forms.Call
             {
                 if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
-                    await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED");
+                    await _signalRClient.SendCallSignalAsync(_callId, "CALL_LEFT");
                     await _signalRClient.LeaveCallAsync(_callId);
                 }
             }

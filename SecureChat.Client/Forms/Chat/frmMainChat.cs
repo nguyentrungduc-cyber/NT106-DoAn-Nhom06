@@ -6041,6 +6041,7 @@ namespace SecureChat.Client
 
             if (!accepted)
             {
+                _pendingCallSignals.TryRemove(callId, out _);
                 try
                 {
                     if (_signalRClient != null)

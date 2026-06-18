@@ -43,6 +43,13 @@ namespace SecureChat.Repositories
 				.FirstOrDefaultAsync(c => c.ConversationID == conversationID
 						&& (c.Status == CallStatus.Ringing || c.Status == CallStatus.Ongoing));
 
+		public async Task<CallLog?> GetActiveCallByMemberAsync(string memberID)
+			=> await db.CallLogs
+				.Include(c => c.Participants)
+				.Where(c => c.Status == CallStatus.Ringing || c.Status == CallStatus.Ongoing)
+				.Where(c => c.Participants.Any(p => p.ParticipantID == memberID))
+				.FirstOrDefaultAsync();
+
 		public async Task<CallLog> UpdateStatusAsync(string callID, CallStatus status)
 		{
 			var call = await db.CallLogs.FindAsync(callID)
