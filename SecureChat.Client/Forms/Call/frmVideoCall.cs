@@ -1,8 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -25,7 +28,8 @@ namespace SecureChat.Client.Forms.Call
     public sealed class frmVideoCall : Form
     {
         // ── Controls ─────────────────────────────────────────────────────────────
-        private PictureBox picRemoteVideo = null!;   // full-screen remote feed
+        private PictureBox picRemoteVideo = null!;   // full-screen remote feed (primary)
+        private Panel pnlRemoteOverlay = null!;   // grid for multi-participant picture-in-picture
         private Panel pnlGradientTop = null!;   // subtle top fade (caller name)
         private Panel pnlGradientBot = null!;   // bottom fade + action bar
         private Panel pnlActionDock = null!;
@@ -72,6 +76,8 @@ namespace SecureChat.Client.Forms.Call
         private string _callId = string.Empty;
         private string _conversationId = string.Empty;
         private SignalRClient? _signalRClient;
+        private AudioHandler? _audioHandler;
+        private readonly ConcurrentDictionary<string, RemoteParticipant> _participants = new();
         private bool _cleanupDone;
         private bool _leaveInitiated;
 
@@ -122,7 +128,15 @@ namespace SecureChat.Client.Forms.Call
             int cameraIdx = LoadCameraIndexFromSettings();
             _videoHandler.Configure(cameraIndex: cameraIdx);
 
-            Shown += (_, __) => _ = _videoHandler.StartAsync();
+            _audioHandler = new AudioHandler();
+            _audioHandler.AudioDataAvailable += OnAudioDataAvailable;
+            _audioHandler.AudioError += OnAudioError;
+
+            Shown += (_, __) =>
+            {
+                _ = _videoHandler.StartAsync();
+                _ = _audioHandler.StartAsync();
+            };
             FormClosed += (_, __) => Cleanup();
         }
 
@@ -134,6 +148,7 @@ namespace SecureChat.Client.Forms.Call
 
             _signalRClient.CallSignalReceived += OnRemoteCallSignal;
             _signalRClient.VideoFrameReceived += OnVideoFrameReceived;
+            _signalRClient.AudioDataReceived += OnAudioDataReceived;
             _signalRClient.Reconnected += OnSignalRReconnected;
 
             Shown += (_, __) => _ = JoinCallGroupAsync();
@@ -147,6 +162,7 @@ namespace SecureChat.Client.Forms.Call
                 {
                     _signalRClient.CallSignalReceived -= OnRemoteCallSignal;
                     _signalRClient.VideoFrameReceived -= OnVideoFrameReceived;
+                    _signalRClient.AudioDataReceived -= OnAudioDataReceived;
                     _signalRClient.Reconnected -= OnSignalRReconnected;
                 }
             };
@@ -179,6 +195,17 @@ namespace SecureChat.Client.Forms.Call
                 SizeMode = PictureBoxSizeMode.Zoom   // letterbox (keeps aspect ratio)
             };
             Controls.Add(picRemoteVideo);
+
+            // ── 1b. Multi-participant overlay grid ────────────────────────────────
+            pnlRemoteOverlay = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent
+            };
+            pnlRemoteOverlay.Paint += (s, e) => { }; // capture for z-order
+            Controls.Add(pnlRemoteOverlay);
+            pnlRemoteOverlay.BringToFront();
+            pnlRemoteOverlay.Resize += (_, __) => RebuildParticipantGrid();
 
             // ── 2. Avatar overlay (shown while no remote feed) ─────────────────────
             pnlAvatar = new Panel
@@ -849,7 +876,7 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         //  SIGNALING
         // ═════════════════════════════════════════════════════════════════════════
-        private Task OnVideoFrameReceived(string callId, byte[] frameData)
+        private Task OnVideoFrameReceived(string callId, string senderUserId, byte[] frameData)
         {
             if (callId != _callId || IsDisposed || frameData == null || frameData.Length == 0)
                 return Task.CompletedTask;
@@ -861,17 +888,63 @@ namespace SecureChat.Client.Forms.Call
                     using var ms = new MemoryStream(frameData);
                     using var bmp = new Bitmap(ms);
                     var copy = new Bitmap(bmp);
-                    UpdateRemoteFrame(copy);
+                    RouteRemoteFrame(senderUserId, copy);
                 }
                 catch { }
             });
             return Task.CompletedTask;
         }
 
+        private Task OnAudioDataReceived(string callId, string senderUserId, byte[] audioData)
+        {
+            if (callId != _callId || IsDisposed || audioData == null || audioData.Length == 0)
+                return Task.CompletedTask;
+
+            _audioHandler?.PlayAudio(audioData);
+            return Task.CompletedTask;
+        }
+
+        private void OnAudioDataAvailable(byte[] audioData)
+        {
+            if (IsDisposed || audioData == null || audioData.Length == 0) return;
+            _ = _signalRClient?.SendAudioDataAsync(_callId, audioData);
+        }
+
+        private void OnAudioError(object? sender, Exception ex)
+        {
+            if (IsDisposed) return;
+            System.Diagnostics.Debug.WriteLine($"Audio error: {ex.Message}");
+        }
+
+        private void RouteRemoteFrame(string senderUserId, Bitmap frame)
+        {
+            if (IsDisposed) { frame.Dispose(); return; }
+
+            // Show on primary display first
+            UpdateRemoteFrame(frame);
+
+            // Also route to participant panel if exists
+            if (_participants.TryGetValue(senderUserId, out var rp))
+            {
+                BeginInvoke(new Action(() => rp.UpdateFrame(frame)));
+            }
+        }
+
         private Task OnRemoteCallSignal(string callId, string signal)
         {
             if (callId != _callId || IsDisposed) return Task.CompletedTask;
-            if (signal == "CALL_ENDED" || signal == "CALL_REJECTED")
+
+            // Signals are prefixed with senderUserId (e.g. "user123|CALL_JOINED")
+            string senderId = string.Empty;
+            string sig = signal;
+            int pipeIdx = signal.IndexOf('|');
+            if (pipeIdx > 0)
+            {
+                senderId = signal[..pipeIdx];
+                sig = signal[(pipeIdx + 1)..];
+            }
+
+            if (sig == "CALL_ENDED" || sig == "CALL_REJECTED")
             {
                 BeginInvoke(new Action(() =>
                 {
@@ -879,33 +952,34 @@ namespace SecureChat.Client.Forms.Call
                     Close();
                 }));
             }
-            else if (signal == "CALL_LEFT")
+            else if (sig == "CALL_LEFT")
             {
                 BeginInvoke(new Action(() =>
                 {
+                    RemoveParticipant(senderId);
                     lblStatus.Text = "Other participant left";
-                    if (!hasRemoteVideo) hasRemoteVideo = false;
                 }));
             }
-            else if (signal == "CALL_JOINED")
+            else if (sig == "CALL_JOINED")
             {
                 BeginInvoke(new Action(() =>
                 {
+                    EnsureParticipant(senderId, senderId);
                     lblStatus.Text = "Video call";
                     lastRemoteFrameUtc = DateTime.UtcNow;
                 }));
             }
-            else if (signal == "MIC_OFF" || signal == "MIC_ON")
+            else if (sig == "MIC_OFF" || sig == "MIC_ON")
             {
                 BeginInvoke(new Action(() =>
                 {
-                    btnMic.IsActive = signal == "MIC_OFF";
+                    btnMic.IsActive = sig == "MIC_OFF";
                     btnMic.Invalidate();
                 }));
             }
-            else if (signal == "CAM_OFF" || signal == "CAM_ON")
+            else if (sig == "CAM_OFF" || sig == "CAM_ON")
             {
-                bool remoteCamOn = signal == "CAM_ON";
+                bool remoteCamOn = sig == "CAM_ON";
                 BeginInvoke(new Action(() =>
                 {
                     btnCamera.IsActive = !remoteCamOn;
@@ -913,6 +987,49 @@ namespace SecureChat.Client.Forms.Call
                 }));
             }
             return Task.CompletedTask;
+        }
+
+        private void EnsureParticipant(string userId, string displayName)
+        {
+            if (_participants.ContainsKey(userId)) return;
+            var rp = new RemoteParticipant(userId, displayName);
+            if (_participants.TryAdd(userId, rp))
+                RebuildParticipantGrid();
+        }
+
+        private void RemoveParticipant(string userId)
+        {
+            if (_participants.TryRemove(userId, out var rp))
+            {
+                pnlRemoteOverlay.Controls.Remove(rp.Container);
+                rp.Container.Dispose();
+                RebuildParticipantGrid();
+            }
+        }
+
+        private void RebuildParticipantGrid()
+        {
+            var list = _participants.Values.ToList();
+            if (list.Count == 0) return;
+
+            int total = list.Count;
+            int cols = total <= 3 ? total : (int)Math.Ceiling(Math.Sqrt(total));
+            int rows = (int)Math.Ceiling((double)total / cols);
+            int cellW = Math.Max(120, (pnlRemoteOverlay.ClientSize.Width - 8) / cols);
+            int cellH = Math.Max(90, (pnlRemoteOverlay.ClientSize.Height - 8) / rows);
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                int col = i % cols;
+                int row = i / cols;
+                var ctrl = list[i].Container;
+                ctrl.Size = new Size(cellW - 4, cellH - 4);
+                ctrl.Location = new Point(4 + col * cellW, 4 + row * cellH);
+                if (!pnlRemoteOverlay.Controls.Contains(ctrl))
+                    pnlRemoteOverlay.Controls.Add(ctrl);
+            }
+
+            pnlRemoteOverlay.Visible = list.Count >= 2;
         }
 
         /// <summary>
@@ -960,6 +1077,8 @@ namespace SecureChat.Client.Forms.Call
                 }
             }
             catch { }
+
+            try { await (_audioHandler?.StopAsync() ?? Task.CompletedTask); } catch { }
         }
 
         // ═════════════════════════════════════════════════════════════════════════
@@ -1046,6 +1165,14 @@ namespace SecureChat.Client.Forms.Call
                 _videoHandler = null;
             }
 
+            if (_audioHandler != null)
+            {
+                _audioHandler.AudioDataAvailable -= OnAudioDataAvailable;
+                _audioHandler.AudioError -= OnAudioError;
+                _audioHandler.Dispose();
+                _audioHandler = null;
+            }
+
             lock (latestLocalFrameLock)
             {
                 latestLocalFrame?.Dispose();
@@ -1056,6 +1183,15 @@ namespace SecureChat.Client.Forms.Call
             picLocal.Image = null;
             picRemoteVideo.Image?.Dispose();
             picRemoteVideo.Image = null;
+
+            // Dispose participant panels
+            foreach (var rp in _participants.Values)
+            {
+                rp.VideoDisplay.Image?.Dispose();
+                rp.Container.Dispose();
+            }
+            _participants.Clear();
+            pnlRemoteOverlay.Controls.Clear();
 
             frameTimer.Dispose();
             clockTimer.Dispose();
@@ -1455,5 +1591,53 @@ namespace SecureChat.Client.Forms.Call
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         public static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
+    }
+
+    internal sealed class RemoteParticipant
+    {
+        public string UserId { get; }
+        public Panel Container { get; }
+        public PictureBox VideoDisplay { get; }
+        public Label UserName { get; }
+        public bool HasVideo { get; set; }
+
+        public RemoteParticipant(string userId, string displayName)
+        {
+            UserId = userId;
+            Container = new Panel
+            {
+                BackColor = Color.FromArgb(20, 20, 30),
+                Size = new Size(200, 150),
+                Margin = new Padding(2)
+            };
+            VideoDisplay = new PictureBox
+            {
+                Dock = DockStyle.Fill,
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.FromArgb(20, 20, 30)
+            };
+            UserName = new Label
+            {
+                Text = displayName,
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(120, 0, 0, 0),
+                Dock = DockStyle.Bottom,
+                Height = 20,
+                Font = new Font("Segoe UI", 9f),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(4, 0, 0, 0)
+            };
+            Container.Controls.Add(VideoDisplay);
+            Container.Controls.Add(UserName);
+            UserName.BringToFront();
+        }
+
+        public void UpdateFrame(Bitmap frame)
+        {
+            var old = VideoDisplay.Image;
+            VideoDisplay.Image = frame;
+            old?.Dispose();
+            HasVideo = true;
+        }
     }
 }

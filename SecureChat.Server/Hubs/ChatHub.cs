@@ -211,7 +211,7 @@ namespace SecureChat.Server.Hubs
             if (!IsCallParticipant(call))
                 throw new HubException("You are not a participant of this call.");
 
-            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, signal);
+            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, $"{Me}|{signal}");
         }
 
         /// <summary>
@@ -228,7 +228,26 @@ namespace SecureChat.Server.Hubs
             if (!IsCallParticipant(call))
                 throw new HubException("You are not a participant of this call.");
 
-            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("VideoFrameReceived", callId, frameData);
+            string senderId = Me;
+            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("VideoFrameReceived", callId, senderId, frameData);
+        }
+
+        /// <summary>
+        /// Relay audio data to other participants in a call.
+        /// </summary>
+        public async Task SendAudioData(string callId, byte[] audioData)
+        {
+            if (string.IsNullOrWhiteSpace(callId))
+                throw new HubException("CallId is required.");
+
+            var call = await calls.GetByIdAsync(callId);
+            if (call is null)
+                throw new HubException("Call not found.");
+            if (!IsCallParticipant(call))
+                throw new HubException("You are not a participant of this call.");
+
+            string senderId = Me;
+            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("AudioDataReceived", callId, senderId, audioData);
         }
 
         /// <summary>

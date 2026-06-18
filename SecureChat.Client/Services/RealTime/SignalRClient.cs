@@ -15,7 +15,8 @@ namespace SecureChat.Client.Services.RealTime
 		public event Func<MessageResponse, Task>? MessageRecalled;
 		public event Func<string, string, Task>? CallSignalReceived;
         public event Func<string, string, int, string, Task>? CallIncoming;
-        public event Func<string, byte[], Task>? VideoFrameReceived;
+        public event Func<string, string, byte[], Task>? VideoFrameReceived;
+        public event Func<string, string, byte[], Task>? AudioDataReceived;
         public event Func<string, string, Task>? UserTyping;
         public event Func<string, string, Task>? UserStoppedTyping;
         public event Func<Exception?, Task>? Closed;
@@ -87,10 +88,16 @@ namespace SecureChat.Client.Services.RealTime
                     await CallIncoming.Invoke(callId, callerName, callType, conversationId);
             });
 
-            _connection.On<string, byte[]>("VideoFrameReceived", async (callId, frameData) =>
+            _connection.On<string, string, byte[]>("VideoFrameReceived", async (callId, senderUserId, frameData) =>
             {
                 if (VideoFrameReceived is not null)
-                    await VideoFrameReceived.Invoke(callId, frameData);
+                    await VideoFrameReceived.Invoke(callId, senderUserId, frameData);
+            });
+
+            _connection.On<string, string, byte[]>("AudioDataReceived", async (callId, senderUserId, audioData) =>
+            {
+                if (AudioDataReceived is not null)
+                    await AudioDataReceived.Invoke(callId, senderUserId, audioData);
             });
 
             _connection.On<string, string>("UserTyping", async (conversationId, username) =>
@@ -242,6 +249,15 @@ namespace SecureChat.Client.Services.RealTime
             ArgumentNullException.ThrowIfNull(frameData);
 
             return _connection.InvokeAsync("SendVideoFrame", callId, frameData);
+        }
+
+        public Task SendAudioDataAsync(string callId, byte[] audioData)
+        {
+            if (string.IsNullOrWhiteSpace(callId))
+                throw new ArgumentException("CallId is required.", nameof(callId));
+            ArgumentNullException.ThrowIfNull(audioData);
+
+            return _connection.InvokeAsync("SendAudioData", callId, audioData);
         }
 
         public Task PinMessageAsync(string conversationId, string messageId)
