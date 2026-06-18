@@ -75,6 +75,7 @@ namespace SecureChat.Client
 
         private readonly HashSet<string> _processedMessageIds = new();
         private readonly object _processedMessageIdsLock = new();
+        private readonly ConcurrentDictionary<string, string> _pinnedByMap = new(); // messageId → pinnedByName
         private readonly HashSet<string> _hiddenMessageIds = new();
         private bool _lastMessageSyncStarted = false;
         private readonly object _lastMessageSyncLock = new();
@@ -1831,6 +1832,7 @@ namespace SecureChat.Client
 
                 // Clear pinned messages — conversation/pins no longer exist
                 _pinnedMessageIds.Clear();
+                _pinnedByMap.Clear();
                 UpdatePinnedBar();
                 
                 // Chọn conversation đầu tiên nếu còn
@@ -1944,6 +1946,7 @@ namespace SecureChat.Client
 
                 // Clear pinned messages — they reference deleted messages
                 _pinnedMessageIds.Clear();
+                _pinnedByMap.Clear();
                 UpdatePinnedBar();
 
                 // Refresh sidebar: clear preview text and timestamp.
@@ -5258,6 +5261,7 @@ namespace SecureChat.Client
     _messageDates.Remove(messageId);
     _forwardMetadata.TryRemove(messageId, out _);
     _forwardOriginalSenderId.TryRemove(messageId, out _);
+    _pinnedByMap.TryRemove(messageId, out _);
     if (_pinnedMessageIds.Remove(messageId))
         UpdatePinnedBar();
     BuildMessages();
@@ -5288,7 +5292,10 @@ namespace SecureChat.Client
 
                 // Unpin if pinned
                 if (_pinnedMessageIds.Remove(messageId))
+                {
+                    _pinnedByMap.TryRemove(messageId, out _);
                     UpdatePinnedBar();
+                }
 
                 // Clean up associated metadata (keep _messageDates for date grouping)
                 _forwardMetadata.TryRemove(messageId, out _);
@@ -5335,8 +5342,13 @@ namespace SecureChat.Client
                 if (pins is null) return;
 
                 _pinnedMessageIds.Clear();
+                _pinnedByMap.Clear();
                 foreach (var p in pins)
+                {
                     _pinnedMessageIds.Add(p.MessageID);
+                    if (!string.IsNullOrWhiteSpace(p.PinnedByName))
+                        _pinnedByMap[p.MessageID] = p.PinnedByName;
+                }
 
                 if (_activeConvId == convId)
                     UpdatePinnedBar();
@@ -5367,10 +5379,24 @@ namespace SecureChat.Client
             }
 
             _pinnedMessageIds.Add(messageId);
+            _pinnedByMap[messageId] = _currentDisplayName;
             UpdatePinnedBar();
             BuildMessages();
-        }
 
+            // Broadcast pin to other members via SignalR (identity resolved server-side)
+            if (_signalRClient is not null && _signalRClient.IsConnected)
+            {
+                try
+                {
+                    await _signalRClient.PinMessageAsync(_activeConvId, messageId);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Pin] SignalR broadcast failed: {ex.Message}");
+                }
+            }
+        }
+ 
         private async void OnUnpinMessage(string? messageId = null)
         {
             if (string.IsNullOrWhiteSpace(messageId))
@@ -5392,8 +5418,22 @@ namespace SecureChat.Client
             }
 
             _pinnedMessageIds.Remove(messageId);
+            _pinnedByMap.TryRemove(messageId, out _);
             UpdatePinnedBar();
             BuildMessages();
+
+            // Broadcast unpin to other members via SignalR
+            if (_signalRClient is not null && _signalRClient.IsConnected)
+            {
+                try
+                {
+                    await _signalRClient.UnpinMessageAsync(_activeConvId, messageId);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Unpin] SignalR broadcast failed: {ex.Message}");
+                }
+            }
         }
 
         private void UpdatePinnedBar()
@@ -5424,12 +5464,15 @@ namespace SecureChat.Client
 
             var count = _pinnedMessageIds.Count;
             string truncatedPreview = TruncateText(preview, 60);
+            string pinnedByName = "Unknown";
+            if (_pinnedByMap.TryGetValue(firstId, out var pn) && !string.IsNullOrWhiteSpace(pn))
+                pinnedByName = pn;
             _lblPinnedText.Text = count == 1
                 ? $"Pin: {truncatedPreview}"
                 : $"{count} pins: {truncatedPreview}";
 
             _lblPinnedBottomText.Text = count == 1
-                ? "Pinned message"
+                ? $"Pinned by {pinnedByName}"
                 : $"{count} pinned messages";
 
             _pnlPinnedBar.Visible = true;
@@ -5468,18 +5511,20 @@ namespace SecureChat.Client
             {
                 var msg = _currentMsgs.Find(m => m.Id == pid);
                 string displayText;
-                string senderName = "Unknown";
+                string pinnedByName = "Unknown";
 
                 if (msg.Id is not null)
                 {
                     displayText = GetPinnedDisplayText(msg.Text);
-                    if (msg.Out)
-                        senderName = "You";
+                    if (_pinnedByMap.TryGetValue(pid, out var pn) && !string.IsNullOrWhiteSpace(pn))
+                        pinnedByName = pn;
+                    else if (msg.Out)
+                        pinnedByName = "You";
                     else if (!string.IsNullOrEmpty(msg.Sender))
                     {
                         if (_senderDisplayNameMap.TryGetValue(msg.Sender, out var dn) && !string.IsNullOrEmpty(dn))
-                            senderName = dn;
-                        else senderName = msg.Sender;
+                            pinnedByName = dn;
+                        else pinnedByName = msg.Sender;
                     }
                 }
                 else
@@ -5505,7 +5550,7 @@ namespace SecureChat.Client
                 int itemTextW = Math.Max(50, _pnlPinnedBar.Width - 56);
                 var lblSender = new Label
                 {
-                    Text = TruncateText(senderName, 30),
+                    Text = TruncateText("Pinned by " + pinnedByName, 30),
                     Font = TG.FontSemiBold(9f),
                     ForeColor = TG.Blue,
                     AutoSize = false,
@@ -5768,6 +5813,32 @@ namespace SecureChat.Client
                         _ = LoadRightSidebarContentAsync();
                 }));
             };
+            _signalRClient.MessagePinned += async (convId, messageId, pinnedByUserId, pinnedByName) =>
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (_pinnedMessageIds.Add(messageId))
+                    {
+                        if (!string.IsNullOrWhiteSpace(pinnedByName))
+                            _pinnedByMap[messageId] = pinnedByName;
+                        UpdatePinnedBar();
+                        if (_activeConvId == convId)
+                            BuildMessages();
+                    }
+                }));
+            };
+            _signalRClient.MessageUnpinned += async (convId, messageId) =>
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (_pinnedMessageIds.Remove(messageId))
+                    {
+                        UpdatePinnedBar();
+                        if (_activeConvId == convId)
+                            BuildMessages();
+                    }
+                }));
+            };
             _signalRClient.Reconnected += async _ =>
             {
                 await ReRegisterPublicKeyAsync();
@@ -5904,7 +5975,10 @@ namespace SecureChat.Client
 
                         // Unpin if pinned
                         if (_pinnedMessageIds.Remove(message.MessageID))
+                        {
+                            _pinnedByMap.TryRemove(message.MessageID, out _);
                             UpdatePinnedBar();
+                        }
 
                         // Clean up associated metadata (keep _messageDates for date grouping)
                         _forwardMetadata.TryRemove(message.MessageID, out _);
@@ -6534,6 +6608,7 @@ namespace SecureChat.Client
                 _messageDates.Remove(messageId);
                 _forwardMetadata.TryRemove(messageId, out _);
                 _forwardOriginalSenderId.TryRemove(messageId, out _);
+                _pinnedByMap.TryRemove(messageId, out _);
                 if (_pinnedMessageIds.Remove(messageId))
                     UpdatePinnedBar();
                 var index = _currentMsgs.FindIndex(m => m.Id == messageId);

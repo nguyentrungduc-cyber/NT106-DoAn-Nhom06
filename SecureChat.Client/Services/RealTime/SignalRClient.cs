@@ -24,6 +24,8 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, string?, string?, string?, Task>? ProfileUpdated;
         public event Func<string, Task>? ConversationDeleted;
         public event Func<string, Task>? ConversationUpdated;
+        public event Func<string, string, string, string, Task>? MessagePinned;
+        public event Func<string, string, Task>? MessageUnpinned;
         public event Func<string, string, Task>? MemberAdded;
         public event Func<string, string, Task>? MemberRemoved;
 
@@ -124,6 +126,18 @@ namespace SecureChat.Client.Services.RealTime
             {
                 if (ConversationUpdated is not null)
                     await ConversationUpdated.Invoke(conversationId);
+            });
+
+            _connection.On<string, string, string, string>("MessagePinned", async (conversationId, messageId, pinnedByUserId, pinnedByName) =>
+            {
+                if (MessagePinned is not null)
+                    await MessagePinned.Invoke(conversationId, messageId, pinnedByUserId, pinnedByName);
+            });
+
+            _connection.On<string, string>("MessageUnpinned", async (conversationId, messageId) =>
+            {
+                if (MessageUnpinned is not null)
+                    await MessageUnpinned.Invoke(conversationId, messageId);
             });
 
             _connection.On<string, string>("MemberAdded", async (conversationId, userId) =>
@@ -227,6 +241,26 @@ namespace SecureChat.Client.Services.RealTime
             ArgumentNullException.ThrowIfNull(frameData);
 
             return _connection.InvokeAsync("SendVideoFrame", callId, frameData);
+        }
+
+        public Task PinMessageAsync(string conversationId, string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new ArgumentException("ConversationId is required.", nameof(conversationId));
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new ArgumentException("MessageId is required.", nameof(messageId));
+
+            return _connection.InvokeAsync("PinMessage", conversationId, messageId);
+        }
+
+        public Task UnpinMessageAsync(string conversationId, string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new ArgumentException("ConversationId is required.", nameof(conversationId));
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new ArgumentException("MessageId is required.", nameof(messageId));
+
+            return _connection.InvokeAsync("UnpinMessage", conversationId, messageId);
         }
 
         public Task NotifyCallIncomingAsync(string conversationId, string callId, string callerName, int callType)

@@ -93,10 +93,46 @@ namespace SecureChat.Server.Hubs
 			await Clients.Group(conversationId).SendAsync("MessageRecalled", MessageResponse.From(msg));
 		}
 
-		/// <summary>
-		/// Notify group that the current user is typing.
-		/// </summary>
-		public async Task UserTyping(string conversationId)
+        /// <summary>
+        /// Broadcast a pin event to a conversation group.
+        /// Pinner identity is resolved server-side from the JWT claim.
+        /// </summary>
+        public async Task PinMessage(string conversationId, string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new HubException("ConversationId is required.");
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new HubException("MessageId is required.");
+
+            var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+            if (member is null || member.LeftAt is not null)
+                throw new HubException("You are not a member of this conversation.");
+
+            var pinnedByName = member.Nickname ?? member.User?.DisplayName ?? member.User?.Username ?? "Unknown";
+            await Clients.Group(conversationId).SendAsync("MessagePinned", conversationId, messageId, member.UserID, pinnedByName);
+        }
+
+        /// <summary>
+        /// Broadcast an unpin event to a conversation group.
+        /// </summary>
+        public async Task UnpinMessage(string conversationId, string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new HubException("ConversationId is required.");
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new HubException("MessageId is required.");
+
+            var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+            if (member is null || member.LeftAt is not null)
+                throw new HubException("You are not a member of this conversation.");
+
+            await Clients.Group(conversationId).SendAsync("MessageUnpinned", conversationId, messageId);
+        }
+
+        /// <summary>
+        /// Notify group that the current user is typing.
+        /// </summary>
+        public async Task UserTyping(string conversationId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new HubException("ConversationId is required.");
