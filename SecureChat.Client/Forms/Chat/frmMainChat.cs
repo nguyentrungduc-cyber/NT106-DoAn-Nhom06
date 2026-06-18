@@ -3902,6 +3902,7 @@ namespace SecureChat.Client
                             _forwardMetadata[dm.Id] = dm.Raw.OriginalSenderName;
                             _forwardOriginalSenderId[dm.Id] = dm.Raw.OriginalSenderID!;
                         }
+                        _messageDates[dm.Id] = dm.Raw.SentAt.ToLocalTime();
                         existing.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
                     }
                 }
@@ -3919,6 +3920,7 @@ namespace SecureChat.Client
                             _forwardMetadata[dm.Id] = dm.Raw.OriginalSenderName;
                             _forwardOriginalSenderId[dm.Id] = dm.Raw.OriginalSenderID!;
                         }
+                        _messageDates[dm.Id] = dm.Raw.SentAt.ToLocalTime();
                         merged.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
                     }
                     foreach (var m in existing)
@@ -4191,21 +4193,33 @@ namespace SecureChat.Client
                 if (dateKey != lastDateKey)
                 {
                     string displayDate = FormatDateHeader(msgDate);
-                    var sep = new Label
+                    var sep = new Panel
                     {
-                        Text = displayDate,
-                        Font = TG.FontRegular(8.5f),
-                        ForeColor = Color.White,
-                        AutoSize = false,
-                        Height = 24,
-                        BackColor = Color.Transparent,
-                        TextAlign = ContentAlignment.MiddleCenter,
-                        Padding = new Padding(8, 2, 8, 2),
+                        Height = 28,
+                        Width = Math.Max(0, _pnlMessages.ClientSize.Width - _pnlMessages.Padding.Horizontal),
+                        BackColor = Color.Transparent
                     };
-
+                    sep.Paint += (s, e) =>
+                    {
+                        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                        using var font = new Font("Segoe UI", 9f, FontStyle.Regular);
+                        var textSize = e.Graphics.MeasureString(displayDate, font);
+                        int pillW = (int)textSize.Width + 24;
+                        int pillH = 22;
+                        int pillX = (sep.ClientSize.Width - pillW) / 2;
+                        int pillY = (sep.ClientSize.Height - pillH) / 2;
+                        using var bgBrush = new SolidBrush(Color.FromArgb(140, 0, 0, 0));
+                        using var path = new System.Drawing.Drawing2D.GraphicsPath();
+                        path.AddArc(pillX, pillY, pillH, pillH, 90, 180);
+                        path.AddArc(pillX + pillW - pillH, pillY, pillH, pillH, 270, 180);
+                        path.CloseFigure();
+                        e.Graphics.FillPath(bgBrush, path);
+                        TextRenderer.DrawText(e.Graphics, displayDate, font,
+                            new Point(pillX + 12, pillY + (pillH - (int)textSize.Height) / 2),
+                            Color.FromArgb(220, 220, 220), TextFormatFlags.NoPadding);
+                    };
                     sep.Location = new Point(0, y);
                     sep.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-                    sep.Width = Math.Max(0, _pnlMessages.ClientSize.Width - _pnlMessages.Padding.Horizontal);
 
                     _pnlMessages.Controls.Add(sep);
                     y += sep.Height + 4;
@@ -5234,6 +5248,7 @@ namespace SecureChat.Client
             }
 
     _currentMsgs.RemoveAt(msgIndex);
+    _messageDates.Remove(messageId);
     _forwardMetadata.TryRemove(messageId, out _);
     _forwardOriginalSenderId.TryRemove(messageId, out _);
     if (_pinnedMessageIds.Remove(messageId))
@@ -5268,10 +5283,9 @@ namespace SecureChat.Client
                 if (_pinnedMessageIds.Remove(messageId))
                     UpdatePinnedBar();
 
-                // Clean up associated metadata
+                // Clean up associated metadata (keep _messageDates for date grouping)
                 _forwardMetadata.TryRemove(messageId, out _);
                 _forwardOriginalSenderId.TryRemove(messageId, out _);
-                _messageDates.Remove(messageId);
 
                 // Broadcast recall to other members via SignalR
                 if (_signalRClient is not null && _signalRClient.IsConnected)
@@ -5878,10 +5892,9 @@ namespace SecureChat.Client
                         if (_pinnedMessageIds.Remove(message.MessageID))
                             UpdatePinnedBar();
 
-                        // Clean up associated metadata
+                        // Clean up associated metadata (keep _messageDates for date grouping)
                         _forwardMetadata.TryRemove(message.MessageID, out _);
                         _forwardOriginalSenderId.TryRemove(message.MessageID, out _);
-                        _messageDates.Remove(message.MessageID);
 
                         // Update sidebar preview
                         int convIdx = _convs.FindIndex(c => c.Id == message.ConversationID);
