@@ -81,7 +81,9 @@ namespace SecureChat.Server.Hubs
                         await Clients.Caller.SendAsync("MessageReceived", message);
                         continue;
                     }
-                    if (await friends.IsBlockedEitherWayAsync(Me, m.UserID))
+                    bool isBlocked = await friends.IsBlockedEitherWayAsync(Me, m.UserID);
+                    logger.LogInformation("Block check: sender={Sender} receiver={Receiver} isBlocked={IsBlocked}", Me, m.UserID, isBlocked);
+                    if (isBlocked)
                         continue; // im lặng, không deliver
                     await Clients.User(m.UserID).SendAsync("MessageReceived", message);
                 }
