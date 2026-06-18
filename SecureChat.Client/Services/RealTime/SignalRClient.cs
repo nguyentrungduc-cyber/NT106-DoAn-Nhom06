@@ -24,7 +24,7 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, string?, string?, string?, Task>? ProfileUpdated;
         public event Func<string, Task>? ConversationDeleted;
         public event Func<string, Task>? ConversationUpdated;
-        public event Func<string, string, string, Task>? MessagePinned;
+        public event Func<string, string, string, string, Task>? MessagePinned;
         public event Func<string, string, Task>? MessageUnpinned;
         public event Func<string, string, Task>? MemberAdded;
         public event Func<string, string, Task>? MemberRemoved;
@@ -128,10 +128,10 @@ namespace SecureChat.Client.Services.RealTime
                     await ConversationUpdated.Invoke(conversationId);
             });
 
-            _connection.On<string, string, string>("MessagePinned", async (conversationId, messageId, pinnedBy) =>
+            _connection.On<string, string, string, string>("MessagePinned", async (conversationId, messageId, pinnedByUserId, pinnedByName) =>
             {
                 if (MessagePinned is not null)
-                    await MessagePinned.Invoke(conversationId, messageId, pinnedBy);
+                    await MessagePinned.Invoke(conversationId, messageId, pinnedByUserId, pinnedByName);
             });
 
             _connection.On<string, string>("MessageUnpinned", async (conversationId, messageId) =>
@@ -243,14 +243,14 @@ namespace SecureChat.Client.Services.RealTime
             return _connection.InvokeAsync("SendVideoFrame", callId, frameData);
         }
 
-        public Task PinMessageAsync(string conversationId, string messageId, string pinnedBy)
+        public Task PinMessageAsync(string conversationId, string messageId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new ArgumentException("ConversationId is required.", nameof(conversationId));
             if (string.IsNullOrWhiteSpace(messageId))
                 throw new ArgumentException("MessageId is required.", nameof(messageId));
 
-            return _connection.InvokeAsync("PinMessage", conversationId, messageId, pinnedBy);
+            return _connection.InvokeAsync("PinMessage", conversationId, messageId);
         }
 
         public Task UnpinMessageAsync(string conversationId, string messageId)

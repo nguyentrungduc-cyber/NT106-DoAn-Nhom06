@@ -95,8 +95,9 @@ namespace SecureChat.Server.Hubs
 
         /// <summary>
         /// Broadcast a pin event to a conversation group.
+        /// Pinner identity is resolved server-side from the JWT claim.
         /// </summary>
-        public async Task PinMessage(string conversationId, string messageId, string pinnedBy)
+        public async Task PinMessage(string conversationId, string messageId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new HubException("ConversationId is required.");
@@ -107,7 +108,8 @@ namespace SecureChat.Server.Hubs
             if (member is null || member.LeftAt is not null)
                 throw new HubException("You are not a member of this conversation.");
 
-            await Clients.Group(conversationId).SendAsync("MessagePinned", conversationId, messageId, pinnedBy);
+            var pinnedByName = member.Nickname ?? member.User?.DisplayName ?? member.User?.Username ?? "Unknown";
+            await Clients.Group(conversationId).SendAsync("MessagePinned", conversationId, messageId, member.UserID, pinnedByName);
         }
 
         /// <summary>

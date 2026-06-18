@@ -110,11 +110,15 @@ namespace SecureChat.DTOs
 		string MessageID,
 		string ConversationID,
 		string? PinnedBy,
-		DateTime PinnedAt
+		DateTime PinnedAt,
+		string? PinnedByUserId,
+		string? PinnedByName
 	)
 	{
 		public static PinResponse From(MessagePin p) => new(
-			p.MessageID, p.ConversationID, p.PinnedBy, p.PinnedAt
+			p.MessageID, p.ConversationID, p.PinnedBy, p.PinnedAt,
+			p.Member?.UserID,
+			p.Member?.Nickname ?? p.Member?.User?.DisplayName ?? "Unknown"
 		);
 	}
 
