@@ -12,9 +12,13 @@ namespace SecureChat.Server.Hubs
     {
         private string Me => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
+        // Track connectionId → userId để dùng GroupExcept khi block
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _connToUser = new();
+
         public override async Task OnConnectedAsync()
         {
             logger.LogInformation("SignalR connected: {ConnectionId} User={UserId}", Context.ConnectionId, Me);
+            _connToUser[Context.ConnectionId] = Me;
             await base.OnConnectedAsync();
         }
 
@@ -25,6 +29,7 @@ namespace SecureChat.Server.Hubs
             else
                 logger.LogWarning(exception, "SignalR disconnected with error: {ConnectionId} User={UserId}", Context.ConnectionId, Me);
 
+            _connToUser.TryRemove(Context.ConnectionId, out _);
             await base.OnDisconnectedAsync(exception);
         }
 
@@ -70,23 +75,28 @@ namespace SecureChat.Server.Hubs
             var conversation = await conversations.GetByIdAsync(conversationId);
             if (conversation?.Type == ConversationType.Direct)
             {
-                // DM: gửi từng người, bỏ qua nếu bị chặn (Telegram-style)
-                // Clients.User() hoạt động nhờ UserIdProvider đã đăng ký
+                // DM: tìm connectionId của người bị chặn rồi dùng GroupExcept
                 var activeMembers = await conversations.GetActiveMembersAsync(conversationId);
-                foreach (var m in activeMembers)
+                var excludedConnIds = new List<string>();
+
+                foreach (var m in activeMembers.Where(m => m.UserID != Me))
                 {
-                    if (m.UserID == Me)
-                    {
-                        // Gửi lại cho chính người gửi (multi-device)
-                        await Clients.Caller.SendAsync("MessageReceived", message);
-                        continue;
-                    }
                     bool isBlocked = await friends.IsBlockedEitherWayAsync(Me, m.UserID);
                     logger.LogInformation("Block check: sender={Sender} receiver={Receiver} isBlocked={IsBlocked}", Me, m.UserID, isBlocked);
                     if (isBlocked)
-                        continue; // im lặng, không deliver
-                    await Clients.User(m.UserID).SendAsync("MessageReceived", message);
+                    {
+                        // Lấy tất cả connectionId của user bị chặn
+                        var blockedConns = _connToUser
+                            .Where(kv => kv.Value == m.UserID)
+                            .Select(kv => kv.Key)
+                            .ToList();
+                        excludedConnIds.AddRange(blockedConns);
+                    }
                 }
+
+                // Broadcast trong group nhưng exclude connection của người bị chặn
+                await Clients.GroupExcept(conversationId, excludedConnIds)
+                             .SendAsync("MessageReceived", message);
             }
             else
             {
