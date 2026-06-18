@@ -5009,10 +5009,12 @@ namespace SecureChat.Client
                 {
                     Text = "✕",
                     FlatStyle = FlatStyle.Flat,
-                    Size = new Size(18, 18),
-                    Location = new Point(_pnlPinnedBar.Width - 28, 11),
+                    Size = new Size(28, 28),
+                    Location = new Point(_pnlPinnedBar.Width - 32, (40 - 28) / 2),
                     Cursor = Cursors.Hand,
                     ForeColor = TG.TextSecondary,
+                    Font = new Font("Segoe UI Symbol", 9f),
+                    TextAlign = ContentAlignment.MiddleCenter,
                     Tag = pid,
                 };
                 btnItemUnpin.FlatAppearance.BorderSize = 0;
