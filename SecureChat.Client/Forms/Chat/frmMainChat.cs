@@ -1037,9 +1037,11 @@ namespace SecureChat.Client
             {
                 Text = "✕",
                 FlatStyle = FlatStyle.Flat,
-                Size = new Size(20, 20),
+                Size = new Size(28, 28),   // khớp chiều cao panel, không bị clip
                 Cursor = Cursors.Hand,
                 ForeColor = TG.TextSecondary,
+                Font = new Font("Segoe UI Symbol", 9f), // font nhỏ để ký tự vừa trong 28px
+                TextAlign = ContentAlignment.MiddleCenter,
             };
             _btnUnpin.FlatAppearance.BorderSize = 0;
             _btnUnpin.Click += (s, e) => { _isPinnedPopupOpen = false; _pnlPinnedPopup.Visible = false; OnUnpinMessage(); };
@@ -1065,14 +1067,13 @@ namespace SecureChat.Client
             _pnlPinnedBar.Controls.Add(_btnUnpin);
             void LayoutPinBar()
             {
-                // Layout từ phải sang trái: [✕ 24px] [▾ 24px] [text phần còn lại]
-                const int btnW   = 24;
+                // Layout từ phải sang trái: [✕ 28px] [▾ 24px] [text phần còn lại]
+                const int btnW   = 28;
                 const int arrowW = 24;
-                const int pad    = 6;
+                const int pad    = 4;
 
-                _btnUnpin.Size     = new Size(btnW, 20);
-                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - pad - btnW,
-                                               (_pnlPinnedBar.Height - _btnUnpin.Height) / 2);
+                _btnUnpin.Size     = new Size(btnW, _pnlPinnedBar.Height); // full height = không bị clip
+                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - pad - btnW, 0);
 
                 downArrow.Location = new Point(_btnUnpin.Left - arrowW - 2,
                                                (_pnlPinnedBar.Height - downArrow.Height) / 2);
