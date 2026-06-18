@@ -83,6 +83,7 @@ namespace SecureChat.Client.Forms.Call
         private string _conversationId = string.Empty;
         private SignalRClient? _signalRClient;
         private readonly ConcurrentDictionary<string, RemoteParticipant> _participants = new();
+        private bool _isGroupCall;
         private bool _cleanupDone;
         private bool _leaveInitiated;
 
@@ -149,11 +150,12 @@ namespace SecureChat.Client.Forms.Call
             FormClosed += (_, __) => Cleanup();
         }
 
-        public frmVideoCall(string friendName, string callId, string conversationId, SignalRClient signalRClient) : this(friendName)
+        public frmVideoCall(string friendName, string callId, string conversationId, SignalRClient signalRClient, bool isGroupCall = false) : this(friendName)
         {
             _callId = callId;
             _conversationId = conversationId;
             _signalRClient = signalRClient;
+            _isGroupCall = isGroupCall;
 
             _signalRClient.CallSignalReceived += OnRemoteCallSignal;
             _signalRClient.VideoFrameReceived += OnVideoFrameReceived;
@@ -163,7 +165,13 @@ namespace SecureChat.Client.Forms.Call
             Shown += (_, __) => _ = JoinCallGroupAsync();
             FormClosing += async (_, __) =>
             {
-                if (!_leaveInitiated) await LeaveCallAsync();
+                if (!_leaveInitiated)
+                {
+                    if (_isGroupCall)
+                        await LeaveCallAsync();
+                    else
+                        await EndCallAsync();
+                }
             };
             FormClosed += (_, __) =>
             {
@@ -341,7 +349,10 @@ namespace SecureChat.Client.Forms.Call
             btnHangUp.Click += async (_, __) =>
             {
                 _leaveInitiated = true;
-                await LeaveCallAsync();
+                if (_isGroupCall)
+                    await LeaveCallAsync();
+                else
+                    await EndCallAsync();
                 Close();
             };
 
@@ -1141,6 +1152,31 @@ namespace SecureChat.Client.Forms.Call
                 if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
                     await _signalRClient.SendCallSignalAsync(_callId, "CALL_LEFT");
+                    await _signalRClient.LeaveCallAsync(_callId);
+                }
+            }
+            catch { }
+
+            try { await (_audioHandler?.StopAsync() ?? Task.CompletedTask); } catch { }
+        }
+
+        private async Task EndCallAsync()
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_callId) && !string.IsNullOrWhiteSpace(_conversationId))
+                {
+                    var http = ApiClient.Instance.GetHttpClient();
+                    await http.PostAsync($"api/conversations/{_conversationId}/calls/{_callId}/end", null);
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
+                {
+                    await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED");
                     await _signalRClient.LeaveCallAsync(_callId);
                 }
             }

@@ -144,6 +144,21 @@ namespace SecureChat.Controllers
 			}
 		}
 
+		[HttpPost("{callID}/end")]
+		public async Task<IActionResult> EndCall(string conversationID, string callID)
+		{
+			var member = await GetActiveMember(conversationID);
+			if (member is null)
+				return Forbid();
+
+			var call = await calls.GetByIdAsync(callID);
+			if (call is null || call.ConversationID != conversationID)
+				return NotFound();
+
+			await calls.EndCallAsync(callID);
+			return NoContent();
+		}
+
 		[HttpPost("{callID}/leave")]
 		public async Task<IActionResult> LeaveCall(string conversationID, string callID, [FromBody] LeaveCallRequest? req = null)
 		{
@@ -163,7 +178,8 @@ namespace SecureChat.Controllers
 				return NotFound();
 			}
 
-			if (call.StartedBy == member.MemberID)
+			// Private call: leaving ends the entire call
+			if (call.Conversation?.Type == ConversationType.Direct)
 				await calls.EndCallAsync(callID);
 
 			return NoContent();
