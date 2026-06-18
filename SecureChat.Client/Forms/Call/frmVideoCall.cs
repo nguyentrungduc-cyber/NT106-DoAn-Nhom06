@@ -59,11 +59,17 @@ namespace SecureChat.Client.Forms.Call
         private bool isCameraOn = true;
 
         private VideoHandler? _videoHandler;
+        private AudioHandler? _audioHandler;
+        private ScreenCaptureHandler? _screenCapture;
+        private bool isScreenSharing;
         private readonly object remoteLock = new();
         private readonly object latestLocalFrameLock = new();
         private readonly CancellationTokenSource _cts = new();
         private DateTime _lastFrameSendUtc = DateTime.MinValue;
-        private static readonly TimeSpan FrameSendInterval = TimeSpan.FromMilliseconds(80);
+        private static readonly TimeSpan FrameSendInterval = TimeSpan.FromMilliseconds(100);
+        private const int JpegQuality = 35;
+        private const int MaxSendWidth = 320;
+        private const int MaxSendHeight = 240;
         private static readonly ImageCodecInfo JpegCodec = GetJpegCodec();
         private static readonly EncoderParameters JpegParams = new(1);
 
@@ -76,7 +82,6 @@ namespace SecureChat.Client.Forms.Call
         private string _callId = string.Empty;
         private string _conversationId = string.Empty;
         private SignalRClient? _signalRClient;
-        private AudioHandler? _audioHandler;
         private readonly ConcurrentDictionary<string, RemoteParticipant> _participants = new();
         private bool _cleanupDone;
         private bool _leaveInitiated;
@@ -131,6 +136,10 @@ namespace SecureChat.Client.Forms.Call
             _audioHandler = new AudioHandler();
             _audioHandler.AudioDataAvailable += OnAudioDataAvailable;
             _audioHandler.AudioError += OnAudioError;
+
+            _screenCapture = new ScreenCaptureHandler();
+            _screenCapture.FrameCaptured += OnScreenCaptureFrame;
+            _screenCapture.CaptureError += OnScreenCaptureError;
 
             Shown += (_, __) =>
             {
@@ -411,6 +420,7 @@ namespace SecureChat.Client.Forms.Call
                 if (e.KeyCode == Keys.Escape) Close();
                 if (e.KeyCode == Keys.M) ToggleMic();
                 if (e.KeyCode == Keys.V) ToggleCamera();
+                if (e.KeyCode == Keys.S && !e.Shift) ToggleScreenShare();
             };
 
             Activated += (_, __) =>
@@ -570,14 +580,30 @@ namespace SecureChat.Client.Forms.Call
         {
             try
             {
-                using var ms = new MemoryStream();
+                using var scaled = ScaleDown(frame, MaxSendWidth, MaxSendHeight);
+                using var ms = new MemoryStream(32000);
                 using var kval = new EncoderParameters(1);
-                kval.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 55L);
-                frame.Save(ms, JpegCodec, kval);
+                kval.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)JpegQuality);
+                scaled.Save(ms, JpegCodec, kval);
                 byte[] data = ms.ToArray();
                 _ = _signalRClient?.SendVideoFrameAsync(_callId, data);
             }
             catch { }
+        }
+
+        private static Bitmap ScaleDown(Bitmap src, int maxW, int maxH)
+        {
+            if (src.Width <= maxW && src.Height <= maxH)
+                return new Bitmap(src);
+
+            double scale = Math.Min((double)maxW / src.Width, (double)maxH / src.Height);
+            int w = (int)(src.Width * scale);
+            int h = (int)(src.Height * scale);
+            var dst = new Bitmap(w, h);
+            using var g = Graphics.FromImage(dst);
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.DrawImage(src, 0, 0, w, h);
+            return dst;
         }
 
         private void OnVideoHandlerError(object? sender, Exception ex)
@@ -904,7 +930,7 @@ namespace SecureChat.Client.Forms.Call
             return Task.CompletedTask;
         }
 
-        private void OnAudioDataAvailable(byte[] audioData)
+        private void OnAudioDataAvailable(byte[] audioData, uint sequenceNumber)
         {
             if (IsDisposed || audioData == null || audioData.Length == 0) return;
             _ = _signalRClient?.SendAudioDataAsync(_callId, audioData);
@@ -914,6 +940,34 @@ namespace SecureChat.Client.Forms.Call
         {
             if (IsDisposed) return;
             System.Diagnostics.Debug.WriteLine($"Audio error: {ex.Message}");
+        }
+
+        private void OnScreenCaptureFrame(Bitmap frame)
+        {
+            if (!isScreenSharing || IsDisposed) { frame.Dispose(); return; }
+            CompressAndSendFrame(frame);
+        }
+
+        private void OnScreenCaptureError(object? sender, Exception ex)
+        {
+            if (IsDisposed) return;
+            isScreenSharing = false;
+            BeginInvoke(new Action(() => lblStatus.Text = "Screen share stopped"));
+        }
+
+        private void ToggleScreenShare()
+        {
+            isScreenSharing = !isScreenSharing;
+            _ = _signalRClient?.SendCallSignalAsync(_callId, isScreenSharing ? "SCREEN_ON" : "SCREEN_OFF");
+
+            if (isScreenSharing)
+            {
+                _ = _screenCapture?.StartAsync();
+            }
+            else
+            {
+                _ = _screenCapture?.StopAsync();
+            }
         }
 
         private void RouteRemoteFrame(string senderUserId, Bitmap frame)
@@ -984,6 +1038,20 @@ namespace SecureChat.Client.Forms.Call
                 {
                     btnCamera.IsActive = !remoteCamOn;
                     btnCamera.Invalidate();
+                }));
+            }
+            else if (sig == "SCREEN_ON")
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    lblStatus.Text = "Receiving screen share";
+                }));
+            }
+            else if (sig == "SCREEN_OFF")
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    lblStatus.Text = "Screen share ended";
                 }));
             }
             return Task.CompletedTask;
@@ -1171,6 +1239,15 @@ namespace SecureChat.Client.Forms.Call
                 _audioHandler.AudioError -= OnAudioError;
                 _audioHandler.Dispose();
                 _audioHandler = null;
+            }
+
+            if (_screenCapture != null)
+            {
+                _screenCapture.FrameCaptured -= OnScreenCaptureFrame;
+                _screenCapture.CaptureError -= OnScreenCaptureError;
+                _screenCapture.Dispose();
+                _screenCapture = null;
+                isScreenSharing = false;
             }
 
             lock (latestLocalFrameLock)
