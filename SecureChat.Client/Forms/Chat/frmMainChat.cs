@@ -1071,7 +1071,8 @@ namespace SecureChat.Client
                 const int pad    = 6;
 
                 _btnUnpin.Size     = new Size(btnW, 20);
-                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - pad - btnW, 4);
+                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - pad - btnW,
+                                               (_pnlPinnedBar.Height - _btnUnpin.Height) / 2);
 
                 downArrow.Location = new Point(_btnUnpin.Left - arrowW - 2,
                                                (_pnlPinnedBar.Height - downArrow.Height) / 2);
@@ -1088,6 +1089,7 @@ namespace SecureChat.Client
                 _isPinnedPopupOpen = !_isPinnedPopupOpen;
                 if (_isPinnedPopupOpen) RebuildPinnedPopup();
                 _pnlPinnedPopup.Visible = _isPinnedPopupOpen;
+                downArrow.Text = _isPinnedPopupOpen ? "▴" : "▾";
             }
             _lblPinnedText.Click += TogglePinnedPopup;
             downArrow.Click += TogglePinnedPopup;
@@ -3969,14 +3971,16 @@ namespace SecureChat.Client
                 }
 
                 audioBubble.Top    = 4;
-                audioBubble.Anchor = isOut ? AnchorStyles.Right : AnchorStyles.Left;
-                audioBubble.Width  = Math.Min(360, Math.Max(260, (int)(_pnlMessages.ClientSize.Width * 0.45f)));
+                audioBubble.Anchor = AnchorStyles.None;
                 panel.Height       = audioBubble.Height + 8;
                 panel.Resize += (s, e) =>
                 {
-                    int leftOffset = (!isOut && isGroup) ? 44 : 10;
+                    int leftOffset  = (!isOut && isGroup) ? 44 : 10;
+                    int rightMargin = 12;
+                    int maxW        = panel.ClientSize.Width - leftOffset - rightMargin;
+                    audioBubble.Width = Math.Min(360, Math.Max(260, maxW));
                     if (isOut)
-                        audioBubble.Left = Math.Max(10, panel.ClientSize.Width - audioBubble.Width - 10);
+                        audioBubble.Left = panel.ClientSize.Width - audioBubble.Width - rightMargin;
                     else
                         audioBubble.Left = leftOffset;
                 };
