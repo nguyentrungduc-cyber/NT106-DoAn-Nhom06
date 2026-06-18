@@ -1011,6 +1011,7 @@ namespace SecureChat.Client.Forms.Call
 
             if (sig == "CALL_ENDED" || sig == "CALL_REJECTED")
             {
+                _leaveInitiated = true;
                 BeginInvoke(new Action(() =>
                 {
                     MessageBox.Show("Cuộc gọi đã kết thúc từ phía đối phương.", "Call ended", MessageBoxButtons.OK, MessageBoxIcon.Information);
