@@ -5156,24 +5156,8 @@ namespace SecureChat.Client
                         catch { /* không ảnh hưởng UX */ }
                     });
 
-                    // Khi nhận tin từ người khác → các tin mình đã gửi trong conv đó đã delivered
-                    BeginInvoke(new Action(() =>
-                    {
-                        bool changed = false;
-                        if (_allMsgs.TryGetValue(message.ConversationID, out var convMsgs))
-                        {
-                            foreach (var (id, _, isOut, _, _) in convMsgs)
-                            {
-                                if (isOut && _msgDelivery.TryGetValue(id, out var cur) && cur == SecureChat.DTOs.DeliveryStatus.Sent)
-                                {
-                                    _msgDelivery[id] = SecureChat.DTOs.DeliveryStatus.Delivered;
-                                    changed = true;
-                                }
-                            }
-                        }
-                        if (changed && message.ConversationID == _activeConvId)
-                            BuildMessages();
-                    }));
+                    // Khi nhận tin từ người khác → gọi API MarkDelivered để server
+                    // lưu DB và push SignalR "Delivered" về cho người gửi
                 }
 
                 // Resolve memberId của user hiện tại trong conv để xác định "isOut".

@@ -1,16 +1,22 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Hubs;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations/{conversationID}/messages")]
-	public class MessageController(MessageRepository messages, ConversationRepository conversations, FriendRepository friends) : BaseController
+	public class MessageController(
+		MessageRepository messages,
+		ConversationRepository conversations,
+		FriendRepository friends,
+		IHubContext<ChatHub> hub) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -48,7 +54,19 @@ namespace SecureChat.Controllers
 		{
 			var member = await GetActiveMember(conversationID);
 			if (member is null) return Forbid();
+
 			await messages.MarkDeliveredAsync(messageID, member.MemberID);
+
+			// Push SignalR về cho người gửi
+			var msg = await messages.GetByIdAsync(messageID);
+			if (msg is not null)
+			{
+				var senderMember = await conversations.GetMemberByIdAsync(msg.SenderID);
+				if (senderMember is not null && senderMember.UserID != Me)
+					await hub.Clients.User(senderMember.UserID)
+						.SendAsync("MessageStatusUpdated", messageID, "Delivered");
+			}
+
 			return NoContent();
 		}
 
@@ -283,6 +301,17 @@ namespace SecureChat.Controllers
 			try {
 				var status = await messages.MarkReadAsync(messageID, member.MemberID);
 				await conversations.SetLastReadMessageAsync(member.MemberID, messageID);
+
+				// Push SignalR "Read" về cho người gửi
+				var msg = await messages.GetByIdAsync(messageID);
+				if (msg is not null)
+				{
+					var senderMember = await conversations.GetMemberByIdAsync(msg.SenderID);
+					if (senderMember is not null && senderMember.UserID != Me)
+						await hub.Clients.User(senderMember.UserID)
+							.SendAsync("MessageStatusUpdated", messageID, "Read");
+				}
+
 				return Ok(MessageStatusResponse.From(status));
 			} catch (KeyNotFoundException) {
 				return NotFound();
