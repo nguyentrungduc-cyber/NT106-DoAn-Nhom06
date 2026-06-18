@@ -5214,7 +5214,25 @@ namespace SecureChat.Client
                         }
 
                         if (message.ConversationID == _activeConvId)
+                        {
                             BuildMessages();
+
+                            // Tin đến khi đang mở conversation → mark read ngay lập tức
+                            if (!dm.Out)
+                            {
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                                        await http.PostAsync(
+                                            $"api/conversations/{message.ConversationID}/messages/{message.MessageID}/read",
+                                            null);
+                                    }
+                                    catch { }
+                                });
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
