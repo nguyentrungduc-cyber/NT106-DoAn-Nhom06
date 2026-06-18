@@ -133,6 +133,8 @@ namespace SecureChat.Client
         // bằng MessageDecryptor.ProcessAsync (E2EE: server không thấy plaintext).
 
         private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new();
+        // Track delivery status cho từng messageId
+        private readonly Dictionary<string, SecureChat.DTOs.DeliveryStatus> _msgDelivery = new();
         private readonly Dictionary<string, DateTime> _messageDates = new();
 
 
@@ -374,6 +376,8 @@ namespace SecureChat.Client
                     }
                     _messageDates[m.MessageID] = m.SentAt.ToLocalTime();
                     _allMsgs[convId].Add((m.MessageID, text, isOut, time, sender));
+                    if (isOut)
+                        _msgDelivery[m.MessageID] = m.Delivery;
                 }
 
                 BeginInvoke(new Action(() => BuildMessages()));
@@ -3219,6 +3223,24 @@ namespace SecureChat.Client
             await SyncMessagesForActiveConversationAsync(convId);
             await JoinConversationSignalRAsync(convId);
             await LoadPinsAsync(convId);
+
+            // Đánh dấu tất cả tin chưa đọc là đã đọc
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    if (_allMsgs.TryGetValue(convId, out var msgs))
+                    {
+                        foreach (var (id, _, isOut, _, _) in msgs)
+                        {
+                            if (!isOut) // chỉ mark read cho tin người khác gửi
+                                await http.PostAsync($"api/conversations/{convId}/messages/{id}/read", null);
+                        }
+                    }
+                }
+                catch { }
+            });
         }
 
         // ════════════════════════════════════════════
@@ -4382,7 +4404,29 @@ namespace SecureChat.Client
                 {
                     float tickX = x + bw - pad - 22;
                     using var tickFont = new Font("Segoe UI Symbol", 8f, FontStyle.Bold);
-                    e.Graphics.DrawString("✓✓", tickFont, new SolidBrush(TG.Blue), tickX, ty - 1);
+
+                    // Lấy delivery status — default Sent nếu chưa có
+                    var delivery = (!string.IsNullOrEmpty(messageId) && _msgDelivery.TryGetValue(messageId, out var ds))
+                        ? ds : SecureChat.DTOs.DeliveryStatus.Sent;
+
+                    string tickText;
+                    Color tickColor;
+                    switch (delivery)
+                    {
+                        case SecureChat.DTOs.DeliveryStatus.Read:
+                            tickText  = "✓✓";
+                            tickColor = TG.Blue;       // 2 tick xanh = đã đọc
+                            break;
+                        case SecureChat.DTOs.DeliveryStatus.Delivered:
+                            tickText  = "✓✓";
+                            tickColor = Color.Gray;    // 2 tick xám = đã nhận
+                            break;
+                        default:
+                            tickText  = "✓";
+                            tickColor = Color.Gray;    // 1 tick xám = đã gửi
+                            break;
+                    }
+                    e.Graphics.DrawString(tickText, tickFont, new SolidBrush(tickColor), tickX, ty - 1);
                 }
 
                 // 5. Self-destruct timer indicator (nếu message có expiration)
@@ -5094,6 +5138,39 @@ namespace SecureChat.Client
                 if (!TryTrackMessageId(message.MessageID))
                     return;
 
+                // Báo delivered cho server ngay khi nhận tin (nếu không phải tin của mình)
+                if (message.SenderID != _currentUserId)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                            await http.PostAsync($"api/conversations/{message.ConversationID}/messages/{message.MessageID}/delivered", null);
+                        }
+                        catch { /* không ảnh hưởng UX */ }
+                    });
+
+                    // Khi nhận tin từ người khác → các tin mình đã gửi trong conv đó đã delivered
+                    BeginInvoke(new Action(() =>
+                    {
+                        bool changed = false;
+                        if (_allMsgs.TryGetValue(message.ConversationID, out var convMsgs))
+                        {
+                            foreach (var (id, _, isOut, _, _) in convMsgs)
+                            {
+                                if (isOut && _msgDelivery.TryGetValue(id, out var cur) && cur == SecureChat.DTOs.DeliveryStatus.Sent)
+                                {
+                                    _msgDelivery[id] = SecureChat.DTOs.DeliveryStatus.Delivered;
+                                    changed = true;
+                                }
+                            }
+                        }
+                        if (changed && message.ConversationID == _activeConvId)
+                            BuildMessages();
+                    }));
+                }
+
                 // Resolve memberId của user hiện tại trong conv để xác định "isOut".
                 // Nếu chưa biết (do chưa từng mở conv này) thì fetch /members/me.
                 if (!_myMemberIdByConv.TryGetValue(message.ConversationID, out var myMemberId))
@@ -5562,6 +5639,7 @@ namespace SecureChat.Client
             // ─────────────────────────────────────────────────────────────────
             string tempMessageId = Guid.NewGuid().ToString();
             _messageDates[tempMessageId] = DateTime.Now;
+            _msgDelivery[tempMessageId] = SecureChat.DTOs.DeliveryStatus.Sent;
             _currentMsgs.Add((tempMessageId, finalMessageText, true, DateTime.Now.ToString("h:mm tt"), ""));
             BuildMessages();
 
@@ -5666,6 +5744,9 @@ namespace SecureChat.Client
                 {
                     if (_messageDates.Remove(tempMessageId))
                         _messageDates[messageResponse.MessageID] = messageResponse.SentAt.ToLocalTime();
+                    // Chuyển delivery status từ tempId sang realId
+                    _msgDelivery.Remove(tempMessageId);
+                    _msgDelivery[messageResponse.MessageID] = SecureChat.DTOs.DeliveryStatus.Sent;
                     string timeStr = messageResponse.SentAt.ToLocalTime().ToString("h:mm tt");
                     _currentMsgs[index] = (
                         messageResponse.MessageID,

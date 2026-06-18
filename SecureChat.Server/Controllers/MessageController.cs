@@ -20,11 +20,36 @@ namespace SecureChat.Controllers
 		[HttpGet]
 		public async Task<IActionResult> GetMessages(string conversationID, [FromQuery] int limit = 50, [FromQuery] DateTime? before = null)
 		{
-			if (await GetActiveMember(conversationID) is null)
-				return Forbid();
+			var member = await GetActiveMember(conversationID);
+			if (member is null) return Forbid();
 
 			var list = await messages.GetByConversationAsync(conversationID, limit, before);
-			return Ok(list.Select(MessageResponse.From));
+
+			// Tính DeliveryStatus cho từng tin nhắn của chính mình
+			var result = new List<MessageResponse>();
+			foreach (var m in list)
+			{
+				DeliveryStatus delivery = DeliveryStatus.Sent;
+				if (m.SenderID == member.MemberID)
+				{
+					var statuses = await messages.GetStatusesByMessageAsync(m.MessageID);
+					if (statuses.Any(s => s.ReadAt.HasValue))
+						delivery = DeliveryStatus.Read;
+					else if (statuses.Any(s => s.DeliveredAt.HasValue))
+						delivery = DeliveryStatus.Delivered;
+				}
+				result.Add(MessageResponse.From(m, delivery));
+			}
+			return Ok(result);
+		}
+
+		[HttpPost("{messageID}/delivered")]
+		public async Task<IActionResult> MarkDelivered(string conversationID, string messageID)
+		{
+			var member = await GetActiveMember(conversationID);
+			if (member is null) return Forbid();
+			await messages.MarkDeliveredAsync(messageID, member.MemberID);
+			return NoContent();
 		}
 
 		[HttpGet("{messageID}")]

@@ -44,6 +44,8 @@ namespace SecureChat.DTOs
         List<RecipientEncryption>? RecipientEncryptions = null
     );
 
+	public enum DeliveryStatus { Sent, Delivered, Read }
+
 	public record MessageResponse(
 		string MessageID,
 		string ConversationID,
@@ -62,10 +64,11 @@ namespace SecureChat.DTOs
 		DateTime? DeletedAt,
 		DateTime? ExpiresAt,
 		List<AttachmentResponse>? Attachments,
-		List<string>? MentionedMemberIDs
+		List<string>? MentionedMemberIDs,
+		DeliveryStatus Delivery = DeliveryStatus.Sent
 	)
 	{
-		public static MessageResponse From(Message m) => new(
+		public static MessageResponse From(Message m, DeliveryStatus delivery = DeliveryStatus.Sent) => new(
 			m.MessageID, m.ConversationID,
 			m.SenderID, m.Sender?.User.UserID,
 			m.Sender?.User.Username,
@@ -75,7 +78,8 @@ namespace SecureChat.DTOs
 			m.Type, m.Content ?? "", m.ContentIV ?? "",
 			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt,
 			m.Attachments.Select(AttachmentResponse.From).ToList(),
-			m.Mentions?.Select(mention => mention.MemberID).ToList()
+			m.Mentions?.Select(mention => mention.MemberID).ToList(),
+			delivery
 		);
 	}
 
