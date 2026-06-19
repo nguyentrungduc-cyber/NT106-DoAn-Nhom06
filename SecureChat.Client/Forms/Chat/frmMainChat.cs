@@ -3022,9 +3022,17 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(11f),
                 ForeColor = Color.White,
                 AutoSize = false,
-                Height = 22,
-                Location = new Point(80, 52),
+                Height = 28,           // tăng từ 22 → 28 để chứa dấu tiếng Việt (ễ, ắ...)
+                Width = smw - 80 - 14, // smw - leftPos(80) - rightMargin(14)
+                Location = new Point(80, 58),
                 BackColor = Color.Transparent,
+                AutoEllipsis = true,   // hiện "..." nếu tên quá dài
+            };
+
+            // Resize handler: cập nhật width khi menu thay đổi kích thước
+            _pnlSettingsHeader.Resize += (s, e) =>
+            {
+                _lblSettingsUserName.Width = _pnlSettingsHeader.Width - 80 - 14;
             };
 
             _pnlSettingsHeader.Controls.AddRange(new Control[] { btnClose, _settingsAvatar, _lblSettingsUserName });
