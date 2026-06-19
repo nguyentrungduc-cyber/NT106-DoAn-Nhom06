@@ -433,12 +433,12 @@ namespace SecureChat.Client.Forms.Settings
             {
                 s.DownloadPathMode = 1;
             }
-            else
+            else if (rbCustom.Checked)
             {
-                s.DownloadPathMode = 2;
                 using var fbd = new FolderBrowserDialog { Description = "Choose custom download folder" };
                 if (fbd.ShowDialog(this) == DialogResult.OK)
                 {
+                    s.DownloadPathMode = 2;
                     s.CustomDownloadPath = fbd.SelectedPath;
                 }
             }

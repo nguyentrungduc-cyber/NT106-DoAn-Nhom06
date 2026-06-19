@@ -12,7 +12,7 @@ namespace SecureChat.Client.Settings
 
         public int DownloadPathMode { get; set; } = 0;
         public string CustomDownloadPath { get; set; } = string.Empty;
-        public bool AskDownloadPathEachFile { get; set; } = false;
+        public bool AskDownloadPathEachFile { get; set; } = true;
         public bool ShowChatName { get; set; } = true;
         public bool TotalUnreadCount { get; set; } = true;
         public bool UseSystemWindowFrame { get; set; } = false;
@@ -52,7 +52,7 @@ namespace SecureChat.Client.Settings
                 if (!File.Exists(path)) return s;
 
                 var text = File.ReadAllText(path, Encoding.UTF8);
-                var parts = text.Contains('\u001F') ? text.Split('\u001F') : text.Split('|');
+                var parts = text.Split('\u001F');
 
                 if (parts.Length >= 8)
                 {
@@ -64,15 +64,6 @@ namespace SecureChat.Client.Settings
                     if (bool.TryParse(parts[5], out var p4)) s.UseSystemWindowFrame = p4;
                     if (bool.TryParse(parts[6], out var p5)) s.ShowTaskbarIcon = p5;
                     if (bool.TryParse(parts[7], out var p6)) s.UseMonochromeIcon = p6;
-                }
-                else if (parts.Length >= 7)
-                {
-                    if (bool.TryParse(parts[1], out var p1)) s.AskDownloadPathEachFile = p1;
-                    if (bool.TryParse(parts[2], out var p2)) s.ShowChatName = p2;
-                    if (bool.TryParse(parts[3], out var p3)) s.TotalUnreadCount = p3;
-                    if (bool.TryParse(parts[4], out var p4)) s.UseSystemWindowFrame = p4;
-                    if (bool.TryParse(parts[5], out var p5)) s.ShowTaskbarIcon = p5;
-                    if (bool.TryParse(parts[6], out var p6)) s.UseMonochromeIcon = p6;
                 }
             }
             catch { }

@@ -179,6 +179,8 @@ namespace SecureChat.Client
         private readonly ConcurrentDictionary<string, string> _forwardOriginalSenderId = new();
         private readonly HashSet<string> _pinnedMessageIds = new();
         private readonly Dictionary<string, DateTime?> _convMuteUntil = new(); // conversationId → muted until (null = not muted)
+        private Icon? _originalIcon;
+        private static Icon? _monochromeIcon;
         private Panel _pnlPinnedBar = null!;
         private Label _lblPinnedText = null!;
         private Button _btnUnpin = null!;
@@ -564,16 +566,21 @@ namespace SecureChat.Client
         private void ApplyMonochromeIcon()
         {
             var adv = SecureChat.Client.Settings.AdvancedSettings.Default;
-            try
+            var path = Path.Combine(AppContext.BaseDirectory, "Resources", "Icons", "app.ico");
+
+            _originalIcon ??= this.Icon;
+
+            if (_monochromeIcon == null && File.Exists(path))
             {
-                var path = Path.Combine(Application.StartupPath, "Resources", "Icons", "app.ico");
-                if (adv.UseMonochromeIcon && File.Exists(path))
-                {
-                    using var stream = File.OpenRead(path);
-                    Icon = new Icon(stream);
-                }
+                try { _monochromeIcon = new Icon(path); }
+                catch { }
             }
-            catch { }
+
+            bool useMono = adv.UseMonochromeIcon && _monochromeIcon != null;
+            Icon target = useMono ? _monochromeIcon : _originalIcon;
+
+            if (this.Icon != target)
+                this.Icon = target;
         }
 
         private void ApplyAdvancedSettings()
