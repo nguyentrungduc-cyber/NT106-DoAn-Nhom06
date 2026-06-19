@@ -86,6 +86,7 @@ namespace SecureChat.Client.Forms.Call
         private bool _isGroupCall;
         private bool _cleanupDone;
         private bool _leaveInitiated;
+        private bool _serverCleanupAttempted;
 
         // drag state for local preview
         private bool isDragging;
@@ -165,13 +166,10 @@ namespace SecureChat.Client.Forms.Call
             Shown += (_, __) => _ = JoinCallGroupAsync();
             FormClosing += async (_, __) =>
             {
-                if (!_leaveInitiated)
-                {
-                    if (_isGroupCall)
-                        await LeaveCallAsync();
-                    else
-                        await EndCallAsync();
-                }
+                // Always notify the server on close, regardless of _leaveInitiated.
+                // This fixes the bug where the call stays Ongoing in the DB if
+                // EndCallAsync from the button handler failed silently (catch { }).
+                await CleanupCallOnServerAsync();
             };
             FormClosed += (_, __) =>
             {
@@ -1136,14 +1134,21 @@ namespace SecureChat.Client.Forms.Call
             _ = JoinCallGroupAsync();
         }
 
-        private async Task LeaveCallAsync()
+        private async Task CleanupCallOnServerAsync()
         {
+            if (_serverCleanupAttempted)
+                return;
+            _serverCleanupAttempted = true;
+
             try
             {
                 if (!string.IsNullOrWhiteSpace(_callId) && !string.IsNullOrWhiteSpace(_conversationId))
                 {
                     var http = ApiClient.Instance.GetHttpClient();
-                    await http.PostAsync($"api/conversations/{_conversationId}/calls/{_callId}/leave", null);
+                    var url = _isGroupCall
+                        ? $"api/conversations/{_conversationId}/calls/{_callId}/leave"
+                        : $"api/conversations/{_conversationId}/calls/{_callId}/end";
+                    await http.PostAsync(url, null);
                 }
             }
             catch { }
@@ -1152,7 +1157,6 @@ namespace SecureChat.Client.Forms.Call
             {
                 if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
-                    await _signalRClient.SendCallSignalAsync(_callId, "CALL_LEFT");
                     await _signalRClient.LeaveCallAsync(_callId);
                 }
             }
@@ -1161,29 +1165,34 @@ namespace SecureChat.Client.Forms.Call
             try { await (_audioHandler?.StopAsync() ?? Task.CompletedTask); } catch { }
         }
 
-        private async Task EndCallAsync()
+        private async Task LeaveCallAsync()
         {
+            await CleanupCallOnServerAsync();
+
+            // Send CALL_LEFT signal (only from explicit button press, not FormClosing)
             try
             {
-                if (!string.IsNullOrWhiteSpace(_callId) && !string.IsNullOrWhiteSpace(_conversationId))
+                if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
-                    var http = ApiClient.Instance.GetHttpClient();
-                    await http.PostAsync($"api/conversations/{_conversationId}/calls/{_callId}/end", null);
+                    await _signalRClient.SendCallSignalAsync(_callId, "CALL_LEFT");
                 }
             }
             catch { }
+        }
 
+        private async Task EndCallAsync()
+        {
+            await CleanupCallOnServerAsync();
+
+            // Send CALL_ENDED signal (only from explicit button press, not FormClosing)
             try
             {
                 if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
                     await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED");
-                    await _signalRClient.LeaveCallAsync(_callId);
                 }
             }
             catch { }
-
-            try { await (_audioHandler?.StopAsync() ?? Task.CompletedTask); } catch { }
         }
 
         // ═════════════════════════════════════════════════════════════════════════

@@ -31,6 +31,7 @@ namespace SecureChat.Models
                     PublicKey = "encrypted_demo_value",
                     ShowReadStatus = true,
                     ShowOnlineStatus = true,
+                    LastSeenUtc = null,
                     CreatedAt = t0,
                     UpdatedAt = t0
                 },
@@ -47,6 +48,7 @@ namespace SecureChat.Models
                     PublicKey = "encrypted_demo_value",
                     ShowReadStatus = true,
                     ShowOnlineStatus = true,
+                    LastSeenUtc = null,
                     CreatedAt = t0,
                     UpdatedAt = t0
                 },
@@ -63,6 +65,7 @@ namespace SecureChat.Models
                     PublicKey = "encrypted_demo_value",
                     ShowReadStatus = true,
                     ShowOnlineStatus = true,
+                    LastSeenUtc = null,
                     CreatedAt = t0,
                     UpdatedAt = t0
                 }
@@ -272,7 +275,7 @@ namespace SecureChat.Models
                     SenderID = "M0000003",
                     ReplyToID = null,
                     Type = MessageType.Text,
-                    Content = "hello team, test group chat nhé",
+                    Content = "hello team, test group chat nhï¿½",
                     ContentIV = "iv_demo_value",
                     SentAt = t5,
                     DeletedAt = null,

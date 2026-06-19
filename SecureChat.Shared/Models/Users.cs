@@ -45,6 +45,9 @@ namespace SecureChat.Models
 		[Required, Column("show_online_status")]
 		public bool ShowOnlineStatus { get; set; } = true;
 
+		[Column("last_seen_utc")]
+		public DateTime? LastSeenUtc { get; set; }
+
 		[Column("created_at")]
 		public DateTime CreatedAt { get; set; }
 

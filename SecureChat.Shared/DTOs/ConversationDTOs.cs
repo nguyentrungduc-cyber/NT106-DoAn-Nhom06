@@ -51,7 +51,8 @@ namespace SecureChat.DTOs
 		DateTime CreatedAt,
 		int MemberCount,
 		string? LastMessageContent = null,
-		string? LastMessageSenderName = null
+		string? LastMessageSenderName = null,
+		string? OtherUserId = null
 	)
 	{
 		public static ConversationResponse From(Conversation c) => new(
@@ -74,13 +75,15 @@ namespace SecureChat.DTOs
 		DateTime JoinedAt,
 		DateTime? LeftAt,
 		DateTime? BannedUntil,
-		string? LastReadMsgID
+		string? LastReadMsgID,
+		bool IsOnline = false
 	)
 	{
-		public static MemberResponse From(ConversationMember m) => new(
+		public static MemberResponse From(ConversationMember m, bool isOnline = false) => new(
 			m.MemberID, m.ConversationID, m.UserID,
 			m.User != null ? UserResponse.From(m.User) : null,
 			m.Role, m.Nickname, m.EncryptedKey,
-			m.ShowNotifications, m.JoinedAt, m.LeftAt, m.BannedUntil, m.LastReadMsgID);
+			m.ShowNotifications, m.JoinedAt, m.LeftAt, m.BannedUntil, m.LastReadMsgID,
+			isOnline);
 	}
 }

@@ -28,8 +28,9 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, Task>? ConversationUpdated;
         public event Func<string, string, string, string, Task>? MessagePinned;
         public event Func<string, string, Task>? MessageUnpinned;
-        public event Func<string, string, Task>? MemberAdded;
-        public event Func<string, string, Task>? MemberRemoved;
+public event Func<string, string, Task>? MemberAdded;
+public event Func<string, string, Task>? MemberRemoved;
+public event Func<string, bool, DateTime?, Task>? UserPresenceChanged;
 
         public bool IsConnected => _connection.State == HubConnectionState.Connected;
 
@@ -159,6 +160,12 @@ namespace SecureChat.Client.Services.RealTime
                 if (MemberRemoved is not null)
                     await MemberRemoved.Invoke(conversationId, userId);
             });
+
+            _connection.On<string, bool, DateTime?>("UserPresenceChanged", async (userId, isOnline, lastSeenUtc) =>
+            {
+                if (UserPresenceChanged is not null)
+                    await UserPresenceChanged.Invoke(userId, isOnline, lastSeenUtc);
+            });
         }
 
         public Task StartAsync() => _connection.StartAsync();
@@ -286,6 +293,14 @@ namespace SecureChat.Client.Services.RealTime
                 throw new ArgumentException("ConversationId is required.", nameof(conversationId));
 
             return _connection.InvokeAsync("NotifyCallIncoming", conversationId, callId, callerName, callType);
+        }
+
+        public Task QueryUserPresenceAsync(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new ArgumentException("UserId is required.", nameof(userId));
+
+            return _connection.InvokeAsync("QueryUserPresence", userId);
         }
 
         public async ValueTask DisposeAsync()

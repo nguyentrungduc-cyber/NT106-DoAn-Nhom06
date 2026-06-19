@@ -4,17 +4,51 @@ using Microsoft.AspNetCore.SignalR;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Services;
 
 namespace SecureChat.Server.Hubs
 {
     [Authorize]
-    public sealed class ChatHub(ConversationRepository conversations, MessageRepository messages, CallRepository calls, ILogger<ChatHub> logger) : Hub
+    public sealed class ChatHub(
+        ConversationRepository conversations,
+        MessageRepository messages,
+        CallRepository calls,
+        UserRepository users,
+        PresenceTracker presence,
+        ILogger<ChatHub> logger) : Hub
     {
         private string Me => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
         public override async Task OnConnectedAsync()
         {
             logger.LogInformation("SignalR connected: {ConnectionId} User={UserId}", Context.ConnectionId, Me);
+
+            if (string.IsNullOrWhiteSpace(Me))
+            {
+                await base.OnConnectedAsync();
+                return;
+            }
+
+            bool wasOffline = presence.IsFirstConnection(Me);
+            presence.AddConnection(Me, Context.ConnectionId);
+
+            // Always join conversation groups for every connection (not just first)
+            var myConvs = await conversations.GetConversationsByMemberAsync(Me);
+            foreach (var conv in myConvs)
+                await Groups.AddToGroupAsync(Context.ConnectionId, conv.ConversationID);
+
+            // Only broadcast online if this is the user's first active connection
+            // AND they have ShowOnlineStatus enabled
+            if (wasOffline)
+            {
+                var user = await users.GetByIdAsync(Me);
+                if (user?.ShowOnlineStatus == true)
+                {
+                    foreach (var conv in myConvs)
+                        await Clients.Group(conv.ConversationID).SendAsync("UserPresenceChanged", Me, true, (DateTime?)null);
+                }
+            }
+
             await base.OnConnectedAsync();
         }
 
@@ -25,7 +59,52 @@ namespace SecureChat.Server.Hubs
             else
                 logger.LogWarning(exception, "SignalR disconnected with error: {ConnectionId} User={UserId}", Context.ConnectionId, Me);
 
+            if (string.IsNullOrWhiteSpace(Me))
+            {
+                await base.OnDisconnectedAsync(exception);
+                return;
+            }
+
+            presence.RemoveConnection(Me, Context.ConnectionId);
+
+            // Re-check online status — a new connection may have been established
+            // during the disconnect handler (race condition mitigation)
+            if (!presence.IsOnline(Me))
+            {
+                var user = await users.GetByIdAsync(Me);
+                if (user != null)
+                {
+                    user.LastSeenUtc = DateTime.UtcNow;
+                    await users.UpdateAsync(user);
+
+                    if (user.ShowOnlineStatus)
+                    {
+                        var myConvs = await conversations.GetConversationsByMemberAsync(Me);
+                        foreach (var conv in myConvs)
+                            await Clients.Group(conv.ConversationID).SendAsync("UserPresenceChanged", Me, false, user.LastSeenUtc);
+                    }
+                }
+            }
+
             await base.OnDisconnectedAsync(exception);
+        }
+
+        public async Task QueryUserPresence(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId)) return;
+            var user = await users.GetByIdAsync(userId);
+            if (user is null) return;
+
+            bool online = presence.IsOnline(userId);
+
+            // Respect ShowOnlineStatus privacy toggle
+            if (user.ShowOnlineStatus == false)
+            {
+                await Clients.Caller.SendAsync("UserPresenceChanged", userId, false, (DateTime?)null);
+                return;
+            }
+
+            await Clients.Caller.SendAsync("UserPresenceChanged", userId, online, user.LastSeenUtc);
         }
 
         /// <summary>
