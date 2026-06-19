@@ -1,6 +1,7 @@
 using SecureChat.Client.Components.Chat;
 using SecureChat.Client.Forms.Profile;
 using SecureChat.Client.Services;
+using SecureChat.Client.Settings;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using System;
@@ -197,6 +198,7 @@ namespace SecureChat.Client
 
             // Hybrid encryption: Generate and register RSA keypair at startup
             this.Load += FrmMainChat_Load;
+            this.Activated += (_, __) => NotificationManager.StopFlash(this.Handle);
         }
 
         private async void FrmMainChat_Load(object? sender, EventArgs e)
@@ -5743,9 +5745,16 @@ namespace SecureChat.Client
                         _convOtherUserId[convId] = conv.OtherUserId;
 
                     BuildConvList();
-                    // Trigger avatar loading if the conversation has an avatar URL
                     if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
                         _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
+
+                    var s = NotificationSettings.Default;
+                    if (s.DesktopNotifications)
+                        NotificationManager.ShowDesktopNotification(display, "New conversation created");
+                    if (s.FlashTaskbar)
+                        NotificationManager.FlashWindow(this.Handle);
+                    if (s.AllowSound)
+                        NotificationManager.PlayNotificationSound(s.Volume);
                 }));
             };
             _signalRClient.ProfileUpdated += async (userId, displayName, username, avatarUrl) =>
@@ -5769,18 +5778,24 @@ namespace SecureChat.Client
                         UpdateSettingsHeaderUI();
                     }
                     // If this is a profile update for another user in a direct conversation,
-                    // find and refresh the conversation avatar
+                    // update the conversation name and avatar
                     if (!string.IsNullOrWhiteSpace(capturedUserId))
                     {
-                        foreach (var c in _convs)
+                        for (int i = 0; i < _convs.Count; i++)
                         {
+                            var c = _convs[i];
                             if (!c.IsGroup && !string.IsNullOrWhiteSpace(c.Name))
                             {
-                                // For direct conversations, the conversation name is the other user's display name.
-                                // Check if the display name or username matches.
-                                if ((!string.IsNullOrWhiteSpace(displayName) && c.Name == displayName)
+                                bool nameMatches = (!string.IsNullOrWhiteSpace(displayName) && c.Name == displayName)
                                     || (_senderDisplayNameMap.TryGetValue(capturedUsername, out var dn) && c.Name == dn)
-                                    || c.Name == capturedUsername)
+                                    || c.Name == capturedUsername;
+
+                                if (nameMatches && !string.IsNullOrWhiteSpace(displayName) && c.Name != displayName)
+                                {
+                                    _convs[i] = (c.Id, displayName, c.Preview, c.Time, c.Unread, c.IsGroup);
+                                }
+
+                                if (nameMatches)
                                 {
                                     _ = RefreshAvatarForConversationAsync(c.Id, capturedUrl);
                                 }
@@ -5861,6 +5876,23 @@ namespace SecureChat.Client
                     // Refresh right sidebar if open and showing this conversation
                     if (_isSidebarOpen && _activeConvId == convId)
                         _ = LoadRightSidebarContentAsync();
+
+                    // Skip notification if the member is ourselves
+                    if (userId == _currentUserId || (!string.IsNullOrWhiteSpace(_currentUsername) && userId == _currentUsername))
+                        return;
+
+                    var s = NotificationSettings.Default;
+                    if (!s.ContactJoinedNotifications)
+                        return;
+                    if (convId == _activeConvId)
+                        return;
+
+                    if (s.DesktopNotifications)
+                        NotificationManager.ShowDesktopNotification(old.Name, "New member joined");
+                    if (s.FlashTaskbar)
+                        NotificationManager.FlashWindow(this.Handle);
+                    if (s.AllowSound)
+                        NotificationManager.PlayNotificationSound(s.Volume);
                 }));
             };
             _signalRClient.MemberRemoved += async (convId, userId) =>
@@ -5901,14 +5933,32 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() =>
                 {
-                    if (_pinnedMessageIds.Add(messageId))
-                    {
-                        if (!string.IsNullOrWhiteSpace(pinnedByName))
-                            _pinnedByMap[messageId] = pinnedByName;
-                        UpdatePinnedBar();
-                        if (_activeConvId == convId)
-                            BuildMessages();
-                    }
+                    if (!_pinnedMessageIds.Add(messageId))
+                        return;
+
+                    if (!string.IsNullOrWhiteSpace(pinnedByName))
+                        _pinnedByMap[messageId] = pinnedByName;
+                    UpdatePinnedBar();
+                    if (_activeConvId == convId)
+                        BuildMessages();
+
+                    var s = NotificationSettings.Default;
+                    if (!s.PinnedMessageNotifications)
+                        return;
+                    if (convId == _activeConvId)
+                        return;
+
+                    int idx = _convs.FindIndex(c => c.Id == convId);
+                    if (idx < 0) return;
+
+                    string convName = _convs[idx].Name;
+                    string byName = !string.IsNullOrWhiteSpace(pinnedByName) ? pinnedByName : "Someone";
+                    if (s.DesktopNotifications)
+                        NotificationManager.ShowDesktopNotification(convName, $"Pinned a message by {byName}");
+                    if (s.FlashTaskbar)
+                        NotificationManager.FlashWindow(this.Handle);
+                    if (s.AllowSound)
+                        NotificationManager.PlayNotificationSound(s.Volume);
                 }));
             };
             _signalRClient.MessageUnpinned += async (convId, messageId) =>
@@ -6041,6 +6091,30 @@ namespace SecureChat.Client
 
                         if (message.ConversationID == _activeConvId)
                             BuildMessages();
+
+                        if (!dm.Out && idx >= 0 && message.ConversationID != _activeConvId)
+                        {
+                            var conv2 = _convs[idx];
+                            var s = NotificationSettings.Default;
+                            bool convCategoryOk = conv2.IsGroup ? s.GroupNotifications : s.PrivateChatNotifications;
+
+                            if (convCategoryOk)
+                            {
+                                if (s.DesktopNotifications)
+                                {
+                                    string convName = conv2.Name;
+                                    string senderName = (string.IsNullOrEmpty(dm.Sender) ? "" : dm.Sender);
+                                    if (!string.IsNullOrEmpty(dm.Sender) && _senderDisplayNameMap.TryGetValue(dm.Sender, out var dn) && !string.IsNullOrEmpty(dn))
+                                        senderName = dn;
+                                    string preview = dm.Text.Length > 100 ? dm.Text[..100] + "..." : dm.Text;
+                                    NotificationManager.ShowDesktopNotification(convName, $"{senderName}: {preview}");
+                                }
+                                if (s.FlashTaskbar)
+                                    NotificationManager.FlashWindow(this.Handle);
+                                if (s.AllowSound)
+                                    NotificationManager.PlayNotificationSound(s.Volume);
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -6123,6 +6197,12 @@ namespace SecureChat.Client
         private async Task HandleCallIncomingAsync(string callId, string callerName, CallType callType, string conversationId)
         {
             if (IsDisposed) return;
+
+            var s = NotificationSettings.Default;
+            if (s.FlashTaskbar)
+                NotificationManager.FlashWindow(this.Handle);
+            if (s.AllowSound)
+                NotificationManager.PlayNotificationSound(s.Volume);
 
             bool accepted = false;
             if (InvokeRequired)
