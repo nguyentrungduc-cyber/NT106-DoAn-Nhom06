@@ -28,6 +28,9 @@ namespace SecureChat.Models
 		[Column("ended_at")]
 		public DateTime? EndedAt { get; set; }
 
+		[Column("has_history_message")]
+		public bool HasHistoryMessage { get; set; }
+
 		[ForeignKey(nameof(ConversationID))]
 		public Conversation Conversation { get; set; } = null!;
 

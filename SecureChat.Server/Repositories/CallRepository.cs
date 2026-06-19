@@ -138,6 +138,33 @@ namespace SecureChat.Repositories
 					&& p.Status != CallParticipantStatus.Declined
 					&& p.Status != CallParticipantStatus.Missed);
 
+		public async Task<bool> TryCreateCallHistoryMessageAsync(string callID, Message sysMsg, CancellationToken ct = default)
+		{
+			using var tx = await db.Database.BeginTransactionAsync(ct);
+			try
+			{
+				var rows = await db.Database.ExecuteSqlInterpolatedAsync(
+					$"UPDATE CallLogs SET has_history_message = 1 WHERE call_id = {callID} AND has_history_message = 0", ct);
+
+				if (rows == 0)
+				{
+					await tx.RollbackAsync(ct);
+					return false;
+				}
+
+				sysMsg.SentAt = DateTime.UtcNow;
+				db.Messages.Add(sysMsg);
+				await db.SaveChangesAsync(ct);
+				await tx.CommitAsync(ct);
+				return true;
+			}
+			catch
+			{
+				await tx.RollbackAsync(ct);
+				throw;
+			}
+		}
+
 		public async Task DeleteCallAsync(string callID)
 		{
 			var call = await db.CallLogs.FindAsync(callID);

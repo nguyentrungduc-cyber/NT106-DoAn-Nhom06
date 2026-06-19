@@ -357,7 +357,7 @@ namespace SecureChat.Models
 				.ToTable(t => t.HasCheckConstraint("chk_call_type", "call_type in (0, 1)"));
 
 			m.Entity<CallLog>()
-				.ToTable(t => t.HasCheckConstraint("chk_call_status", "status between 0 and 3"));
+				.ToTable(t => t.HasCheckConstraint("chk_call_status", "status between 0 and 4"));
 
 			m.Entity<CallParticipant>()
 				.ToTable(t => t.HasCheckConstraint("chk_participant_status", "status between 0 and 4"));

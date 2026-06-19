@@ -161,8 +161,23 @@ namespace SecureChat.Controllers
 			if (call is null || call.ConversationID != conversationID)
 				return NotFound();
 
+			var preEndStatus = call.Status;
+			var hasDeclined = call.Participants?.Any(p => p.Status == CallParticipantStatus.Declined) ?? false;
+
 			await calls.EndCallAsync(callID);
-			await CreateCallSystemMessageAsync(call, missed: false);
+
+			if (preEndStatus == CallStatus.Ongoing)
+			{
+				var ended = await calls.GetByIdAsync(callID) ?? call;
+				await CreateCallSystemMessageAsync(ended, missed: false);
+			}
+			else if (preEndStatus == CallStatus.Ringing && hasDeclined)
+			{
+				var ended = await calls.GetByIdAsync(callID) ?? call;
+				await CreateCallSystemMessageAsync(ended, missed: true);
+			}
+			// Ringing without decline → caller cancelled before answer → no message
+
 			return NoContent();
 		}
 
@@ -188,8 +203,22 @@ namespace SecureChat.Controllers
 			// Private call: leaving ends the entire call
 			if (call.Conversation?.Type == ConversationType.Direct)
 			{
+				var preEndStatus = call.Status;
+				var hasDeclined = call.Participants?.Any(p => p.Status == CallParticipantStatus.Declined) ?? false;
+
 				await calls.EndCallAsync(callID);
-				await CreateCallSystemMessageAsync(call, missed: false);
+
+				if (preEndStatus == CallStatus.Ongoing)
+				{
+					var ended = await calls.GetByIdAsync(callID) ?? call;
+					await CreateCallSystemMessageAsync(ended, missed: false);
+				}
+				else if (preEndStatus == CallStatus.Ringing && hasDeclined)
+				{
+					var ended = await calls.GetByIdAsync(callID) ?? call;
+					await CreateCallSystemMessageAsync(ended, missed: true);
+				}
+				// Ringing without decline → caller left without answer → no message
 			}
 			else
 			{
@@ -197,8 +226,16 @@ namespace SecureChat.Controllers
 				var activeCount = await calls.GetActiveParticipantCountAsync(callID);
 				if (activeCount == 0)
 				{
+					var preEndStatus = call.Status;
+
 					await calls.EndCallAsync(callID);
-					await CreateCallSystemMessageAsync(call, missed: false, isGroup: true);
+
+					if (preEndStatus == CallStatus.Ongoing)
+					{
+						var ended = await calls.GetByIdAsync(callID) ?? call;
+						await CreateCallSystemMessageAsync(ended, missed: false, isGroup: true);
+					}
+					// Ringing group call with no active participants → no message
 				}
 			}
 
@@ -234,11 +271,13 @@ namespace SecureChat.Controllers
 				ConversationID = call.ConversationID,
 				SenderID = null,
 				Type = MessageType.Call,
-				Content = content,
-				SentAt = DateTime.UtcNow
+				Content = content
 			};
 
-			await messages.CreateAsync(sysMsg);
+			// Atomic: UPDATE flag + INSERT message in single transaction
+			if (!await calls.TryCreateCallHistoryMessageAsync(call.CallID, sysMsg))
+				return;
+
 			var response = MessageResponse.From(sysMsg);
 
 			await hubContext.Clients

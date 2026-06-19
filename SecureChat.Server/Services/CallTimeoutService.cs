@@ -96,12 +96,13 @@ namespace SecureChat.Server.Services
                 ConversationID = conversationId,
                 SenderID = null,
                 Type = MessageType.Call,
-                Content = content,
-                SentAt = DateTime.UtcNow
+                Content = content
             };
 
-            db.Messages.Add(sysMsg);
-            await db.SaveChangesAsync(ct);
+            // Atomic: UPDATE flag + INSERT message in single transaction
+            var repo = new CallRepository(db);
+            if (!await repo.TryCreateCallHistoryMessageAsync(callId, sysMsg, ct))
+                return;
 
             var response = MessageResponse.From(sysMsg);
 
