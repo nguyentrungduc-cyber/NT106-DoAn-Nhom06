@@ -167,6 +167,12 @@ namespace SecureChat.Client.Services.RealTime
                 if (UserPresenceChanged is not null)
                     await UserPresenceChanged.Invoke(userId, isOnline, lastSeenUtc);
             });
+
+            _connection.On<string, string>("MessageStatusUpdated", async (messageId, status) =>
+            {
+                if (MessageStatusUpdated is not null)
+                    await MessageStatusUpdated.Invoke(messageId, status);
+            });
         }
 
         public Task StartAsync() => _connection.StartAsync();

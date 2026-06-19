@@ -5833,6 +5833,7 @@ namespace SecureChat.Client
 
             _signalRClient.MessageReceived += HandleSignalRMessageAsync;
             _signalRClient.MessageRecalled += HandleSignalRRecalledAsync;
+            _signalRClient.MessageStatusUpdated += HandleMessageStatusUpdatedAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
             _signalRClient.UserTyping += HandleUserTypingAsync;
