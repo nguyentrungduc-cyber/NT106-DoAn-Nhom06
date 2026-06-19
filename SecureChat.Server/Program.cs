@@ -146,4 +146,38 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<SecureChat.Server.Hubs.ChatHub>("/hubs/chat");
 
+// Create Saved Messages conversations for existing users who lack one
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var usersNeedingSaved = await db.Users
+        .Where(u => !db.Conversations
+            .Where(c => c.Type == SecureChat.Models.ConversationType.SavedMessages)
+            .Any(c => c.Members.Any(m => m.UserID == u.UserID)))
+        .ToListAsync();
+
+    foreach (var user in usersNeedingSaved)
+    {
+        var convID = Guid.NewGuid().ToString("N")[..8];
+        db.Conversations.Add(new SecureChat.Models.Conversation
+        {
+            ConversationID = convID,
+            Type = SecureChat.Models.ConversationType.SavedMessages,
+            Name = "Saved Messages",
+            CreatedBy = user.UserID,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.ConversationMembers.Add(new SecureChat.Models.ConversationMember
+        {
+            MemberID       = Guid.NewGuid().ToString("N")[..8],
+            ConversationID = convID,
+            UserID         = user.UserID,
+            EncryptedKey   = "",
+            Role           = SecureChat.Models.MemberRole.Owner,
+            JoinedAt       = DateTime.UtcNow
+        });
+    }
+    await db.SaveChangesAsync();
+}
+
 app.Run();
