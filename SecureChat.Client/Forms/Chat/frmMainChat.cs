@@ -4494,13 +4494,16 @@ namespace SecureChat.Client
                 audioBubble.Anchor = isOut
                     ? AnchorStyles.Top | AnchorStyles.Right
                     : AnchorStyles.Top | AnchorStyles.Left;
-                audioBubble.Left = isOut
-                    ? panel.Width - audioBubble.Width - rightMargin
-                    : voiceLeftOffset;
+
+                // KHÔNG dùng panel.Width ngay lúc này — panel chưa add vào parent
+                // nên Width = 0, khiến Left tính ra âm rất sâu (bubble trôi lệch trái).
+                // Đặt Left tạm theo voiceLeftOffset, LayoutVoice() sẽ set lại đúng
+                // ngay khi panel có kích thước thật (HandleCreated/ParentChanged/Resize).
+                audioBubble.Left = voiceLeftOffset;
 
                 panel.Height = audioBubble.Height + 8;
 
-                panel.Resize += (s, e) =>
+                void LayoutVoice()
                 {
                     if (panel.ClientSize.Width <= 0) return;
                     int avail = panel.ClientSize.Width - voiceLeftOffset - rightMargin;
@@ -4509,11 +4512,16 @@ namespace SecureChat.Client
                     audioBubble.Left  = isOut
                         ? panel.ClientSize.Width - newW - rightMargin
                         : voiceLeftOffset;
-                };
+                }
+
+                panel.Resize        += (s, e) => LayoutVoice();
+                panel.HandleCreated += (s, e) => LayoutVoice();
+                panel.ParentChanged += (s, e) => LayoutVoice();
 
                 panel.Controls.Add(audioBubble);
 
                 panel.PerformLayout();
+                LayoutVoice(); // thử layout ngay, phòng khi panel đã có size sẵn
                 return WrapForwardIfNeeded(panel, messageId, isOut);
             }
 
