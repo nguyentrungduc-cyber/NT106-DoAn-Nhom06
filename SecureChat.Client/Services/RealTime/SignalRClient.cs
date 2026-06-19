@@ -19,6 +19,7 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, string, byte[], Task>? AudioDataReceived;
         public event Func<string, string, Task>? UserTyping;
         public event Func<string, string, Task>? UserStoppedTyping;
+        public event Func<string, string, Task>? MessageStatusUpdated; // (messageId, status: "Delivered"|"Read")
         public event Func<Exception?, Task>? Closed;
         public event Func<Exception?, Task>? Reconnecting;
         public event Func<string?, Task>? Reconnected;
@@ -179,6 +180,12 @@ public event Func<string, string, Task>? MemberRemoved;
             {
                 if (CallMissed is not null)
                     await CallMissed.Invoke(callId, conversationId, callerName, callType);
+            });
+
+            _connection.On<string, string>("MessageStatusUpdated", async (messageId, status) =>
+            {
+                if (MessageStatusUpdated is not null)
+                    await MessageStatusUpdated.Invoke(messageId, status);
             });
         }
 

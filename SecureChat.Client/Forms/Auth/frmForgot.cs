@@ -170,7 +170,7 @@ namespace SecureChat.Client
             _pnlContent = new Panel { BackColor = Color.Transparent };
 
             // ── Step 1: Email ─────────────────────────
-            var lblEmail = new Label { Text = "Địa chỉ email đã đăng ký:", Font = TG.FontRegular(8.5f), ForeColor = TG.Blue, AutoSize = false, Height = 18, BackColor = Color.Transparent };
+            var lblEmail = new Label { Text = "Địa chỉ email đã đăng ký:", Font = TG.FontRegular(8.5f), ForeColor = TG.Blue, AutoSize = false, Height = 22, BackColor = Color.Transparent };
 
             // Ô nhập email cao 44px, có placeholder gợi ý.
             _tbEmail = new TelegramTextBox { Height = 44 };
@@ -258,12 +258,12 @@ namespace SecureChat.Client
 
 
             // ── Step 3: New Password ──────────────────
-            var lblNew = new Label { Text = "Mật khẩu mới:", Font = TG.FontRegular(8.5f), ForeColor = TG.Blue, AutoSize = false, Height = 18, BackColor = Color.Transparent };
+            var lblNew = new Label { Text = "Mật khẩu mới:", Font = TG.FontRegular(8.5f), ForeColor = TG.Blue, AutoSize = false, Height = 22, BackColor = Color.Transparent };
             _tbNewPass = new TelegramTextBox { Height = 44 };
             _tbNewPass.SetPlaceholder("Ít nhất 8 ký tự...");
             _tbNewPass.PasswordCharValue = '●';
 
-            var lblConf = new Label { Text = "Xác nhận mật khẩu mới:", Font = TG.FontRegular(8.5f), ForeColor = TG.Blue, AutoSize = false, Height = 18, BackColor = Color.Transparent };
+            var lblConf = new Label { Text = "Xác nhận mật khẩu mới:", Font = TG.FontRegular(8.5f), ForeColor = TG.Blue, AutoSize = false, Height = 22, BackColor = Color.Transparent };
             _tbConfirmPass = new TelegramTextBox { Height = 44 };
             _tbConfirmPass.SetPlaceholder("Nhập lại mật khẩu...");
             _tbConfirmPass.PasswordCharValue = '●';

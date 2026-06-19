@@ -15,10 +15,14 @@ namespace SecureChat.Server.Hubs
         CallRepository calls,
         UserRepository users,
         PrivacyRepository privacy,
+        FriendRepository friends,
         PresenceTracker presence,
         ILogger<ChatHub> logger) : Hub
     {
         private string Me => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+
+        // Track connectionId → userId để dùng GroupExcept khi block
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _connToUser = new();
 
         public override async Task OnConnectedAsync()
         {
@@ -29,6 +33,9 @@ namespace SecureChat.Server.Hubs
                 await base.OnConnectedAsync();
                 return;
             }
+
+            // Track connectionId → userId for block suppression
+            _connToUser[Context.ConnectionId] = Me;
 
             bool wasOffline = presence.IsFirstConnection(Me);
             presence.AddConnection(Me, Context.ConnectionId);
@@ -65,6 +72,9 @@ namespace SecureChat.Server.Hubs
                 await base.OnDisconnectedAsync(exception);
                 return;
             }
+
+            // Clean up connection tracking for block suppression
+            _connToUser.TryRemove(Context.ConnectionId, out _);
 
             presence.RemoveConnection(Me, Context.ConnectionId);
 
@@ -162,7 +172,37 @@ namespace SecureChat.Server.Hubs
             if (member is null || member.LeftAt is not null)
                 throw new HubException("You are not a member of this conversation.");
 
-            await Clients.Group(conversationId).SendAsync("MessageReceived", message);
+            var conversation = await conversations.GetByIdAsync(conversationId);
+            if (conversation?.Type == ConversationType.Direct)
+            {
+                // DM: tìm connectionId của người bị chặn rồi dùng GroupExcept
+                var activeMembers = await conversations.GetActiveMembersAsync(conversationId);
+                var excludedConnIds = new List<string>();
+
+                foreach (var m in activeMembers.Where(m => m.UserID != Me))
+                {
+                    bool isBlocked = await friends.IsBlockedEitherWayAsync(Me, m.UserID);
+                    logger.LogInformation("Block check: sender={Sender} receiver={Receiver} isBlocked={IsBlocked}", Me, m.UserID, isBlocked);
+                    if (isBlocked)
+                    {
+                        // Lấy tất cả connectionId của user bị chặn
+                        var blockedConns = _connToUser
+                            .Where(kv => kv.Value == m.UserID)
+                            .Select(kv => kv.Key)
+                            .ToList();
+                        excludedConnIds.AddRange(blockedConns);
+                    }
+                }
+
+                // Broadcast trong group nhưng exclude connection của người bị chặn
+                await Clients.GroupExcept(conversationId, excludedConnIds)
+                             .SendAsync("MessageReceived", message);
+            }
+            else
+            {
+                // Group chat: broadcast bình thường, không check block
+                await Clients.Group(conversationId).SendAsync("MessageReceived", message);
+            }
         }
 
 		/// <summary>

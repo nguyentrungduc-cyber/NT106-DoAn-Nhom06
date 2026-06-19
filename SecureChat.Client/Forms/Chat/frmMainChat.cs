@@ -146,6 +146,8 @@ namespace SecureChat.Client
         // bằng MessageDecryptor.ProcessAsync (E2EE: server không thấy plaintext).
 
         private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new();
+        // Track delivery status cho từng messageId
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SecureChat.DTOs.DeliveryStatus> _msgDelivery = new();
         private readonly Dictionary<string, DateTime> _messageDates = new();
 
 
@@ -430,6 +432,8 @@ namespace SecureChat.Client
                     }
                     _messageDates[m.MessageID] = m.SentAt.ToLocalTime();
                     _allMsgs[convId].Add((m.MessageID, text, isOut, time, sender));
+                    if (isOut)
+                        _msgDelivery[m.MessageID] = m.Delivery;
                 }
 
                 BeginInvoke(new Action(() => BuildMessages()));
@@ -1079,9 +1083,11 @@ namespace SecureChat.Client
             {
                 Text = "✕",
                 FlatStyle = FlatStyle.Flat,
-                Size = new Size(20, 20),
+                Size = new Size(28, 28),   // khớp chiều cao panel, không bị clip
                 Cursor = Cursors.Hand,
                 ForeColor = TG.TextSecondary,
+                Font = new Font("Segoe UI Symbol", 9f), // font nhỏ để ký tự vừa trong 28px
+                TextAlign = ContentAlignment.MiddleCenter,
             };
             _btnUnpin.FlatAppearance.BorderSize = 0;
             _btnUnpin.Click += (s, e) => { _isPinnedPopupOpen = false; _pnlPinnedPopup.Visible = false; OnUnpinMessage(); };
@@ -1107,9 +1113,18 @@ namespace SecureChat.Client
             _pnlPinnedBar.Controls.Add(_btnUnpin);
             void LayoutPinBar()
             {
-                _lblPinnedText.Width = Math.Max(100, _pnlPinnedBar.Width - 72);
-                downArrow.Location = new Point(_pnlPinnedBar.Width - 42, 7);
-                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - 28, 4);
+                // Layout từ phải sang trái: [✕ 28px] [▾ 24px] [text phần còn lại]
+                const int btnW   = 28;
+                const int arrowW = 24;
+                const int pad    = 4;
+
+                _btnUnpin.Size     = new Size(btnW, _pnlPinnedBar.Height); // full height = không bị clip
+                _btnUnpin.Location = new Point(_pnlPinnedBar.Width - pad - btnW, 0);
+
+                downArrow.Location = new Point(_btnUnpin.Left - arrowW - 2,
+                                               (_pnlPinnedBar.Height - downArrow.Height) / 2);
+
+                _lblPinnedText.Width = Math.Max(80, downArrow.Left - 12);
             }
             _pnlPinnedBar.Resize += (_, __) => LayoutPinBar();
             _pnlPinnedBar.VisibleChanged += (_, __) => { if (_pnlPinnedBar.Visible) LayoutPinBar(); };
@@ -1121,6 +1136,7 @@ namespace SecureChat.Client
                 _isPinnedPopupOpen = !_isPinnedPopupOpen;
                 if (_isPinnedPopupOpen) RebuildPinnedPopup();
                 _pnlPinnedPopup.Visible = _isPinnedPopupOpen;
+                downArrow.Text = _isPinnedPopupOpen ? "▴" : "▾";
             }
             _lblPinnedText.Click += TogglePinnedPopup;
             downArrow.Click += TogglePinnedPopup;
@@ -3089,9 +3105,17 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(11f),
                 ForeColor = Color.White,
                 AutoSize = false,
-                Height = 22,
-                Location = new Point(80, 52),
+                Height = 28,           // tăng từ 22 → 28 để chứa dấu tiếng Việt (ễ, ắ...)
+                Width = smw - 80 - 14, // smw - leftPos(80) - rightMargin(14)
+                Location = new Point(80, 58),
                 BackColor = Color.Transparent,
+                AutoEllipsis = true,   // hiện "..." nếu tên quá dài
+            };
+
+            // Resize handler: cập nhật width khi menu thay đổi kích thước
+            _pnlSettingsHeader.Resize += (s, e) =>
+            {
+                _lblSettingsUserName.Width = _pnlSettingsHeader.Width - 80 - 14;
             };
 
             _pnlSettingsHeader.Controls.AddRange(new Control[] { btnClose, _settingsAvatar, _lblSettingsUserName });
@@ -3639,14 +3663,29 @@ namespace SecureChat.Client
             // Đảm bảo có list (rỗng nếu chưa sync) trước khi vẽ.
             BuildMessages();
 
-			// Sync tin nhắn từ MariaDB (chỉ làm 1 lần / conv) rồi join SignalR group
-			// để nhận realtime cho các tin sau đó.
-			await SyncMessagesForActiveConversationAsync(convId);
-			await JoinConversationSignalRAsync(convId);
-			await LoadPinsAsync(convId);
+            // Sync tin nhắn từ MariaDB (chỉ làm 1 lần / conv) rồi join SignalR group
+            // để nhận realtime cho các tin sau đó.
+            await SyncMessagesForActiveConversationAsync(convId);
+            await JoinConversationSignalRAsync(convId);
+            await LoadPinsAsync(convId);
 
-			// Trigger background preview sync for all conversations after opening any conversation
-			_ = SyncLastMessagePreviewsAsync();
+            // Đánh dấu tất cả tin chưa đọc là đã đọc
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    if (_allMsgs.TryGetValue(convId, out var msgs))
+                    {
+                        foreach (var (id, _, isOut, _, _) in msgs)
+                        {
+                            if (!isOut) // chỉ mark read cho tin người khác gửi
+                                await http.PostAsync($"api/conversations/{convId}/messages/{id}/read", null);
+                        }
+                    }
+                }
+                catch { }
+            });
         }
 
         // ════════════════════════════════════════════
@@ -4603,22 +4642,43 @@ namespace SecureChat.Client
                         Array.Empty<byte>(), Array.Empty<byte>(), durationSec, isOut);
                 }
 
+                const int rightMargin = 10; // khớp với text bubble: x = ClientSize.Width - bw - 10
+                int voiceLeftOffset = (!isOut && isGroup) ? 44 : 10;
+                const int voiceBubbleW = 300; // cố định, KHÔNG co giãn theo panel.Width
+
+                audioBubble.Width  = voiceBubbleW;
                 audioBubble.Top    = 4;
-                audioBubble.Anchor = isOut ? AnchorStyles.Right : AnchorStyles.Left;
-                audioBubble.Width  = Math.Min(360, Math.Max(260, (int)(_pnlMessages.ClientSize.Width * 0.45f)));
-                panel.Height       = audioBubble.Height + 8;
-                panel.Resize += (s, e) =>
+                audioBubble.Anchor = isOut
+                    ? AnchorStyles.Top | AnchorStyles.Right
+                    : AnchorStyles.Top | AnchorStyles.Left;
+
+                // KHÔNG dùng panel.Width ngay lúc này — panel chưa add vào parent
+                // nên Width = 0, khiến Left tính ra âm rất sâu (bubble trôi lệch trái).
+                // Đặt Left tạm theo voiceLeftOffset, LayoutVoice() sẽ set lại đúng
+                // ngay khi panel có kích thước thật (HandleCreated/ParentChanged/Resize).
+                audioBubble.Left = voiceLeftOffset;
+
+                panel.Height = audioBubble.Height + 8;
+
+                void LayoutVoice()
                 {
-                    int leftOffset = (!isOut && isGroup) ? 44 : 10;
-                    if (isOut)
-                        audioBubble.Left = Math.Max(10, panel.ClientSize.Width - audioBubble.Width - 10);
-                    else
-                        audioBubble.Left = leftOffset;
-                };
+                    if (panel.ClientSize.Width <= 0) return;
+                    // audioBubble GIỮ NGUYÊN 300px (giống bubble text co theo nội dung,
+                    // không full-width theo panel chứa nó) — chỉ Left thay đổi để căn phải/trái
+                    audioBubble.Width = voiceBubbleW;
+                    audioBubble.Left  = isOut
+                        ? panel.ClientSize.Width - voiceBubbleW - rightMargin
+                        : voiceLeftOffset;
+                }
+
+                panel.Resize        += (s, e) => LayoutVoice();
+                panel.HandleCreated += (s, e) => LayoutVoice();
+                panel.ParentChanged += (s, e) => LayoutVoice();
 
                 panel.Controls.Add(audioBubble);
 
                 panel.PerformLayout();
+                LayoutVoice(); // thử layout ngay, phòng khi panel đã có size sẵn
                 return WrapForwardIfNeeded(panel, messageId, isOut);
             }
 
@@ -4969,6 +5029,21 @@ namespace SecureChat.Client
                 int fwdMinBw = (int)(fwdPrefixWidth + Math.Min(fwdNameMeasuredW, maxW - pad * 2 - 10 - fwdPrefixWidth) + pad * 2 + 10);
                 minBw = Math.Max(minBw, Math.Min(maxW, fwdMinBw));
             }
+            // Khi có timer tự hủy: đảm bảo bubble đủ rộng cho [⏱ Xs] + [time] + [tick]
+            bool hasExpiryTimer = !string.IsNullOrEmpty(messageId) && _expirationService.IsTracking(messageId);
+            if (hasExpiryTimer)
+            {
+                var timeSzMeasure = TextRenderer.MeasureText(time, TG.FontRegular(7.5f));
+                // Đo thực tế text dài nhất có thể — "3600s" để tránh undercount do TextRenderer padding
+                using var timerFontRef = TG.FontSemiBold(7.5f);
+                var maxTimerTextSz = TextRenderer.MeasureText("3600s", timerFontRef);
+                const int timerIconW = 14;
+                const int timerGap   = 6;
+                int tickW     = isOut ? 26 : 0;
+                int timerBlockMaxW = timerIconW + maxTimerTextSz.Width + timerGap;
+                int neededBw  = pad * 2 + timerBlockMaxW + timeSzMeasure.Width + tickW + 8;
+                minBw = Math.Max(minBw, neededBw);
+            }
             int bw = Math.Min(maxW, Math.Max((int)sz.Width + pad * 2 + 10, minBw));
 
             int bh = (int)sz.Height + pad * 2 + statusHeight + senderHeight + replyBlockHeight + forwardHeaderHeight;
@@ -5090,6 +5165,22 @@ namespace SecureChat.Client
 
                 // 4. Thời gian và dấu tick ✓✓
                 var timeSz = TextRenderer.MeasureText(time, TG.FontRegular(7.5f));
+
+                // Tính trước timerBlockW để dịch tx sang trái nhường chỗ cho timer
+                int timerBlockW = 0;
+                string? timerTextCached = null;
+                if (!string.IsNullOrWhiteSpace(messageId) && _expirationService.IsTracking(messageId))
+                {
+                    int? remSec = _expirationService.GetRemainingSeconds(messageId);
+                    if (remSec.HasValue && remSec.Value > 0)
+                    {
+                        timerTextCached = FormatRemainingTime(remSec.Value);
+                        using var timerFontMeasure = TG.FontSemiBold(7.5f);
+                        var timerSzMeasure = TextRenderer.MeasureText(timerTextCached, timerFontMeasure);
+                        timerBlockW = 14 + timerSzMeasure.Width + 6; // iconW + textW + gap
+                    }
+                }
+
                 float tx = x + bw - timeSz.Width - pad - (isOut ? 26 : 0);
                 float ty = y + bh - timeSz.Height - 6;
                 e.Graphics.DrawString(time, TG.FontRegular(7.5f), new SolidBrush(TG.TextTime), tx, ty);
@@ -5098,25 +5189,52 @@ namespace SecureChat.Client
                 {
                     float tickX = x + bw - pad - 22;
                     using var tickFont = new Font("Segoe UI Symbol", 8f, FontStyle.Bold);
-                    e.Graphics.DrawString("✓", tickFont, new SolidBrush(TG.Blue), tickX, ty - 1);
+
+                    // Lấy delivery status — default Sent nếu chưa có
+                    var delivery = (!string.IsNullOrEmpty(messageId) && _msgDelivery.TryGetValue(messageId, out var ds))
+                        ? ds : SecureChat.DTOs.DeliveryStatus.Sent;
+
+                    string tickText;
+                    Color tickColor;
+                    switch (delivery)
+                    {
+                        case SecureChat.DTOs.DeliveryStatus.Read:
+                            tickText  = "✓✓";
+                            tickColor = TG.Blue;       // 2 tick xanh = đã đọc
+                            break;
+                        case SecureChat.DTOs.DeliveryStatus.Delivered:
+                            tickText  = "✓✓";
+                            tickColor = Color.Gray;    // 2 tick xám = đã nhận
+                            break;
+                        default:
+                            tickText  = "✓";
+                            tickColor = Color.Gray;    // 1 tick xám = đã gửi
+                            break;
+                    }
+                    e.Graphics.DrawString(tickText, tickFont, new SolidBrush(tickColor), tickX, ty - 1);
                 }
 
-                // 5. Self-destruct timer indicator (nếu message có expiration)
-                if (!string.IsNullOrWhiteSpace(messageId) && _expirationService.IsTracking(messageId))
+                // 5. Self-destruct timer indicator — vẽ inline bên trái timestamp
+                if (timerTextCached != null)
                 {
-                    int? remainingSeconds = _expirationService.GetRemainingSeconds(messageId);
-                    if (remainingSeconds.HasValue && remainingSeconds.Value > 0)
-                    {
-                        string timerText = FormatRemainingTime(remainingSeconds.Value);
-                        using var timerFont = TG.FontSemiBold(7.5f);
-                        var timerSz = e.Graphics.MeasureString(timerText, timerFont);
-                        float timerX = x + pad;
-                        float timerY = y + bh - timerSz.Height - 6;
+                    using var timerFont = TG.FontSemiBold(7.5f);
+                    const int timerIconW = 14;
 
-                        // Draw timer icon and text
-                        e.Graphics.DrawString("⏱", new Font("Segoe UI Emoji", 8f), new SolidBrush(Color.FromArgb(255, 87, 34)), timerX, timerY - 1);
-                        e.Graphics.DrawString(timerText, timerFont, new SolidBrush(Color.FromArgb(255, 87, 34)), timerX + 14, timerY);
-                    }
+                    // tx = điểm bắt đầu vẽ timestamp (đã đúng vị trí)
+                    // timer nằm NGAY BÊN TRÁI tx — không trừ timerBlockW lần nữa
+                    int timerX = (int)tx - timerBlockW;
+                    timerX = Math.Max(x + pad, timerX);
+                    int timerY = (int)ty;
+
+                    using var iconFont = new Font("Segoe UI Symbol", 7.5f);
+                    TextRenderer.DrawText(e.Graphics, "⏱", iconFont,
+                        new Point(timerX, timerY),
+                        Color.FromArgb(220, 87, 34),
+                        TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(e.Graphics, timerTextCached, timerFont,
+                        new Point(timerX + timerIconW, timerY),
+                        Color.FromArgb(220, 87, 34),
+                        TextFormatFlags.NoPadding);
                 }
             };
 
@@ -5703,7 +5821,7 @@ namespace SecureChat.Client
                 return;
             }
 
-            int itemH = 40;
+            int itemH = 44; // 2px top + 20px (tên) + 22px (nội dung) = 44, trước là 40 → bị clip 4px
 
             foreach (var pid in _pinnedMessageIds)
             {
@@ -5752,9 +5870,9 @@ namespace SecureChat.Client
                     Font = TG.FontSemiBold(9f),
                     ForeColor = TG.Blue,
                     AutoSize = false,
-                    Height = 16,
+                    Height = 20,
                     Width = itemTextW,
-                    Location = new Point(8, 4),
+                    Location = new Point(8, 2),
                     BackColor = Color.Transparent,
                     TextAlign = ContentAlignment.MiddleLeft,
                 };
@@ -5766,9 +5884,9 @@ namespace SecureChat.Client
                     Font = TG.FontRegular(9f),
                     ForeColor = TG.TextPrimary,
                     AutoSize = false,
-                    Height = 18,
+                    Height = 22,
                     Width = itemTextW,
-                    Location = new Point(8, 20),
+                    Location = new Point(8, 22),
                     BackColor = Color.Transparent,
                     TextAlign = ContentAlignment.MiddleLeft,
                 };
@@ -5778,10 +5896,12 @@ namespace SecureChat.Client
                 {
                     Text = "✕",
                     FlatStyle = FlatStyle.Flat,
-                    Size = new Size(18, 18),
-                    Location = new Point(_pnlPinnedBar.Width - 28, 11),
+                    Size = new Size(28, 28),
+                    Location = new Point(_pnlPinnedBar.Width - 32, (itemH - 28) / 2),
                     Cursor = Cursors.Hand,
                     ForeColor = TG.TextSecondary,
+                    Font = new Font("Segoe UI Symbol", 9f),
+                    TextAlign = ContentAlignment.MiddleCenter,
                     Tag = pid,
                 };
                 btnItemUnpin.FlatAppearance.BorderSize = 0;
@@ -5869,6 +5989,7 @@ namespace SecureChat.Client
 
             _signalRClient.MessageReceived += HandleSignalRMessageAsync;
             _signalRClient.MessageRecalled += HandleSignalRRecalledAsync;
+            _signalRClient.MessageStatusUpdated += HandleMessageStatusUpdatedAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
             _signalRClient.CallMissed += HandleCallMissedAsync;
@@ -6336,11 +6457,21 @@ namespace SecureChat.Client
                 if (!TryTrackMessageId(message.MessageID))
                     return;
 
-                // Cache AES key từ attachment nếu có (giống LoadMessagesAsync)
-                if (message.Attachments is not null)
+                // Báo delivered cho server ngay khi nhận tin (nếu không phải tin của mình)
+                if (message.SenderID != _currentUserId)
                 {
-                    foreach (var att in message.Attachments)
-                        HandleHybridEncryptedAttachment(message.MessageID, att);
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                            await http.PostAsync($"api/conversations/{message.ConversationID}/messages/{message.MessageID}/delivered", null);
+                        }
+                        catch { /* không ảnh hưởng UX */ }
+                    });
+
+                    // Khi nhận tin từ người khác → gọi API MarkDelivered để server
+                    // lưu DB và push SignalR "Delivered" về cho người gửi
                 }
 
                 // Resolve memberId của user hiện tại trong conv để xác định "isOut".
@@ -6397,7 +6528,25 @@ namespace SecureChat.Client
                         }
 
                         if (message.ConversationID == _activeConvId)
+                        {
                             BuildMessages();
+
+                            // Tin đến khi đang mở conversation → mark read ngay lập tức
+                            if (!dm.Out)
+                            {
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                                        await http.PostAsync(
+                                            $"api/conversations/{message.ConversationID}/messages/{message.MessageID}/read",
+                                            null);
+                                    }
+                                    catch { }
+                                });
+                            }
+                        }
 
                         // For call-type system messages, skip regular notifications
                         bool isCallMessage = dm.Raw.Type == MessageType.Call;
@@ -6671,6 +6820,46 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() => RestoreChatStatus()));
             }
+
+            return Task.CompletedTask;
+        }
+
+        private Task HandleMessageStatusUpdatedAsync(string messageId, string status)
+        {
+            if (string.IsNullOrWhiteSpace(messageId) || string.IsNullOrWhiteSpace(status))
+                return Task.CompletedTask;
+
+            // Cập nhật _msgDelivery dictionary
+            var newDelivery = status switch
+            {
+                "Read"      => SecureChat.DTOs.DeliveryStatus.Read,
+                "Delivered" => SecureChat.DTOs.DeliveryStatus.Delivered,
+                _           => SecureChat.DTOs.DeliveryStatus.Sent,
+            };
+
+            // Chỉ upgrade (Sent→Delivered→Read), không downgrade
+            var upgraded = false;
+            _msgDelivery.AddOrUpdate(messageId,
+                addValueFactory:    _ => { upgraded = true; return newDelivery; },
+                updateValueFactory: (_, cur) =>
+                {
+                    if (cur < newDelivery) { upgraded = true; return newDelivery; }
+                    return cur;
+                });
+            if (!upgraded) return Task.CompletedTask;
+
+            // Repaint bubble tương ứng trên UI thread
+            BeginInvoke(new Action(() =>
+            {
+                foreach (Control c in _pnlMessages.Controls)
+                {
+                    if (c.Tag is string tag && tag == messageId)
+                    {
+                        c.Invalidate(true); // trigger OnPaint lại — tick sẽ đọc _msgDelivery mới
+                        break;
+                    }
+                }
+            }));
 
             return Task.CompletedTask;
         }
@@ -6965,6 +7154,7 @@ namespace SecureChat.Client
             // ─────────────────────────────────────────────────────────────────
             string tempMessageId = Guid.NewGuid().ToString();
             _messageDates[tempMessageId] = DateTime.Now;
+            _msgDelivery[tempMessageId] = SecureChat.DTOs.DeliveryStatus.Sent;
             _currentMsgs.Add((tempMessageId, finalMessageText, true, DateTime.Now.ToString("h:mm tt"), ""));
             BuildMessages();
 
@@ -7069,6 +7259,9 @@ namespace SecureChat.Client
                 {
                     if (_messageDates.Remove(tempMessageId))
                         _messageDates[messageResponse.MessageID] = messageResponse.SentAt.ToLocalTime();
+                    // Chuyển delivery status từ tempId sang realId
+                    _msgDelivery.TryRemove(tempMessageId, out _);
+                    _msgDelivery[messageResponse.MessageID] = SecureChat.DTOs.DeliveryStatus.Sent;
                     string timeStr = messageResponse.SentAt.ToLocalTime().ToString("h:mm tt");
                     _currentMsgs[index] = (
                         messageResponse.MessageID,
@@ -7077,16 +7270,15 @@ namespace SecureChat.Client
                         timeStr,
                         ""
                     );
+
+                    // EXPIRATION TRACKING: track TRƯỚC khi BuildMessages() để
+                    // hasExpiryTimer = true ngay từ lúc tính minBw lần đầu
+                    // (tránh bubble hẹp rồi timer/timestamp tràn ra ngoài)
+                    if (messageResponse.ExpiresAt.HasValue)
+                        _expirationService.TrackMessage(messageResponse.MessageID, messageResponse.ExpiresAt.Value);
+
                     BuildMessages();
                     RefreshConversationItem(_activeConvId, finalMessageText, true, "", timeStr);
-                }
-
-                // ─────────────────────────────────────────────────────────────────
-                // EXPIRATION TRACKING: Track message nếu có ExpiresAt
-                // ─────────────────────────────────────────────────────────────────
-                if (messageResponse.ExpiresAt.HasValue)
-                {
-                    _expirationService.TrackMessage(messageResponse.MessageID, messageResponse.ExpiresAt.Value);
                 }
             }
             catch (InvalidOperationException ex)

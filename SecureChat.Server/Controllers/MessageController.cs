@@ -1,16 +1,23 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Hubs;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations/{conversationID}/messages")]
-	public class MessageController(MessageRepository messages, ConversationRepository conversations, PrivacyRepository privacy) : BaseController
+	public class MessageController(
+		MessageRepository messages,
+		ConversationRepository conversations,
+		PrivacyRepository privacy,
+		FriendRepository friends,
+		IHubContext<ChatHub> hub) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -20,13 +27,15 @@ namespace SecureChat.Controllers
 		[HttpGet]
 		public async Task<IActionResult> GetMessages(string conversationID, [FromQuery] int limit = 50, [FromQuery] DateTime? before = null)
 		{
-			if (await GetActiveMember(conversationID) is null)
-				return Forbid();
+			var member = await GetActiveMember(conversationID);
+			if (member is null) return Forbid();
 
 			var list = await messages.GetByConversationAsync(conversationID, limit, before);
+
 			var result = new List<MessageResponse>();
 			foreach (var msg in list)
 			{
+				// Forward privacy filter (Dev)
 				bool hideForward = false;
 				if (msg.OriginalSenderID is not null && msg.OriginalSenderID != Me)
 				{
@@ -39,9 +48,42 @@ namespace SecureChat.Controllers
 							hideForward = true;
 					}
 				}
-				result.Add(MessageResponse.From(msg, hideForward));
+
+				// Delivery status computation (Duck)
+				DeliveryStatus delivery = DeliveryStatus.Sent;
+				if (msg.SenderID == member.MemberID)
+				{
+					var statuses = await messages.GetStatusesByMessageAsync(msg.MessageID);
+					if (statuses.Any(s => s.ReadAt.HasValue))
+						delivery = DeliveryStatus.Read;
+					else if (statuses.Any(s => s.DeliveredAt.HasValue))
+						delivery = DeliveryStatus.Delivered;
+				}
+
+				result.Add(MessageResponse.From(msg, hideForward, delivery));
 			}
 			return Ok(result);
+		}
+
+		[HttpPost("{messageID}/delivered")]
+		public async Task<IActionResult> MarkDelivered(string conversationID, string messageID)
+		{
+			var member = await GetActiveMember(conversationID);
+			if (member is null) return Forbid();
+
+			await messages.MarkDeliveredAsync(messageID, member.MemberID);
+
+			// Push SignalR về cho người gửi
+			var msg = await messages.GetByIdAsync(messageID);
+			if (msg is not null)
+			{
+				var senderMember = await conversations.GetMemberByIdAsync(msg.SenderID);
+				if (senderMember is not null && senderMember.UserID != Me)
+					await hub.Clients.User(senderMember.UserID)
+						.SendAsync("MessageStatusUpdated", messageID, "Delivered");
+			}
+
+			return NoContent();
 		}
 
 		[HttpGet("{messageID}")]
@@ -165,12 +207,25 @@ namespace SecureChat.Controllers
 			await conversations.SetLastMessageAsync(conversationID, msg.MessageID, msg.SentAt);
 
 			var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+
+			// Lấy conversation để check loại (DM hay group)
+			var conversation = await conversations.GetByIdAsync(conversationID);
+			bool isDm = conversation?.Type == ConversationType.Direct;
+
 			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID))
+			{
+				// Telegram-style block: với DM, nếu 1 trong 2 chặn nhau
+				// thì KHÔNG tạo MessageStatus (không deliver) nhưng vẫn lưu DB
+				// → người gửi thấy 1 tick mãi, không biết bị chặn
+				if (isDm && await friends.IsBlockedEitherWayAsync(Me, m.UserID))
+					continue;
+
 				await messages.CreateStatusAsync(new MessageStatus {
 					StatusID  = NewID(),
 					MessageID = msg.MessageID,
 					MemberID  = m.MemberID
 				});
+			}
 
 			var loaded = await messages.GetByIdAsync(msg.MessageID);
 			return CreatedAtAction(nameof(GetMessage), new { conversationID, messageID = msg.MessageID }, MessageResponse.From(loaded!));
@@ -298,6 +353,17 @@ namespace SecureChat.Controllers
 			try {
 				var status = await messages.MarkReadAsync(messageID, member.MemberID);
 				await conversations.SetLastReadMessageAsync(member.MemberID, messageID);
+
+				// Push SignalR "Read" về cho người gửi
+				var msg = await messages.GetByIdAsync(messageID);
+				if (msg is not null)
+				{
+					var senderMember = await conversations.GetMemberByIdAsync(msg.SenderID);
+					if (senderMember is not null && senderMember.UserID != Me)
+						await hub.Clients.User(senderMember.UserID)
+							.SendAsync("MessageStatusUpdated", messageID, "Read");
+				}
+
 				return Ok(MessageStatusResponse.From(status));
 			} catch (KeyNotFoundException) {
 				return NotFound();

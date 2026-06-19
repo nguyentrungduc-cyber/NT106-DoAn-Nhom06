@@ -44,6 +44,8 @@ namespace SecureChat.DTOs
         List<RecipientEncryption>? RecipientEncryptions = null
     );
 
+	public enum DeliveryStatus { Sent, Delivered, Read }
+
 	public record MessageResponse(
 		string MessageID,
 		string ConversationID,
@@ -63,10 +65,11 @@ namespace SecureChat.DTOs
 		DateTime? ExpiresAt,
 		DateTime? RecalledAt,
 		List<AttachmentResponse>? Attachments,
-		List<string>? MentionedMemberIDs
+		List<string>? MentionedMemberIDs,
+		DeliveryStatus Delivery = DeliveryStatus.Sent
 	)
 	{
-		public static MessageResponse From(Message m) => new(
+		public static MessageResponse From(Message m, DeliveryStatus delivery = DeliveryStatus.Sent) => new(
 			m.MessageID, m.ConversationID,
 			m.SenderID, m.Sender?.User.UserID,
 			m.Sender?.User.Username,
@@ -76,7 +79,8 @@ namespace SecureChat.DTOs
 			m.Type, m.Content ?? "", m.ContentIV ?? "",
 			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt, m.RecalledAt,
 			m.Attachments.Select(AttachmentResponse.From).ToList(),
-			m.Mentions?.Select(mention => mention.MemberID).ToList()
+			m.Mentions?.Select(mention => mention.MemberID).ToList(),
+			delivery
 		);
 
 		public static MessageResponse From(Message m, bool hideOriginalSender) => new(
@@ -91,6 +95,21 @@ namespace SecureChat.DTOs
 			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt, m.RecalledAt,
 			m.Attachments.Select(AttachmentResponse.From).ToList(),
 			m.Mentions?.Select(mention => mention.MemberID).ToList()
+		);
+
+		public static MessageResponse From(Message m, bool hideOriginalSender, DeliveryStatus delivery) => new(
+			m.MessageID, m.ConversationID,
+			m.SenderID, m.Sender?.User.UserID,
+			m.Sender?.User.Username,
+			m.Sender?.User?.DisplayName,
+			hideOriginalSender ? null : m.OriginalSenderID,
+			hideOriginalSender ? null : m.OriginalSender?.DisplayName,
+			m.ReplyToID,
+			m.Type, m.Content ?? "", m.ContentIV ?? "",
+			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt, m.RecalledAt,
+			m.Attachments.Select(AttachmentResponse.From).ToList(),
+			m.Mentions?.Select(mention => mention.MemberID).ToList(),
+			delivery
 		);
 	}
 
