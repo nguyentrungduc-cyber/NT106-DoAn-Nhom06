@@ -6285,6 +6285,23 @@ namespace SecureChat.Client
                         {
                             BuildMessages();
 
+                            // Tin đến khi đang mở conversation → mark read ngay lập tức
+                            if (!dm.Out)
+                            {
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                                        await http.PostAsync(
+                                            $"api/conversations/{message.ConversationID}/messages/{message.MessageID}/read",
+                                            null);
+                                    }
+                                    catch { }
+                                });
+                            }
+                        }
+
                         // For call-type system messages, skip regular notifications
                         bool isCallMessage = dm.Raw.Type == MessageType.Call;
                         bool isMention = !dm.Out && IsCurrentUserMentioned(message);
@@ -6318,24 +6335,6 @@ namespace SecureChat.Client
                                     NotificationManager.FlashWindow(this.Handle);
                                 if (s.AllowSound)
                                     NotificationManager.PlayNotificationSound(s.Volume);
-                            }
-                        }
-                    }
-
-                            // Tin đến khi đang mở conversation → mark read ngay lập tức
-                            if (!dm.Out)
-                            {
-                                _ = Task.Run(async () =>
-                                {
-                                    try
-                                    {
-                                        var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
-                                        await http.PostAsync(
-                                            $"api/conversations/{message.ConversationID}/messages/{message.MessageID}/read",
-                                            null);
-                                    }
-                                    catch { }
-                                });
                             }
                         }
                     }
