@@ -14,7 +14,7 @@ namespace SecureChat.Controllers
 	[Authorize]
 	[ApiController]
 	[Route("api/users")]
-	public class UserController(UserRepository users, ConversationRepository conversations, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
+	public class UserController(UserRepository users, ConversationRepository conversations, PrivacyRepository privacy, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -193,7 +193,30 @@ namespace SecureChat.Controllers
 			var user = await users.GetByIdAsync(userID);
 			if (user is null)
 				return NotFound();
-			return Ok(UserResponse.From(user));
+
+			// Apply privacy filtering when viewing another user's profile
+			if (userID != Me)
+			{
+				var settings = await privacy.GetRawSettingsAsync(userID);
+				if (settings is not null)
+				{
+					bool isContact = await privacy.AreContactsAsync(Me, userID);
+
+					// Filter LastSeen
+					if (settings.LastSeenPrivacy == PrivacyLevel.Nobody || (settings.LastSeenPrivacy == PrivacyLevel.Contacts && !isContact))
+						user.LastSeenUtc = null;
+
+					// Filter Bio
+					if (settings.BioPrivacy == PrivacyLevel.Nobody || (settings.BioPrivacy == PrivacyLevel.Contacts && !isContact))
+						user.BioText = null;
+
+					// Filter Avatar/ProfilePhoto (we null the URL)
+					if (settings.ProfilePhotoPrivacy == PrivacyLevel.Nobody || (settings.ProfilePhotoPrivacy == PrivacyLevel.Contacts && !isContact))
+						user.AvatarURL = null;
+				}
+			}
+
+			return Ok(UserResponse.From(user, presence.IsOnline(user.UserID)));
 		}
 	}
 }

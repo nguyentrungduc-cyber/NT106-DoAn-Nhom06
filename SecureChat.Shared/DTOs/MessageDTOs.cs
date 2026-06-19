@@ -78,6 +78,20 @@ namespace SecureChat.DTOs
 			m.Attachments.Select(AttachmentResponse.From).ToList(),
 			m.Mentions?.Select(mention => mention.MemberID).ToList()
 		);
+
+		public static MessageResponse From(Message m, bool hideOriginalSender) => new(
+			m.MessageID, m.ConversationID,
+			m.SenderID, m.Sender?.User.UserID,
+			m.Sender?.User.Username,
+			m.Sender?.User?.DisplayName,
+			hideOriginalSender ? null : m.OriginalSenderID,
+			hideOriginalSender ? null : m.OriginalSender?.DisplayName,
+			m.ReplyToID,
+			m.Type, m.Content ?? "", m.ContentIV ?? "",
+			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt, m.RecalledAt,
+			m.Attachments.Select(AttachmentResponse.From).ToList(),
+			m.Mentions?.Select(mention => mention.MemberID).ToList()
+		);
 	}
 
     public record AttachmentResponse(
