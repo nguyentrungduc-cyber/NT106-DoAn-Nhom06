@@ -5717,9 +5717,9 @@ namespace SecureChat.Client
                     Font = TG.FontSemiBold(9f),
                     ForeColor = TG.Blue,
                     AutoSize = false,
-                    Height = 16,
+                    Height = 20,
                     Width = itemTextW,
-                    Location = new Point(8, 4),
+                    Location = new Point(8, 2),
                     BackColor = Color.Transparent,
                     TextAlign = ContentAlignment.MiddleLeft,
                 };
@@ -5731,9 +5731,9 @@ namespace SecureChat.Client
                     Font = TG.FontRegular(9f),
                     ForeColor = TG.TextPrimary,
                     AutoSize = false,
-                    Height = 18,
+                    Height = 22,
                     Width = itemTextW,
-                    Location = new Point(8, 20),
+                    Location = new Point(8, 22),
                     BackColor = Color.Transparent,
                     TextAlign = ContentAlignment.MiddleLeft,
                 };
