@@ -30,7 +30,8 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, string, Task>? MessageUnpinned;
 public event Func<string, string, Task>? MemberAdded;
 public event Func<string, string, Task>? MemberRemoved;
-public event Func<string, bool, DateTime?, Task>? UserPresenceChanged;
+		public event Func<string, bool, DateTime?, Task>? UserPresenceChanged;
+		public event Func<string, string, string, CallType, Task>? CallMissed;
 
         public bool IsConnected => _connection.State == HubConnectionState.Connected;
 
@@ -165,6 +166,12 @@ public event Func<string, bool, DateTime?, Task>? UserPresenceChanged;
             {
                 if (UserPresenceChanged is not null)
                     await UserPresenceChanged.Invoke(userId, isOnline, lastSeenUtc);
+            });
+
+            _connection.On<string, string, string, CallType>("CallMissed", async (callId, conversationId, callerName, callType) =>
+            {
+                if (CallMissed is not null)
+                    await CallMissed.Invoke(callId, conversationId, callerName, callType);
             });
         }
 

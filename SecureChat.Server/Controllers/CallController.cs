@@ -1,16 +1,22 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Hubs;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations/{conversationID}/calls")]
-	public class CallController(CallRepository calls, ConversationRepository conversations) : BaseController
+	public class CallController(
+		CallRepository calls,
+		ConversationRepository conversations,
+		MessageRepository messages,
+		IHubContext<ChatHub> hubContext) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -156,6 +162,7 @@ namespace SecureChat.Controllers
 				return NotFound();
 
 			await calls.EndCallAsync(callID);
+			await CreateCallSystemMessageAsync(call, missed: false);
 			return NoContent();
 		}
 
@@ -182,16 +189,61 @@ namespace SecureChat.Controllers
 			if (call.Conversation?.Type == ConversationType.Direct)
 			{
 				await calls.EndCallAsync(callID);
+				await CreateCallSystemMessageAsync(call, missed: false);
 			}
 			else
 			{
 				// Group call: auto-end when no active participants remain
 				var activeCount = await calls.GetActiveParticipantCountAsync(callID);
 				if (activeCount == 0)
+				{
 					await calls.EndCallAsync(callID);
+					await CreateCallSystemMessageAsync(call, missed: false, isGroup: true);
+				}
 			}
 
 			return NoContent();
+		}
+
+		private async Task CreateCallSystemMessageAsync(CallLog call, bool missed, bool isGroup = false)
+		{
+			var callTypeName = call.Type == CallType.Video ? "video" : "voice";
+			string content;
+
+			if (isGroup)
+			{
+				content = "Group call ended";
+			}
+			else if (missed)
+			{
+				content = $"Missed {callTypeName} call";
+			}
+			else
+			{
+				var duration = call.EndedAt.HasValue && call.StartedAt != default
+					? (int)(call.EndedAt.Value - call.StartedAt).TotalSeconds
+					: 0;
+				content = duration > 0
+					? $"{callTypeName} call — {duration}s"
+					: $"{callTypeName} call";
+			}
+
+			var sysMsg = new Message
+			{
+				MessageID = NewID(),
+				ConversationID = call.ConversationID,
+				SenderID = null,
+				Type = MessageType.Call,
+				Content = content,
+				SentAt = DateTime.UtcNow
+			};
+
+			await messages.CreateAsync(sysMsg);
+			var response = MessageResponse.From(sysMsg);
+
+			await hubContext.Clients
+				.Group(call.ConversationID)
+				.SendAsync("MessageReceived", response);
 		}
 
 		[HttpPut("{callID}/participants/{participantID}")]
