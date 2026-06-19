@@ -3974,17 +3974,22 @@ namespace SecureChat.Client
                 audioBubble.Top    = 4;
                 audioBubble.Anchor = AnchorStyles.None;
                 panel.Height       = audioBubble.Height + 8;
-                panel.Resize += (s, e) =>
+
+                void LayoutVoice(object? s, EventArgs e)
                 {
                     int leftOffset  = (!isOut && isGroup) ? 44 : 10;
                     int rightMargin = 12;
                     int maxW        = panel.ClientSize.Width - leftOffset - rightMargin;
+                    if (maxW <= 0) return;
                     audioBubble.Width = Math.Min(360, Math.Max(260, maxW));
-                    if (isOut)
-                        audioBubble.Left = panel.ClientSize.Width - audioBubble.Width - rightMargin;
-                    else
-                        audioBubble.Left = leftOffset;
-                };
+                    audioBubble.Left  = isOut
+                        ? panel.ClientSize.Width - audioBubble.Width - rightMargin
+                        : leftOffset;
+                }
+
+                panel.Resize        += LayoutVoice;
+                panel.HandleCreated += LayoutVoice;  // fire khi panel có kích thước thật
+                panel.ParentChanged += LayoutVoice;  // fire khi được add vào parent
 
                 panel.Controls.Add(audioBubble);
 
