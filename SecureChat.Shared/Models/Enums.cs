@@ -8,10 +8,11 @@ namespace SecureChat.Models
 
 	public enum CallStatus : byte
 	{
-		Ringing = 0,
-		Ongoing = 1,
-		Ended = 2,
-		Failed = 3
+	Ringing = 0,
+	Ongoing = 1,
+	Ended = 2,
+	Failed = 3,
+	Missed = 4
 	}
 
 	public enum CallParticipantStatus : byte

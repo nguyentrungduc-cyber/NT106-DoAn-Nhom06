@@ -43,6 +43,7 @@ builder.Services.AddSingleton<EmailService>();
 // OtpService holds in-memory OTP state and must be a singleton so state is preserved across requests
 builder.Services.AddSingleton<OtpService>();
 builder.Services.AddSingleton<ForgotPasswordService>();
+builder.Services.AddHostedService<CallTimeoutService>();
 
 var jwtKey = builder.Configuration["Jwt:Key"]
 	?? throw new InvalidOperationException("Jwt:Key is not configured.");

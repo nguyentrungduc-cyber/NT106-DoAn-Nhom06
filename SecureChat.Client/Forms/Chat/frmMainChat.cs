@@ -1,6 +1,7 @@
 using SecureChat.Client.Components.Chat;
 using SecureChat.Client.Forms.Profile;
 using SecureChat.Client.Services;
+using SecureChat.Client.Settings;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using System;
@@ -175,6 +176,7 @@ namespace SecureChat.Client
         private readonly ConcurrentDictionary<string, string> _forwardMetadata = new();
         private readonly ConcurrentDictionary<string, string> _forwardOriginalSenderId = new();
         private readonly HashSet<string> _pinnedMessageIds = new();
+        private readonly Dictionary<string, DateTime?> _convMuteUntil = new(); // conversationId → muted until (null = not muted)
         private Panel _pnlPinnedBar = null!;
         private Label _lblPinnedText = null!;
         private Button _btnUnpin = null!;
@@ -199,6 +201,7 @@ namespace SecureChat.Client
 
             // Hybrid encryption: Generate and register RSA keypair at startup
             this.Load += FrmMainChat_Load;
+            this.Activated += (_, __) => NotificationManager.StopFlash(this.Handle);
         }
 
         private async void FrmMainChat_Load(object? sender, EventArgs e)
@@ -5836,6 +5839,7 @@ namespace SecureChat.Client
             _signalRClient.MessageStatusUpdated += HandleMessageStatusUpdatedAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
+            _signalRClient.CallMissed += HandleCallMissedAsync;
             _signalRClient.UserTyping += HandleUserTypingAsync;
             _signalRClient.UserStoppedTyping += HandleUserStoppedTypingAsync;
             _signalRClient.ConversationCreated += async convId =>
@@ -5856,9 +5860,18 @@ namespace SecureChat.Client
                         _convOtherUserId[convId] = conv.OtherUserId;
 
                     BuildConvList();
-                    // Trigger avatar loading if the conversation has an avatar URL
                     if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
                         _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
+
+                    var s = NotificationSettings.Default;
+                    if (isGroup && !s.GroupNotifications) return;
+                    if (!isGroup && !s.PrivateChatNotifications) return;
+                    if (s.DesktopNotifications)
+                        NotificationManager.ShowDesktopNotification(display, "New conversation created");
+                    if (s.FlashTaskbar)
+                        NotificationManager.FlashWindow(this.Handle);
+                    if (s.AllowSound)
+                        NotificationManager.PlayNotificationSound(s.Volume);
                 }));
             };
             _signalRClient.ProfileUpdated += async (userId, displayName, username, avatarUrl) =>
@@ -5882,18 +5895,24 @@ namespace SecureChat.Client
                         UpdateSettingsHeaderUI();
                     }
                     // If this is a profile update for another user in a direct conversation,
-                    // find and refresh the conversation avatar
+                    // update the conversation name and avatar
                     if (!string.IsNullOrWhiteSpace(capturedUserId))
                     {
-                        foreach (var c in _convs)
+                        for (int i = 0; i < _convs.Count; i++)
                         {
+                            var c = _convs[i];
                             if (!c.IsGroup && !string.IsNullOrWhiteSpace(c.Name))
                             {
-                                // For direct conversations, the conversation name is the other user's display name.
-                                // Check if the display name or username matches.
-                                if ((!string.IsNullOrWhiteSpace(displayName) && c.Name == displayName)
+                                bool nameMatches = (!string.IsNullOrWhiteSpace(displayName) && c.Name == displayName)
                                     || (_senderDisplayNameMap.TryGetValue(capturedUsername, out var dn) && c.Name == dn)
-                                    || c.Name == capturedUsername)
+                                    || c.Name == capturedUsername;
+
+                                if (nameMatches && !string.IsNullOrWhiteSpace(displayName) && c.Name != displayName)
+                                {
+                                    _convs[i] = (c.Id, displayName, c.Preview, c.Time, c.Unread, c.IsGroup);
+                                }
+
+                                if (nameMatches)
                                 {
                                     _ = RefreshAvatarForConversationAsync(c.Id, capturedUrl);
                                 }
@@ -5974,6 +5993,23 @@ namespace SecureChat.Client
                     // Refresh right sidebar if open and showing this conversation
                     if (_isSidebarOpen && _activeConvId == convId)
                         _ = LoadRightSidebarContentAsync();
+
+                    // Skip notification if the member is ourselves
+                    if (userId == _currentUserId || (!string.IsNullOrWhiteSpace(_currentUsername) && userId == _currentUsername))
+                        return;
+
+                    var s = NotificationSettings.Default;
+                    if (!s.ContactJoinedNotifications)
+                        return;
+                    if (convId == _activeConvId)
+                        return;
+
+                    if (s.DesktopNotifications)
+                        NotificationManager.ShowDesktopNotification(old.Name, "New member joined");
+                    if (s.FlashTaskbar)
+                        NotificationManager.FlashWindow(this.Handle);
+                    if (s.AllowSound)
+                        NotificationManager.PlayNotificationSound(s.Volume);
                 }));
             };
             _signalRClient.MemberRemoved += async (convId, userId) =>
@@ -6014,14 +6050,32 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() =>
                 {
-                    if (_pinnedMessageIds.Add(messageId))
-                    {
-                        if (!string.IsNullOrWhiteSpace(pinnedByName))
-                            _pinnedByMap[messageId] = pinnedByName;
-                        UpdatePinnedBar();
-                        if (_activeConvId == convId)
-                            BuildMessages();
-                    }
+                    if (!_pinnedMessageIds.Add(messageId))
+                        return;
+
+                    if (!string.IsNullOrWhiteSpace(pinnedByName))
+                        _pinnedByMap[messageId] = pinnedByName;
+                    UpdatePinnedBar();
+                    if (_activeConvId == convId)
+                        BuildMessages();
+
+                    var s = NotificationSettings.Default;
+                    if (!s.PinnedMessageNotifications)
+                        return;
+                    if (convId == _activeConvId)
+                        return;
+
+                    int idx = _convs.FindIndex(c => c.Id == convId);
+                    if (idx < 0) return;
+
+                    string convName = _convs[idx].Name;
+                    string byName = !string.IsNullOrWhiteSpace(pinnedByName) ? pinnedByName : "Someone";
+                    if (s.DesktopNotifications)
+                        NotificationManager.ShowDesktopNotification(convName, $"Pinned a message by {byName}");
+                    if (s.FlashTaskbar)
+                        NotificationManager.FlashWindow(this.Handle);
+                    if (s.AllowSound)
+                        NotificationManager.PlayNotificationSound(s.Volume);
                 }));
             };
             _signalRClient.MessageUnpinned += async (convId, messageId) =>
@@ -6036,6 +6090,18 @@ namespace SecureChat.Client
                     }
                 }));
             };
+            _signalRClient.Closed += async _ =>
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    MessageBox.Show(this, "Connection to server lost. Please re-login.", "Disconnected",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }));
+            };
+            _signalRClient.Reconnecting += async _ =>
+            {
+                // No notification — SignalR automatic reconnect handles it silently
+            };
             _signalRClient.Reconnected += async _ =>
             {
                 await ReRegisterPublicKeyAsync();
@@ -6048,8 +6114,13 @@ namespace SecureChat.Client
                     if (conv != default && !conv.IsGroup && _convOtherUserId.TryGetValue(_activeConvId, out var otherId))
                         await _signalRClient.QueryUserPresenceAsync(otherId);
 
+                    // Re-sync messages for the active conversation to catch up on missed ones
+                    _syncedConversations.Remove(_activeConvId);
+
                     BeginInvoke(new Action(() =>
                     {
+                        _pinnedMessageIds.Clear();
+                        _pinnedByMap.Clear();
                         _userPresence.Clear();
                         if (_isSidebarOpen)
                         {
@@ -6083,6 +6154,54 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "SignalR", MessageBoxButtons.OK, MessageBoxIcon.Warning)));
             }
+        }
+
+        private static List<string> ParseMentions(string text, string currentUsername)
+        {
+            var mentions = new List<string>();
+            if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(currentUsername))
+                return mentions;
+
+            int idx = text.IndexOf($"@{currentUsername}", StringComparison.OrdinalIgnoreCase);
+            while (idx >= 0)
+            {
+                // Verify it's a word boundary (space, start of string, or punctuation before @)
+                if (idx == 0 || char.IsWhiteSpace(text[idx - 1]) || char.IsPunctuation(text[idx - 1]))
+                {
+                    mentions.Add(currentUsername);
+                    break;
+                }
+                idx = text.IndexOf($"@{currentUsername}", idx + 1, StringComparison.OrdinalIgnoreCase);
+            }
+
+            return mentions;
+        }
+
+        private bool IsConversationMuted(string convId)
+        {
+            if (string.IsNullOrWhiteSpace(convId)) return false;
+            if (_convMuteUntil.TryGetValue(convId, out var until))
+            {
+                if (until.HasValue && until.Value > DateTime.UtcNow)
+                    return true;
+                if (!until.HasValue) // muted forever
+                    return true;
+                // expired mute — clean up
+                _convMuteUntil.Remove(convId);
+            }
+            return false;
+        }
+
+        private bool IsCurrentUserMentioned(MessageResponse message)
+        {
+            if (message.MentionedMemberIDs is null || message.MentionedMemberIDs.Count == 0)
+                return false;
+            if (_myMemberIdByConv.TryGetValue(message.ConversationID, out var myMemberId)
+                && !string.IsNullOrWhiteSpace(myMemberId))
+            {
+                return message.MentionedMemberIDs.Contains(myMemberId);
+            }
+            return false;
         }
 
         private async Task HandleSignalRMessageAsync(MessageResponse message)
@@ -6165,6 +6284,43 @@ namespace SecureChat.Client
                         if (message.ConversationID == _activeConvId)
                         {
                             BuildMessages();
+
+                        // For call-type system messages, skip regular notifications
+                        bool isCallMessage = dm.Raw.Type == MessageType.Call;
+                        bool isMention = !dm.Out && IsCurrentUserMentioned(message);
+                        string convIdForMute = message.ConversationID;
+
+                        if (!dm.Out && idx >= 0 && message.ConversationID != _activeConvId && !isCallMessage)
+                        {
+                            // Skip if conversation is muted
+                            if (IsConversationMuted(convIdForMute))
+                                return;
+
+                            var conv2 = _convs[idx];
+                            var s = NotificationSettings.Default;
+                            bool convCategoryOk = conv2.IsGroup ? s.GroupNotifications : s.PrivateChatNotifications;
+
+                            if (convCategoryOk)
+                            {
+                                string mentionPrefix = isMention ? "📌 " : "";
+
+                                if (s.DesktopNotifications)
+                                {
+                                    string convName = conv2.Name;
+                                    string senderName = (string.IsNullOrEmpty(dm.Sender) ? "" : dm.Sender);
+                                    if (!string.IsNullOrEmpty(dm.Sender) && _senderDisplayNameMap.TryGetValue(dm.Sender, out var dn) && !string.IsNullOrEmpty(dn))
+                                        senderName = dn;
+                                    string title = isMention ? $"Mention in {convName}" : convName;
+                                    string preview = dm.Text.Length > 100 ? dm.Text[..100] + "..." : dm.Text;
+                                    NotificationManager.ShowDesktopNotification(title, $"{mentionPrefix}{senderName}: {preview}");
+                                }
+                                if (s.FlashTaskbar)
+                                    NotificationManager.FlashWindow(this.Handle);
+                                if (s.AllowSound)
+                                    NotificationManager.PlayNotificationSound(s.Volume);
+                            }
+                        }
+                    }
 
                             // Tin đến khi đang mở conversation → mark read ngay lập tức
                             if (!dm.Out)
@@ -6261,67 +6417,88 @@ namespace SecureChat.Client
             return Task.CompletedTask;
         }
 
-        private async Task HandleCallIncomingAsync(string callId, string callerName, CallType callType, string conversationId)
+        private Task HandleCallIncomingAsync(string callId, string callerName, CallType callType, string conversationId)
         {
-            if (IsDisposed) return;
+            if (IsDisposed) return Task.CompletedTask;
 
-            bool accepted = false;
-            if (InvokeRequired)
-                accepted = (bool)Invoke(new Func<bool>(() =>
+            var s = NotificationSettings.Default;
+            if (s.FlashTaskbar)
+                NotificationManager.FlashWindow(this.Handle);
+            if (s.AllowSound)
+                NotificationManager.PlayNotificationSound(s.Volume);
+
+            BeginInvoke(new Action(async () =>
+            {
+                try
                 {
                     var form = new Forms.Call.frmIncomingCall(callerName, callType);
                     form.ShowDialog(this);
-                    return form.Accepted;
-                }));
-            else
-            {
-                var form = new Forms.Call.frmIncomingCall(callerName, callType);
-                form.ShowDialog(this);
-                accepted = form.Accepted;
-            }
 
-            if (!accepted)
-            {
-                _pendingCallSignals.TryRemove(callId, out _);
-                try
-                {
-                    if (_signalRClient != null)
-                        await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED");
+                    if (!form.Accepted)
+                    {
+                        _pendingCallSignals.TryRemove(callId, out _);
+                        try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED"); } catch { }
+                        return;
+                    }
+
+                    try
+                    {
+                        var http = ApiClient.Instance.GetHttpClient();
+                        var joinResponse = await http.PostAsync($"api/conversations/{conversationId}/calls/{callId}/join", null);
+                        if (!joinResponse.IsSuccessStatusCode) return;
+                    }
+                    catch { return; }
+
+                    try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_JOINED"); } catch { }
+
+                    if (IsDisposed) return;
+
+                    try
+                    {
+                        bool isGroupCall = _convs.Find(c => c.Id == conversationId).IsGroup;
+                        var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!, isGroupCall);
+                        callForm.FormClosed += (s, e) =>
+                        {
+                            _pendingCallSignals.TryRemove(callId, out _);
+                            this.Activate();
+                        };
+                        if (_pendingCallSignals.TryRemove(callId, out var pending))
+                            callForm.ReplayPendingSignals(pending);
+                        callForm.Show();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[Call] Failed to open call form: {ex.Message}");
+                    }
                 }
-                catch { }
-                return;
-            }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Call] HandleCallIncomingAsync failed: {ex.Message}");
+                }
+            }));
 
-            try
-            {
-                var http = ApiClient.Instance.GetHttpClient();
-                var joinResponse = await http.PostAsync($"api/conversations/{conversationId}/calls/{callId}/join", null);
-                if (!joinResponse.IsSuccessStatusCode) return;
-            }
-            catch { return; }
+            return Task.CompletedTask;
+        }
 
-            try
-            {
-                if (_signalRClient != null)
-                    await _signalRClient.SendCallSignalAsync(callId, "CALL_JOINED");
-            }
-            catch { }
-
-            if (IsDisposed) return;
+        private Task HandleCallMissedAsync(string callId, string conversationId, string callerName, CallType callType)
+        {
+            if (IsDisposed) return Task.CompletedTask;
 
             BeginInvoke(new Action(() =>
             {
-                bool isGroupCall = _convs.Find(c => c.Id == conversationId).IsGroup;
-                var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!, isGroupCall);
-                callForm.FormClosed += (s, e) =>
-                {
-                    _pendingCallSignals.TryRemove(callId, out _);
-                    this.Activate();
-                };
-                if (_pendingCallSignals.TryRemove(callId, out var pending))
-                    callForm.ReplayPendingSignals(pending);
-                callForm.Show();
+                var callTypeName = callType == CallType.Video ? "video" : "voice";
+                var body = $"Missed {callTypeName} call from {callerName}";
+
+                var s = NotificationSettings.Default;
+                if (s.DesktopNotifications)
+                    NotificationManager.ShowDesktopNotification("Missed call", body);
+                if (s.FlashTaskbar)
+                    NotificationManager.FlashWindow(this.Handle);
+                if (s.AllowSound)
+                    NotificationManager.PlayNotificationSound(s.Volume);
             }));
+
+            return Task.CompletedTask;
         }
 
         private async Task ReRegisterPublicKeyAsync()
