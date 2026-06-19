@@ -23,6 +23,7 @@
         private readonly string _conversationId; // Thêm biến lưu ID nhóm
 
         public string GroupName { get; private set; }
+        public string? NewAvatarPath { get; private set; }
         public string DescriptionText => _txtDescription.Text.Trim();
         public string GroupType => _groupType;
         public string ChatHistoryMode => _chatHistory;
@@ -324,6 +325,7 @@
                 _avatar.Image?.Dispose();
                 _avatar.Image = new Bitmap(img);
                 _avatar.Invalidate();
+                NewAvatarPath = ofd.FileName;
             }
             catch (Exception ex)
             {
@@ -374,10 +376,9 @@
                     {
                         _lblMembersValue.Text = _membersCount.ToString();
 
-                        // 2. Tự động đếm xem có bao nhiêu Admin / Owner
+                        // 2. Đếm số Owner (Admin)
                         _adminsCount = members.Count(m =>
-                            m.Role.ToString().Equals("Admin", StringComparison.OrdinalIgnoreCase) ||
-                            m.Role.ToString().Equals("Owner", StringComparison.OrdinalIgnoreCase));
+                            m.Role == SecureChat.Models.MemberRole.Owner);
 
                         _lblAdminsValue.Text = _adminsCount.ToString();
                     }));

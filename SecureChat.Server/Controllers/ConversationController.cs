@@ -1,16 +1,19 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Hubs;
+using SecureChat.Server.Services;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations")]
-	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages) : BaseController
+	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -22,12 +25,18 @@ namespace SecureChat.Controllers
             {
                 var res = ConversationResponse.From(c);
 
-                // Với Direct conversation: dùng tên người kia làm tên hội thoại
-                if (c.Type == ConversationType.Direct && string.IsNullOrEmpty(c.Name))
+                // Với Direct conversation: dùng tên & avatar của người kia
+                if (c.Type == ConversationType.Direct)
                 {
                     var other = c.Members.FirstOrDefault(m => m.UserID != Me && m.LeftAt == null);
                     if (other?.User != null)
-                        res = res with { Name = other.User.DisplayName };
+                    {
+                        if (string.IsNullOrEmpty(res.Name))
+                            res = res with { Name = other.User.DisplayName };
+                        if (!string.IsNullOrWhiteSpace(other.User.AvatarURL))
+                            res = res with { AvatarURL = other.User.AvatarURL };
+                        res = res with { OtherUserId = other.UserID };
+                    }
                 }
 
                 return res;
@@ -46,11 +55,17 @@ namespace SecureChat.Controllers
 				return Forbid();
 
 			var res = ConversationResponse.From(conv);
-			if (conv.Type == ConversationType.Direct && string.IsNullOrEmpty(res.Name))
+			if (conv.Type == ConversationType.Direct)
 			{
 				var other = conv.Members.FirstOrDefault(m => m.UserID != Me && m.LeftAt == null);
 				if (other?.User != null)
-					res = res with { Name = other.User.DisplayName };
+				{
+					if (string.IsNullOrEmpty(res.Name))
+						res = res with { Name = other.User.DisplayName };
+					if (!string.IsNullOrWhiteSpace(other.User.AvatarURL))
+						res = res with { AvatarURL = other.User.AvatarURL };
+					res = res with { OtherUserId = other.UserID };
+				}
 			}
 			return Ok(res);
 		}
@@ -96,15 +111,32 @@ namespace SecureChat.Controllers
 			});
 
 			foreach (var entry in req.Members)
+			{
+				var role = entry.UserID == Me ? MemberRole.Owner : MemberRole.Member;
 				await conversations.AddMemberAsync(new ConversationMember {
 					MemberID       = NewID(),
 					ConversationID = conv.ConversationID,
 					UserID         = entry.UserID,
 					EncryptedKey   = entry.EncryptedKey,
-					Role           = MemberRole.Member
+					Role           = role
 				});
+			}
 
 			var loaded = await conversations.GetByIdWithMembersAsync(conv.ConversationID);
+
+			// Notify all other members via SignalR about the new conversation
+			try
+			{
+				foreach (var entry in req.Members)
+				{
+					if (entry.UserID != Me)
+					{
+						await hubContext.Clients.User(entry.UserID).SendAsync("ConversationCreated", conv.ConversationID);
+					}
+				}
+			}
+			catch { /* best-effort notification */ }
+
 			return CreatedAtAction(nameof(GetConversation), new { conversationID = conv.ConversationID }, ConversationResponse.From(loaded!));
 		}
 
@@ -126,6 +158,19 @@ namespace SecureChat.Controllers
 				conv.AvatarURL = req.AvatarUrl;
 
 			await conversations.UpdateAsync(conv);
+
+			// Notify all active members about the update
+			try
+			{
+				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+				foreach (var m in activeMembers)
+				{
+					if (m.UserID != Me)
+						await hubContext.Clients.User(m.UserID).SendAsync("ConversationUpdated", conversationID);
+				}
+			}
+			catch { /* best-effort */ }
+
 			return Ok(ConversationResponse.From(conv));
 		}
 
@@ -144,7 +189,31 @@ namespace SecureChat.Controllers
 			if (conv.Type != ConversationType.Direct && member.Role != MemberRole.Owner)
 				return Forbid();
 
+			// Fetch active members BEFORE deleting — after DeleteAsync the membership rows are gone
+			List<ConversationMember>? allMembers = null;
+			try
+			{
+				allMembers = (await conversations.GetActiveMembersAsync(conversationID))
+					.Where(m => m.UserID != Me)
+					.ToList();
+			}
+			catch { /* best-effort */ }
+
 			await conversations.DeleteAsync(conversationID);
+
+			// Notify all remaining members that this conversation was deleted
+			if (allMembers is { Count: > 0 })
+			{
+				foreach (var m in allMembers)
+				{
+					try
+					{
+						await hubContext.Clients.User(m.UserID).SendAsync("ConversationDeleted", conversationID);
+					}
+					catch { /* per-user best-effort */ }
+				}
+			}
+
 			return NoContent();
 		}
 
@@ -184,6 +253,26 @@ namespace SecureChat.Controllers
 			});
 
 			var loaded = await conversations.GetMemberByIdAsync(newMember.MemberID);
+
+			// Notify the new member so their sidebar shows this conversation
+			try
+			{
+				await hubContext.Clients.User(req.UserID).SendAsync("ConversationCreated", conversationID);
+			}
+			catch { /* best-effort */ }
+
+			// Notify existing members that a new member joined
+			try
+			{
+				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+				foreach (var m in activeMembers)
+				{
+					if (m.UserID != Me && m.UserID != req.UserID)
+						await hubContext.Clients.User(m.UserID).SendAsync("MemberAdded", conversationID, req.UserID);
+				}
+			}
+			catch { /* best-effort */ }
+
 			return CreatedAtAction(nameof(GetConversationMembers), new { conversationID }, MemberResponse.From(loaded!));
 		}
 
@@ -197,10 +286,12 @@ namespace SecureChat.Controllers
 			var target = await conversations.GetMemberByIdAsync(memberID);
 			if (target is null || target.ConversationID != conversationID)
 				return NotFound();
+			bool roleChanged = false;
 			if (req.Role.HasValue) {
 				if (myMember.Role != MemberRole.Owner)
 					return Forbid();
 				await conversations.UpdateRoleAsync(memberID, req.Role.Value);
+				roleChanged = true;
 			}
 			if (req.Nickname is not null)
 				await conversations.UpdateNicknameAsync(memberID, req.Nickname);
@@ -212,6 +303,22 @@ namespace SecureChat.Controllers
 				await conversations.UpdateEncryptedKeyAsync(memberID, req.EncryptedKey);
 
 			var updated = await conversations.GetMemberByIdAsync(memberID);
+
+			// Notify all active members about the role change
+			if (roleChanged)
+			{
+				try
+				{
+					var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+					foreach (var m in activeMembers)
+					{
+						if (m.UserID != Me)
+							await hubContext.Clients.User(m.UserID).SendAsync("ConversationUpdated", conversationID);
+					}
+				}
+				catch { /* best-effort */ }
+			}
+
 			return Ok(MemberResponse.From(updated!));
 		}
 
@@ -231,17 +338,89 @@ namespace SecureChat.Controllers
 				return Forbid();
 
 			await conversations.RemoveMemberAsync(memberID);
+
+			// Notify the removed member (so their UI removes the conversation)
+			try
+			{
+				if (target.UserID != Me)
+					await hubContext.Clients.User(target.UserID).SendAsync("ConversationDeleted", conversationID);
+			}
+			catch { /* best-effort */ }
+
+			// Notify remaining members that someone was removed
+			try
+			{
+				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+				foreach (var m in activeMembers)
+				{
+					if (m.UserID != Me)
+						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationID, target.UserID);
+				}
+			}
+			catch { /* best-effort */ }
+
 			return NoContent();
 		}
 
 		[HttpPost("{conversationID}/leave")]
-		public async Task<IActionResult> LeaveConversation(string conversationID)
+		public async Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
 		{
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return NotFound();
 
+			// Nếu là Owner, cần chuyển quyền trước khi rời
+			if (member.Role == MemberRole.Owner)
+			{
+				if (req is null || string.IsNullOrWhiteSpace(req.NewOwnerMemberId))
+				{
+					return BadRequest(new { error = "Owner must appoint a new admin before leaving." });
+				}
+
+				var newOwner = await conversations.GetActiveMembersAsync(conversationID);
+				var target = newOwner.FirstOrDefault(m => m.MemberID == req.NewOwnerMemberId && m.MemberID != member.MemberID);
+				if (target is null)
+					return BadRequest(new { error = "Selected member not found or is the current owner." });
+
+				await conversations.UpdateRoleAsync(target.MemberID, MemberRole.Owner);
+			}
+
+			// Send ConversationDeleted to the LEAVING user so their UI removes the conversation
+			try
+			{
+				await hubContext.Clients.User(Me).SendAsync("ConversationDeleted", conversationID);
+			}
+			catch { /* best-effort */ }
+
 			await conversations.LeaveMemberAsync(member.MemberID);
+
+			// Gửi thông báo hệ thống cho các thành viên còn lại
+			try
+			{
+				var displayName = member.User?.DisplayName ?? "A member";
+				var sysMsg = new Message
+				{
+					MessageID      = NewID(),
+					ConversationID = conversationID,
+					Type           = MessageType.SystemNotification,
+					Content        = $"{displayName} has left the group",
+					SentAt         = DateTime.UtcNow,
+					SenderID       = null
+				};
+				var created = await messages.CreateAsync(sysMsg);
+				var msgResponse = SecureChat.DTOs.MessageResponse.From(created);
+				await hubContext.Clients.Group(conversationID).SendAsync("MessageReceived", msgResponse);
+
+				// Notify remaining members that someone left (for UI refresh)
+				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+				foreach (var m in activeMembers)
+				{
+					if (m.UserID != Me)
+						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationID, Me);
+				}
+			}
+			catch { /* best-effort notification */ }
+
 			return NoContent();
 		}
 
@@ -271,7 +450,7 @@ namespace SecureChat.Controllers
 				.Where(m => m.LeftAt == null)
 				.ToList();
 
-			return Ok(activeMembers.Select(MemberResponse.From));
+			return Ok(activeMembers.Select(m => MemberResponse.From(m, presence.IsOnline(m.UserID))));
 		}
 	}
 }

@@ -306,13 +306,19 @@ namespace SecureChat.Client.Forms.Chat
             if (ok && res != null)
             {
                 // Chuyển đổi dữ liệu từ API (res) sang định dạng _allMembers của Form
-                _allMembers = res.Select(m => new MemberItemData(
-                    m.User?.Username ?? "Unknown",
-                    "online",
-                    m.Role.ToString(),
-                    Color.FromArgb(0x5C, 0xA5, 0xEC), // Màu mặc định
-                    (m.User?.Username ?? "U").Substring(0, 1).ToUpper()
-                )).ToList();
+                _allMembers = res.Select(m =>
+                {
+                    var status = (m.User?.ShowOnlineStatus == true)
+                        ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User?.LastSeenUtc)
+                        : "offline";
+                    return new MemberItemData(
+                        m.User?.Username ?? "Unknown",
+                        status,
+                        m.Role.ToString(),
+                        Color.FromArgb(0x5C, 0xA5, 0xEC), // Màu mặc định
+                        (m.User?.Username ?? "U").Substring(0, 1).ToUpper()
+                    );
+                }).ToList();
 
                 // Vẽ lại danh sách lên màn hình
                 BuildMemberRows(string.Empty);

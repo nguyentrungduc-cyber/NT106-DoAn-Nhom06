@@ -13,6 +13,7 @@ namespace SecureChat.Client.Forms.Chat
         public Action<string>? Reply { get; init; }
         public Action<string>? Forward { get; init; }
         public Action<string>? Edit { get; init; }
+        public Action<string>? Recall { get; init; }
         public Action<string>? Delete { get; init; }
         public Action<string>? Copy { get; init; }
         public Action<string>? Pin { get; init; }
@@ -35,6 +36,7 @@ namespace SecureChat.Client.Forms.Chat
                 "Forward",
                 "Copy",
                 "Edit",
+                "Recall",
                 pinLabel,
                 "Delete"
             };
@@ -51,6 +53,7 @@ namespace SecureChat.Client.Forms.Chat
             AddItem(menu, "Forward", actions.Forward, messageId, icons["Forward"]);
             AddItem(menu, "Copy", actions.Copy, messageId, icons["Copy"]);
             AddItem(menu, "Edit", actions.Edit, messageId, icons["Edit"]);
+            AddRecallItem(menu, "Recall", actions.Recall, messageId, icons["Recall"]);
             AddItem(menu, pinLabel, actions.Pin, messageId, icons[pinLabel]);
 
             menu.Items.Add(new ToolStripSeparator());
@@ -87,6 +90,29 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Tag = messageId,
                 Enabled = handler != null
+            };
+
+            if (icon != null)
+            {
+                item.Image = icon;
+                item.ImageScaling = ToolStripItemImageScaling.SizeToFit;
+            }
+
+            if (handler != null)
+            {
+                item.Click += (_, __) => handler(messageId);
+            }
+
+            menu.Items.Add(item);
+        }
+
+        private static void AddRecallItem(ContextMenuStrip menu, string text, Action<string>? handler, string messageId, Image? icon)
+        {
+            var item = new ToolStripMenuItem(text)
+            {
+                Tag = messageId,
+                Enabled = handler != null,
+                ForeColor = Color.FromArgb(0xE2, 0x4B, 0x4A)
             };
 
             if (icon != null)

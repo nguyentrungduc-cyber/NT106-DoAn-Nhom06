@@ -5,6 +5,8 @@ namespace SecureChat.DTOs
 {
 	public record UpdateProfileRequest(
 		[MaxLength(32)] string? DisplayName,
+		[MaxLength(64)] string? Email,
+		[MaxLength(32)] string? Username,
 		string? BioText
 	);
 
@@ -33,20 +35,32 @@ namespace SecureChat.DTOs
 		string? BioText,
 		bool ShowReadStatus,
 		bool ShowOnlineStatus,
+		DateTime? LastSeenUtc,
 		string HashedBKey,
 		string HashedRecoveryKey,
 		string KeySalt,
 		string PublicKey,
 		DateTime CreatedAt,
-		DateTime UpdatedAt
+		DateTime UpdatedAt,
+		bool IsOnline = false
 	)
 	{
 
 		public static UserResponse From(User u) => new (
 			u.UserID, u.Username, u.DisplayName,
 			u.Email, u.AvatarURL, u.BioText,
-			u.ShowReadStatus, u.ShowOnlineStatus, u.HashedBKey, u.HashedRecoveryKey,
+			u.ShowReadStatus, u.ShowOnlineStatus, u.LastSeenUtc,
+			u.HashedBKey, u.HashedRecoveryKey,
 			u.KeySalt, u.PublicKey, u.CreatedAt, u.UpdatedAt
+		);
+
+		public static UserResponse From(User u, bool isOnline) => new (
+			u.UserID, u.Username, u.DisplayName,
+			u.Email, u.AvatarURL, u.BioText,
+			u.ShowReadStatus, u.ShowOnlineStatus, u.LastSeenUtc,
+			u.HashedBKey, u.HashedRecoveryKey,
+			u.KeySalt, u.PublicKey, u.CreatedAt, u.UpdatedAt,
+			isOnline
 		);
 	}
 

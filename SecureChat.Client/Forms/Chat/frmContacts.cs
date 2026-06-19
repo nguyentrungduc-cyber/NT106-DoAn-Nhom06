@@ -176,7 +176,7 @@ namespace SecureChat.Client
                             UserId = f.Friend.UserID,
                             DisplayName = f.Friend.DisplayName,
                             Username = f.Friend.Username,
-                            IsOnline = f.Friend.ShowOnlineStatus,
+                            IsOnline = f.IsOnline,
                             Status = FriendStatus.Friend,
                             FriendshipId = f.FriendshipID,
                         }).ToList();
@@ -1323,7 +1323,7 @@ namespace SecureChat.Client
                                 UserId = u.UserID,
                                 DisplayName = u.DisplayName,
                                 Username = u.Username,
-                                IsOnline = u.ShowOnlineStatus,
+                                IsOnline = u.IsOnline,
                                 Status = status,
                             };
                         }).ToList();

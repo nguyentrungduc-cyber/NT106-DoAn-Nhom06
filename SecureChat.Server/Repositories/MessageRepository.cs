@@ -65,6 +65,15 @@ namespace SecureChat.Repositories
 			await db.SaveChangesAsync();
 		}
 
+		public async Task RecallAsync(string messageID)
+		{
+			var message = await db.Messages.FindAsync(messageID)
+				?? throw new KeyNotFoundException($"Không tìm thấy tin nhắn {messageID}.");
+
+			message.RecalledAt = DateTime.UtcNow;
+			await db.SaveChangesAsync();
+		}
+
 		public async Task DeleteAsync(string messageID)
 		{
 			var message = await db.Messages.FindAsync(messageID);

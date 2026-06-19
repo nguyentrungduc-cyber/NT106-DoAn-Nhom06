@@ -63,6 +63,7 @@ namespace SecureChat.DTOs
 		DateTime? EditedAt,
 		DateTime? DeletedAt,
 		DateTime? ExpiresAt,
+		DateTime? RecalledAt,
 		List<AttachmentResponse>? Attachments,
 		List<string>? MentionedMemberIDs,
 		DeliveryStatus Delivery = DeliveryStatus.Sent
@@ -76,7 +77,7 @@ namespace SecureChat.DTOs
 			m.OriginalSenderID, m.OriginalSender?.DisplayName,
 			m.ReplyToID,
 			m.Type, m.Content ?? "", m.ContentIV ?? "",
-			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt,
+			m.SentAt, m.EditedAt, m.DeletedAt, m.ExpiresAt, m.RecalledAt,
 			m.Attachments.Select(AttachmentResponse.From).ToList(),
 			m.Mentions?.Select(mention => mention.MemberID).ToList(),
 			delivery
@@ -113,11 +114,15 @@ namespace SecureChat.DTOs
 		string MessageID,
 		string ConversationID,
 		string? PinnedBy,
-		DateTime PinnedAt
+		DateTime PinnedAt,
+		string? PinnedByUserId,
+		string? PinnedByName
 	)
 	{
 		public static PinResponse From(MessagePin p) => new(
-			p.MessageID, p.ConversationID, p.PinnedBy, p.PinnedAt
+			p.MessageID, p.ConversationID, p.PinnedBy, p.PinnedAt,
+			p.Member?.UserID,
+			p.Member?.Nickname ?? p.Member?.User?.DisplayName ?? "Unknown"
 		);
 	}
 

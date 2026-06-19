@@ -7,7 +7,8 @@ namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmUserProfile : Form
     {
-        public frmUserProfile(string displayName, string username, string? email, string? bio)
+        public frmUserProfile(string displayName, string username, string? email, string? bio,
+            bool isOnline = false, DateTime? lastSeenUtc = null, bool showOnlineStatus = true)
         {
             Text = "Profile";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -82,7 +83,28 @@ namespace SecureChat.Client.Forms.Chat
             if (lblUsername.Height < 20) lblUsername.Height = 20;
             lblUsername.Location = new Point((ClientSize.Width - lblUsername.Width) / 2, y);
             Controls.Add(lblUsername);
-            y += lblUsername.Height + 28;
+            y += lblUsername.Height + 6;
+
+            // Presence status (centered)
+            string presenceText;
+            if (showOnlineStatus)
+                presenceText = Helpers.PresenceFormatter.GetPresenceText(isOnline, lastSeenUtc);
+            else
+                presenceText = "offline";
+
+            var lblStatus = new Label
+            {
+                Text = presenceText,
+                Font = TG.FontRegular(11f),
+                ForeColor = presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                AutoSize = true,
+                MaximumSize = new Size(360, 0),
+                BackColor = Color.Transparent,
+            };
+            lblStatus.Location = new Point((ClientSize.Width - lblStatus.Width) / 2, y);
+            Controls.Add(lblStatus);
+            y += lblStatus.Height + 18;
 
             // Divider
             Controls.Add(new Panel

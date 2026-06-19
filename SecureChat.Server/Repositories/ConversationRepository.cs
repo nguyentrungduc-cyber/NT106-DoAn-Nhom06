@@ -135,6 +135,11 @@ namespace SecureChat.Repositories
 				.OrderBy(m => m.JoinedAt)
 				.ToListAsync();
 
+		public async Task<List<Conversation>> GetConversationsByMemberAsync(string userID)
+			=> await db.Conversations
+				.Where(c => c.Members.Any(m => m.UserID == userID && m.LeftAt == null))
+				.ToListAsync();
+
 		public async Task<List<ConversationMember>> GetAllMembersAsync(string conversationID)
 			=> await db.ConversationMembers
 				.Include(m => m.User)

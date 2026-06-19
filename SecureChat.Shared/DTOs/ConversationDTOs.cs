@@ -28,6 +28,10 @@ namespace SecureChat.DTOs
 		MemberRole Role = MemberRole.Member
 	);
 
+	public record LeaveConversationRequest(
+		string? NewOwnerMemberId = null
+	);
+
 	public record UpdateMemberRequest(
 		MemberRole? Role,
 		[MaxLength(64)] string? Nickname,
@@ -45,13 +49,18 @@ namespace SecureChat.DTOs
 		string? LastMessageID,
 		DateTime? LastActivityAt,
 		DateTime CreatedAt,
-		int MemberCount
+		int MemberCount,
+		string? LastMessageContent = null,
+		string? LastMessageSenderName = null,
+		string? OtherUserId = null
 	)
 	{
 		public static ConversationResponse From(Conversation c) => new(
 			c.ConversationID, c.Type, c.Name, c.AvatarURL,
 			c.CreatedBy, c.LastMessageID, c.LastActivityAt, c.CreatedAt,
-			c.Members.Count);
+			c.Members.Count(m => m.LeftAt == null),
+			c.LastMessage?.Content,
+			c.LastMessage?.Sender?.User?.DisplayName);
 	}
 
 	public record MemberResponse(
@@ -66,13 +75,15 @@ namespace SecureChat.DTOs
 		DateTime JoinedAt,
 		DateTime? LeftAt,
 		DateTime? BannedUntil,
-		string? LastReadMsgID
+		string? LastReadMsgID,
+		bool IsOnline = false
 	)
 	{
-		public static MemberResponse From(ConversationMember m) => new(
+		public static MemberResponse From(ConversationMember m, bool isOnline = false) => new(
 			m.MemberID, m.ConversationID, m.UserID,
 			m.User != null ? UserResponse.From(m.User) : null,
 			m.Role, m.Nickname, m.EncryptedKey,
-			m.ShowNotifications, m.JoinedAt, m.LeftAt, m.BannedUntil, m.LastReadMsgID);
+			m.ShowNotifications, m.JoinedAt, m.LeftAt, m.BannedUntil, m.LastReadMsgID,
+			isOnline);
 	}
 }
