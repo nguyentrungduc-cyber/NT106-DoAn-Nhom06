@@ -5668,7 +5668,7 @@ namespace SecureChat.Client
                 return;
             }
 
-            int itemH = 40;
+            int itemH = 44; // 2px top + 20px (tên) + 22px (nội dung) = 44, trước là 40 → bị clip 4px
 
             foreach (var pid in _pinnedMessageIds)
             {
@@ -5744,7 +5744,7 @@ namespace SecureChat.Client
                     Text = "✕",
                     FlatStyle = FlatStyle.Flat,
                     Size = new Size(28, 28),
-                    Location = new Point(_pnlPinnedBar.Width - 32, (40 - 28) / 2),
+                    Location = new Point(_pnlPinnedBar.Width - 32, (itemH - 28) / 2),
                     Cursor = Cursors.Hand,
                     ForeColor = TG.TextSecondary,
                     Font = new Font("Segoe UI Symbol", 9f),
