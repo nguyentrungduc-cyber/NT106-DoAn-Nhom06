@@ -27,7 +27,8 @@ namespace SecureChat.Models
 	public enum ConversationType : byte
 	{
 		Direct = 0,
-		Group = 1
+		Group = 1,
+		SavedMessages = 2
 	}
 
 	public enum FriendRequestStatus : byte

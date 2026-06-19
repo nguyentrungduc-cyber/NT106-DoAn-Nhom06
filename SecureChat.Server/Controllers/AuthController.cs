@@ -16,7 +16,7 @@ namespace SecureChat.Controllers
 {
 	[ApiController]
 	[Route("api/auth")]
-  public class AuthController(UserRepository users, JwtTokenService tokens, IConfiguration config, ForgotPasswordService forgotPasswordService, OtpService otpService, EmailService emailService, ILogger<AuthController> logger) : BaseController
+  public class AuthController(UserRepository users, JwtTokenService tokens, IConfiguration config, ForgotPasswordService forgotPasswordService, OtpService otpService, EmailService emailService, ILogger<AuthController> logger, ConversationRepository conversations) : BaseController
 	{
 		[HttpPost("register")]
 		public async Task<IActionResult> Register([FromBody] RegisterRequest req)
@@ -27,10 +27,11 @@ namespace SecureChat.Controllers
 				return Conflict(new { error = "Email đã được sử dụng." });
 
             var (hash, salt) = PasswordHasher.HashPassword(req.HashedPassword);
+            var userID = NewID();
 
             await users.CreateAsync(new User
             {
-                UserID = NewID(),
+                UserID = userID,
                 Username = req.Username,
                 DisplayName = req.DisplayName,
                 Email = req.Email,
@@ -39,6 +40,9 @@ namespace SecureChat.Controllers
                 KeySalt = salt,        // Lưu salt thật vào đây
                 PublicKey = req.PublicKey
             });
+
+            // Auto-create Saved Messages conversation
+            await conversations.GetOrCreateSavedMessagesConversationAsync(userID);
 
 			return Ok(new { message = "Đăng ký thành công." });
 		}

@@ -52,6 +52,7 @@ namespace SecureChat.Client
         private TelegramTextBox _tbMessage; // TextBox gõ tin nhắn
         private Label _lblChatName, _lblChatStatus; // tên và trạng thái người nhận
         private AvatarControl _chatAvatar; //  avatar tròn người nhận
+        private Button _btnVideoCall; // video call button in header
         private Panel _pnlChatEmpty;
         private Label _lblChatEmpty;
 
@@ -105,6 +106,7 @@ namespace SecureChat.Client
 
         // ── Conversation data ──────────────────────────────
         private string _activeConvId = string.Empty;
+        private string _savedMessagesConvId = string.Empty;
         private string _currentUserId = string.Empty;
         private string _currentDisplayName = string.Empty;
         private string _currentUsername = string.Empty;
@@ -248,6 +250,15 @@ namespace SecureChat.Client
             {
                 BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
             }
+            // Ensure Saved Messages conversation exists
+            try
+            {
+                var (savedOk, savedConv, _) = await _messageService.GetOrCreateSavedConversationAsync();
+                if (savedOk && savedConv is not null)
+                    _savedMessagesConvId = savedConv.ConversationID;
+            }
+            catch { /* best-effort */ }
+
             // Sync danh sách conversation từ MariaDB.
             await SyncConversationsAsync();
 
@@ -318,6 +329,19 @@ namespace SecureChat.Client
                         if (!isGroup && !string.IsNullOrWhiteSpace(c.OtherUserId))
                             _convOtherUserId[c.ConversationID] = c.OtherUserId;
                     }
+
+                    // Pin saved messages to the top
+                    if (!string.IsNullOrWhiteSpace(_savedMessagesConvId))
+                    {
+                        int savedIdx = _convs.FindIndex(c => c.Id == _savedMessagesConvId);
+                        if (savedIdx > 0)
+                        {
+                            var saved = _convs[savedIdx];
+                            _convs.RemoveAt(savedIdx);
+                            _convs.Insert(0, saved);
+                        }
+                    }
+
                     BuildConvList();
                     RefreshSidebarPreview();
                     RefreshAllSidebarPreviews();
@@ -746,7 +770,8 @@ namespace SecureChat.Client
         {
             // Tạo một khung chứa có chiều cao cố định là 68px, màu nền trắng và đổi con trỏ chuột thành hình bàn tay (Cursors.Hand) khi rê vào.
             // Thuộc tính Tag được gán bằng id của cuộc trò chuyện để dễ dàng nhận diện.
-            var pnl = new Panel { Height = 68, BackColor = Color.White, Tag = id, Cursor = Cursors.Hand };
+            bool isSavedRow = !string.IsNullOrWhiteSpace(_savedMessagesConvId) && id == _savedMessagesConvId;
+            var pnl = new Panel { Height = 68, BackColor = isSavedRow ? Color.FromArgb(240, 248, 255) : Color.White, Tag = id, Cursor = Cursors.Hand };
 
             // Kiểm tra xem dòng chat này có đang được người dùng chọn (active) hay không bằng cách so sánh Tag với biến toàn cục _activeConvId.
             bool isActive() => (string)pnl.Tag == _activeConvId;
@@ -754,7 +779,10 @@ namespace SecureChat.Client
             // Avatar
             var avatar = new AvatarControl { Size = new Size(48, 48), Location = new Point(10, 10) };
             EnableDoubleBuffering(avatar); // <--- QUAN TRỌNG: Control tự vẽ rất cần cái này
-            avatar.SetName(name);
+            if (isSavedRow && !string.IsNullOrWhiteSpace(_currentDisplayName))
+                avatar.SetName(_currentDisplayName);
+            else
+                avatar.SetName(name);
             if (_convAvatarCache.TryGetValue(id, out var cachedImg) && cachedImg != null)
                 avatar.Photo = new Bitmap(cachedImg);
             avatar.ShowOnline = false; // nếu có thì có chấm xanh nhỏ ở dưới phải avatar
@@ -902,6 +930,7 @@ namespace SecureChat.Client
             // Right buttons: search, video call, more
             var btnSearch = MakeChatHeaderBtn("🔍");
             var btnVideo = MakeChatHeaderBtn("📹");
+            _btnVideoCall = btnVideo;
             btnVideo.Click += async (s, e) =>
             {
                 if (string.IsNullOrWhiteSpace(_activeConvId))
@@ -1238,6 +1267,7 @@ namespace SecureChat.Client
 
             var currentConv = _convs.Find(c => c.Id == _activeConvId);
             bool isGroup = currentConv.IsGroup;
+            bool isSavedConv = !string.IsNullOrWhiteSpace(_savedMessagesConvId) && _activeConvId == _savedMessagesConvId;
 
             _chatMoreMenu.Items.Add(_mnuMuteNotifications);
 
@@ -1249,6 +1279,11 @@ namespace SecureChat.Client
                 _chatMoreMenu.Items.Add(CreateChatMenuItem("🧹  Clear history", (_, __) => ClearHistory()));
                 _chatMoreMenu.Items.Add(new ToolStripSeparator());
                 _chatMoreMenu.Items.Add(CreateChatMenuItem("🚪  Delete and leave", (_, __) => DeleteAndLeave(), Color.FromArgb(0xE2, 0x4B, 0x4A)));
+            }
+            else if (isSavedConv)
+            {
+                _chatMoreMenu.Items.Add(new ToolStripSeparator());
+                _chatMoreMenu.Items.Add(CreateChatMenuItem("🧹  Clear Saved Messages History", (_, __) => ClearSavedMessagesHistory()));
             }
             else
             {
@@ -1852,10 +1887,11 @@ namespace SecureChat.Client
                 _pinnedByMap.Clear();
                 UpdatePinnedBar();
                 
-                // Chọn conversation đầu tiên nếu còn
+                // Chọn conversation đầu tiên không phải Saved Messages
                 if (_convs.Count > 0)
                 {
-                    _activeConvId = _convs[0].Id;
+                    var first = _convs.FirstOrDefault(c => !string.IsNullOrWhiteSpace(_savedMessagesConvId) && c.Id != _savedMessagesConvId);
+                    _activeConvId = first.Id ?? _convs[0].Id;
                 }
             }
 
@@ -1988,6 +2024,53 @@ namespace SecureChat.Client
             catch (Exception ex)
             {
                 MessageBox.Show(this, $"Error clearing history: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void ClearSavedMessagesHistory()
+        {
+            var result = MessageBox.Show(this,
+                "This will permanently delete all notes, messages, links, files and media stored in Saved Messages.",
+                "Clear Saved Messages History",
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Warning);
+
+            if (result != DialogResult.OK)
+                return;
+
+            try
+            {
+                var (clearOk, _, clearErr) = await ApiClient.Instance.PostAsync<object, object>(
+                    $"api/conversations/{_activeConvId}/clear", new { });
+                if (!clearOk)
+                {
+                    MessageBox.Show(this,
+                        $"Failed to clear Saved Messages: {clearErr}",
+                        "Clear Saved Messages History",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                foreach (var msg in _currentMsgs)
+                {
+                    _messageDates.Remove(msg.Id);
+                    _forwardMetadata.TryRemove(msg.Id, out _);
+                    _forwardOriginalSenderId.TryRemove(msg.Id, out _);
+                }
+                _currentMsgs.Clear();
+
+                _pinnedMessageIds.Clear();
+                _pinnedByMap.Clear();
+                UpdatePinnedBar();
+
+                RefreshConversationItem(_activeConvId, string.Empty, true, string.Empty, string.Empty);
+
+                BuildMessages();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Error clearing Saved Messages: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -3316,7 +3399,15 @@ namespace SecureChat.Client
                     }
                 case "Saved Messages":
                     {
-                        MessageBox.Show(this, "Saved messages feature coming soon.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        if (string.IsNullOrWhiteSpace(_savedMessagesConvId))
+                            break;
+
+                        await LoadConversationsAsync();
+
+                        _activeConvId = _savedMessagesConvId;
+                        BuildConvList();
+                        UpdateEmptyStateUI();
+                        LoadConversation(_savedMessagesConvId);
                         break;
                     }
                 case "Settings":
@@ -3514,6 +3605,12 @@ namespace SecureChat.Client
             _activeConvId = convId;
             UpdateChatEmptyStateUI();
 
+            bool isSavedConv = !string.IsNullOrWhiteSpace(_savedMessagesConvId) && convId == _savedMessagesConvId;
+
+            // Hide video call button for saved messages
+            if (_btnVideoCall != null)
+                _btnVideoCall.Visible = !isSavedConv;
+
             // Luôn clear ảnh header cũ trước khi chuyển conversation
             var oldHeaderPhoto = _chatAvatar.Photo;
             if (oldHeaderPhoto != null)
@@ -3522,8 +3619,9 @@ namespace SecureChat.Client
                 oldHeaderPhoto.Dispose();
             }
 
-            _chatAvatar.SetName(conv.Name);
-            _lblChatName.Text = conv.Name;
+            string headerName = isSavedConv && !string.IsNullOrWhiteSpace(_currentDisplayName) ? _currentDisplayName : conv.Name;
+            _chatAvatar.SetName(headerName);
+            _lblChatName.Text = isSavedConv ? "Saved Messages" : conv.Name;
             RestoreChatStatus();
 
             if (!conv.IsGroup && _signalRClient != null && _signalRClient.IsConnected)
@@ -3857,6 +3955,18 @@ namespace SecureChat.Client
                     _convs.Add((c.ConversationID, display, convPreview, time, 0, isGroup));
                 }
 
+                // Pin saved messages to the top
+                if (!string.IsNullOrWhiteSpace(_savedMessagesConvId))
+                {
+                    int savedIdx = _convs.FindIndex(c => c.Id == _savedMessagesConvId);
+                    if (savedIdx > 0)
+                    {
+                        var saved = _convs[savedIdx];
+                        _convs.RemoveAt(savedIdx);
+                        _convs.Insert(0, saved);
+                    }
+                }
+
                 BuildConvList();
 
                 // Trigger background avatar loading for conversations with avatar URLs
@@ -3868,11 +3978,27 @@ namespace SecureChat.Client
 
                 if (_convs.Count > 0)
                 {
-                    _activeConvId = _convs[0].Id;
-                    BuildConvList();
-                    LoadConversation(_activeConvId);
-                    RefreshSidebarPreview();
-                    RefreshAllSidebarPreviews();
+                    // Preserve existing active conversation; do NOT auto-open Saved Messages.
+                    if (string.IsNullOrWhiteSpace(_activeConvId) || !_convs.Any(c => c.Id == _activeConvId))
+                    {
+                        var firstNonSaved = _convs.FirstOrDefault(c => !string.IsNullOrWhiteSpace(_savedMessagesConvId) && c.Id != _savedMessagesConvId);
+                        _activeConvId = firstNonSaved.Id ?? string.Empty;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(_activeConvId))
+                    {
+                        BuildConvList();
+                        LoadConversation(_activeConvId);
+                        RefreshSidebarPreview();
+                        RefreshAllSidebarPreviews();
+                    }
+                    else
+                    {
+                        _activeConvId = string.Empty;
+                        _convs.Clear();
+                        BuildConvList();
+                        UpdateChatEmptyStateUI();
+                    }
                 }
                 else
                 {
@@ -4071,6 +4197,18 @@ namespace SecureChat.Client
             _convs.RemoveAt(idx);
             _convs.Insert(0, (convId, c.Name, preview, timeStr, unread ?? c.Unread, c.IsGroup));
 
+            // Re-pin Saved Messages to the top if it was displaced
+            if (!string.IsNullOrWhiteSpace(_savedMessagesConvId) && convId != _savedMessagesConvId)
+            {
+                int savedIdx = _convs.FindIndex(x => x.Id == _savedMessagesConvId);
+                if (savedIdx > 0)
+                {
+                    var saved = _convs[savedIdx];
+                    _convs.RemoveAt(savedIdx);
+                    _convs.Insert(0, saved);
+                }
+            }
+
             Panel? row = null;
             if (_convRowCache.TryGetValue(convId, out var cached) && _pnlConvList.Controls.Contains(cached))
                 row = cached;
@@ -4098,6 +4236,13 @@ namespace SecureChat.Client
                 EnableDoubleBuffering(row);
                 _pnlConvList.Controls.Add(row);
                 _pnlConvList.Controls.SetChildIndex(row, 0);
+            }
+
+            // Ensure Saved Messages row stays visually on top (z-order)
+            if (!string.IsNullOrWhiteSpace(_savedMessagesConvId) && _savedMessagesConvId != convId)
+            {
+                if (_convRowCache.TryGetValue(_savedMessagesConvId, out var savedRow) && _pnlConvList.Controls.Contains(savedRow))
+                    _pnlConvList.Controls.SetChildIndex(savedRow, 0);
             }
 
             int y = 0;
@@ -5085,7 +5230,7 @@ namespace SecureChat.Client
 
             var msg = _currentMsgs[msgIndex];
 
-            using var dlg = new SecureChat.Client.Forms.Chat.frmForwardMessage(_convs, _activeConvId);
+            using var dlg = new SecureChat.Client.Forms.Chat.frmForwardMessage(_convs, _activeConvId, _savedMessagesConvId);
             if (dlg.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dlg.SelectedConversationId))
                 return;
 
@@ -5733,6 +5878,12 @@ namespace SecureChat.Client
             {
                 var (ok, conv, _) = await _messageService.GetConversationAsync(convId);
                 if (!ok || conv is null) return;
+                // Saved Messages is auto-created; no notification needed
+                if (conv.Type == ConversationType.SavedMessages)
+                {
+                    _savedMessagesConvId = convId;
+                    return;
+                }
                 BeginInvoke(new Action(() =>
                 {
                     if (_convs.Any(c => c.Id == convId)) return;
@@ -5882,7 +6033,15 @@ namespace SecureChat.Client
 
                         if (_activeConvId == convId)
                         {
-                            _activeConvId = _convs.Count > 0 ? _convs[0].Id : string.Empty;
+                            if (_convs.Count > 0)
+                            {
+                                var first = _convs.FirstOrDefault(c => !string.IsNullOrWhiteSpace(_savedMessagesConvId) && c.Id != _savedMessagesConvId);
+                                _activeConvId = first.Id ?? _convs[0].Id;
+                            }
+                            else
+                            {
+                                _activeConvId = string.Empty;
+                            }
                             if (string.IsNullOrEmpty(_activeConvId))
                                 UpdateChatEmptyStateUI();
                             else
@@ -5922,6 +6081,26 @@ namespace SecureChat.Client
                             _ = _signalRClient?.QueryUserPresenceAsync(otherId);
                     }
                     BuildConvList();
+                }));
+            };
+            _signalRClient.MessagesCleared += async convId =>
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    // Always remove cached messages so this conversation re-fetches from server
+                    _allMsgs.Remove(convId);
+                    _syncedConversations.Remove(convId);
+
+                    // Only refresh UI state when this conversation is currently visible
+                    if (_activeConvId == convId)
+                    {
+                        _pinnedMessageIds.Clear();
+                        _pinnedByMap.Clear();
+                        UpdatePinnedBar();
+                        LoadConversation(_activeConvId);
+                    }
+
+                    RefreshConversationItem(convId, string.Empty, true, string.Empty, string.Empty);
                 }));
             };
             _signalRClient.MemberAdded += async (convId, userId) =>
@@ -6225,11 +6404,15 @@ namespace SecureChat.Client
                         bool isMention = !dm.Out && IsCurrentUserMentioned(message);
                         string convIdForMute = message.ConversationID;
 
-                        if (!dm.Out && idx >= 0 && message.ConversationID != _activeConvId && !isCallMessage)
-                        {
-                            // Skip if conversation is muted
-                            if (IsConversationMuted(convIdForMute))
-                                return;
+                // Skip notification for saved messages (self-messages)
+                if (!string.IsNullOrWhiteSpace(_savedMessagesConvId) && message.ConversationID == _savedMessagesConvId)
+                    return;
+
+                if (!dm.Out && idx >= 0 && message.ConversationID != _activeConvId && !isCallMessage)
+                {
+                    // Skip if conversation is muted
+                    if (IsConversationMuted(convIdForMute))
+                        return;
 
                             var conv2 = _convs[idx];
                             var s = NotificationSettings.Default;
@@ -6496,6 +6679,13 @@ namespace SecureChat.Client
         {
             if (_lblChatStatus == null || string.IsNullOrWhiteSpace(_activeConvId))
                 return;
+
+            // Saved Messages subtitle
+            if (!string.IsNullOrWhiteSpace(_savedMessagesConvId) && _activeConvId == _savedMessagesConvId)
+            {
+                _lblChatStatus.Text = "Your notes, links, and media";
+                return;
+            }
 
             lock (_typingLock)
             {

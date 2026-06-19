@@ -26,6 +26,7 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, string?, string?, string?, Task>? ProfileUpdated;
         public event Func<string, Task>? ConversationDeleted;
         public event Func<string, Task>? ConversationUpdated;
+        public event Func<string, Task>? MessagesCleared;
         public event Func<string, string, string, string, Task>? MessagePinned;
         public event Func<string, string, Task>? MessageUnpinned;
 public event Func<string, string, Task>? MemberAdded;
@@ -136,6 +137,12 @@ public event Func<string, string, Task>? MemberRemoved;
             {
                 if (ConversationUpdated is not null)
                     await ConversationUpdated.Invoke(conversationId);
+            });
+
+            _connection.On<string>("MessagesCleared", async conversationId =>
+            {
+                if (MessagesCleared is not null)
+                    await MessagesCleared.Invoke(conversationId);
             });
 
             _connection.On<string, string, string, string>("MessagePinned", async (conversationId, messageId, pinnedByUserId, pinnedByName) =>

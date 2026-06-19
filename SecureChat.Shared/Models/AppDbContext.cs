@@ -345,8 +345,8 @@ namespace SecureChat.Models
 
 		private static void ConfigureCheckConstraints(ModelBuilder m)
 		{
-			m.Entity<Conversation>()
-				.ToTable(t => t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1)"));
+m.Entity<Conversation>()
+	.ToTable(t => t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1, 2)"));
 
 			m.Entity<ConversationMember>()
 				.ToTable(t => t.HasCheckConstraint("chk_convmems_role", "role between 0 and 2"));
