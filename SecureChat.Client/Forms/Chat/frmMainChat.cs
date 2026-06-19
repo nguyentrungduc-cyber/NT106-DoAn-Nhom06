@@ -179,6 +179,8 @@ namespace SecureChat.Client
         private readonly ConcurrentDictionary<string, string> _forwardOriginalSenderId = new();
         private readonly HashSet<string> _pinnedMessageIds = new();
         private readonly Dictionary<string, DateTime?> _convMuteUntil = new(); // conversationId → muted until (null = not muted)
+        private Icon? _originalIcon;
+        private Icon? _monochromeIcon;
         private Panel _pnlPinnedBar = null!;
         private Label _lblPinnedText = null!;
         private Button _btnUnpin = null!;
@@ -203,7 +205,11 @@ namespace SecureChat.Client
 
             // Hybrid encryption: Generate and register RSA keypair at startup
             this.Load += FrmMainChat_Load;
-            this.Activated += (_, __) => NotificationManager.StopFlash(this.Handle);
+            this.Activated += (_, __) =>
+            {
+                NotificationManager.StopFlash(this.Handle);
+                ApplyAdvancedSettings();
+            };
         }
 
         private async void FrmMainChat_Load(object? sender, EventArgs e)
@@ -287,6 +293,8 @@ namespace SecureChat.Client
 
             // Trigger background sync for sidebar previews
             _ = SyncLastMessagePreviewsAsync();
+
+            ApplyAdvancedSettings();
         }
 
         private async Task LoadConversationsAsync()
@@ -479,12 +487,16 @@ namespace SecureChat.Client
         // ════════════════════════════════════════════
         private void InitUI()
         {
+            var adv = SecureChat.Client.Settings.AdvancedSettings.Default;
+
             Text = "SecureChat";
             Size = new Size(1000, 660);
             MinimumSize = new Size(760, 500);
             StartPosition = FormStartPosition.CenterScreen;
             // this.MaximizeBox = false; // Vô hiệu hóa nút phóng to
-            FormBorderStyle = FormBorderStyle.FixedSingle;
+            FormBorderStyle = adv.UseSystemWindowFrame ? FormBorderStyle.Sizable : FormBorderStyle.FixedSingle;
+            ShowInTaskbar = adv.ShowTaskbarIcon;
+            ApplyMonochromeIcon();
 
             BackColor = Color.White;
             Font = TG.FontRegular(9.5f);
@@ -520,6 +532,71 @@ namespace SecureChat.Client
             // 2. Nạp hình nền lần đầu tiên
             // Nên để sau AdjustLayout để _pnlChat và _pnlMessages đã có kích thước chuẩn
             UpdateCachedBackground();
+        }
+
+        private void UpdateTitleBar()
+        {
+            var adv = SecureChat.Client.Settings.AdvancedSettings.Default;
+
+            string title = "SecureChat";
+
+            if (adv.ShowChatName && !string.IsNullOrWhiteSpace(_activeConvId))
+            {
+                var conv = _convs.Find(c => c.Id == _activeConvId);
+                if (conv != default)
+                {
+                    bool isSaved = !string.IsNullOrWhiteSpace(_savedMessagesConvId) && _activeConvId == _savedMessagesConvId;
+                    title = isSaved ? "SecureChat - Saved Messages" : $"SecureChat - {conv.Name}";
+                }
+            }
+
+            if (adv.TotalUnreadCount)
+            {
+                int total = 0;
+                foreach (var c in _convs)
+                    total += c.Unread;
+                if (total > 0)
+                    title = $"{title} ({total})";
+            }
+
+            if (Text != title)
+                Text = title;
+        }
+
+        private void ApplyMonochromeIcon()
+        {
+            var adv = SecureChat.Client.Settings.AdvancedSettings.Default;
+            var path = Path.Combine(AppContext.BaseDirectory, "Resources", "Icons", "app.ico");
+
+            _originalIcon ??= this.Icon;
+
+            if (_monochromeIcon == null && File.Exists(path))
+            {
+                try { _monochromeIcon = new Icon(path); }
+                catch { }
+            }
+
+            bool useMono = adv.UseMonochromeIcon && _monochromeIcon != null;
+            Icon target = useMono ? _monochromeIcon : _originalIcon;
+
+            if (this.Icon != target)
+                this.Icon = target;
+        }
+
+        private void ApplyAdvancedSettings()
+        {
+            var adv = SecureChat.Client.Settings.AdvancedSettings.Default;
+
+            if (FormBorderStyle != (adv.UseSystemWindowFrame ? FormBorderStyle.Sizable : FormBorderStyle.FixedSingle))
+            {
+                FormBorderStyle = adv.UseSystemWindowFrame ? FormBorderStyle.Sizable : FormBorderStyle.FixedSingle;
+            }
+
+            if (ShowInTaskbar != adv.ShowTaskbarIcon)
+                ShowInTaskbar = adv.ShowTaskbarIcon;
+
+            ApplyMonochromeIcon();
+            UpdateTitleBar();
         }
 
         private void AdjustLayout()
@@ -3663,6 +3740,8 @@ namespace SecureChat.Client
             // Đảm bảo có list (rỗng nếu chưa sync) trước khi vẽ.
             BuildMessages();
 
+            UpdateTitleBar();
+
             // Sync tin nhắn từ MariaDB (chỉ làm 1 lần / conv) rồi join SignalR group
             // để nhận realtime cho các tin sau đó.
             await SyncMessagesForActiveConversationAsync(convId);
@@ -4525,6 +4604,8 @@ namespace SecureChat.Client
                 _isPinnedPopupOpen = false;
             }
 
+            UpdateTitleBar();
+
             if (_pnlChatEmpty.Visible)
             {
                 _pnlMessages.Controls.Clear();
@@ -4794,17 +4875,38 @@ namespace SecureChat.Client
 
                 fileCtrl.FileClicked += async (s, e) =>
                 {
-                    using var sfd = new SaveFileDialog
+                    var adv = SecureChat.Client.Settings.AdvancedSettings.Default;
+                    string destination;
+
+                    if (adv.AskDownloadPathEachFile)
                     {
-                        FileName = fileName,
-                        Filter = "All Files|*.*",
-                        Title = "Save File"
-                    };
+                        using var sfd = new SaveFileDialog
+                        {
+                            FileName = fileName,
+                            Filter = "All Files|*.*",
+                            Title = "Save File"
+                        };
 
-                    if (sfd.ShowDialog(this) != DialogResult.OK)
-                        return;
+                        if (sfd.ShowDialog(this) != DialogResult.OK)
+                            return;
 
-                    var destination = sfd.FileName;
+                        destination = sfd.FileName;
+                    }
+                    else
+                    {
+                        string dir = adv.ResolveDownloadPath();
+                        if (!Directory.Exists(dir))
+                            Directory.CreateDirectory(dir);
+                        destination = Path.Combine(dir, fileName);
+                        int counter = 1;
+                        while (File.Exists(destination))
+                        {
+                            string nameNoExt = Path.GetFileNameWithoutExtension(fileName);
+                            string ext = Path.GetExtension(fileName);
+                            destination = Path.Combine(dir, $"{nameNoExt} ({counter}){ext}");
+                            counter++;
+                        }
+                    }
                     var cts = new CancellationTokenSource();
 
                     void OnCanceled(object? sender2, EventArgs e2)
@@ -6525,6 +6627,7 @@ namespace SecureChat.Client
                             if (!dm.Out && !string.IsNullOrEmpty(dm.Sender) && _senderDisplayNameMap.TryGetValue(dm.Sender, out var dn) && !string.IsNullOrEmpty(dn))
                                 senderForPreview = dn;
                             RefreshConversationItem(message.ConversationID, dm.Text, dm.Out, senderForPreview, dm.Time, unread, dm.Id);
+                            UpdateTitleBar();
                         }
 
                         if (message.ConversationID == _activeConvId)
@@ -7417,6 +7520,13 @@ namespace SecureChat.Client
             {
                 _processedMessageIds.Clear();
             }
+
+            // Restore original icon so Form.Dispose doesn't dispose _monochromeIcon
+            if (_originalIcon != null && this.Icon != _originalIcon)
+                this.Icon = _originalIcon;
+            _monochromeIcon?.Dispose();
+            _monochromeIcon = null;
+
             base.OnFormClosed(e);
         }
 
