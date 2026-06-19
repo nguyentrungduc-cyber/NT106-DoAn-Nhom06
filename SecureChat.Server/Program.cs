@@ -36,6 +36,7 @@ builder.Services.AddScoped<FriendRepository>();
 builder.Services.AddScoped<ConversationRepository>();
 builder.Services.AddScoped<MessageRepository>();
 builder.Services.AddScoped<CallRepository>();
+builder.Services.AddScoped<PrivacyRepository>();
 builder.Services.AddSingleton<PresenceTracker>();
 builder.Services.AddScoped<JwtTokenService>();
 // Email service used by forgot-password flow. Registered as singleton so it can be reused.
@@ -44,6 +45,7 @@ builder.Services.AddSingleton<EmailService>();
 builder.Services.AddSingleton<OtpService>();
 builder.Services.AddSingleton<ForgotPasswordService>();
 builder.Services.AddHostedService<CallTimeoutService>();
+builder.Services.AddHostedService<AutoDeleteMessageService>();
 
 var jwtKey = builder.Configuration["Jwt:Key"]
 	?? throw new InvalidOperationException("Jwt:Key is not configured.");

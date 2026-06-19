@@ -75,4 +75,28 @@ namespace SecureChat.DTOs
 		bool ShowReadStatus,
 		bool ShowOnlineStatus
 	);
+
+	public record PrivacySettingsResponse(
+		PrivacyLevel LastSeenPrivacy,
+		PrivacyLevel ProfilePhotoPrivacy,
+		PrivacyLevel ForwardedMessagesPrivacy,
+		PrivacyLevel CallsPrivacy,
+		PrivacyLevel VoiceMessagesPrivacy,
+		PrivacyLevel MessagesPrivacy,
+		PrivacyLevel BirthdayPrivacy,
+		PrivacyLevel BioPrivacy,
+		AutoDeleteMode AutoDeleteMode
+	);
+
+	public record UpdatePrivacySettingsRequest(
+		PrivacyLevel? LastSeenPrivacy,
+		PrivacyLevel? ProfilePhotoPrivacy,
+		PrivacyLevel? ForwardedMessagesPrivacy,
+		PrivacyLevel? CallsPrivacy,
+		PrivacyLevel? VoiceMessagesPrivacy,
+		PrivacyLevel? MessagesPrivacy,
+		PrivacyLevel? BirthdayPrivacy,
+		PrivacyLevel? BioPrivacy,
+		AutoDeleteMode? AutoDeleteMode
+	);
 }

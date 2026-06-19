@@ -10,7 +10,7 @@ namespace SecureChat.Controllers
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations/{conversationID}/messages")]
-	public class MessageController(MessageRepository messages, ConversationRepository conversations) : BaseController
+	public class MessageController(MessageRepository messages, ConversationRepository conversations, PrivacyRepository privacy) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -24,7 +24,24 @@ namespace SecureChat.Controllers
 				return Forbid();
 
 			var list = await messages.GetByConversationAsync(conversationID, limit, before);
-			return Ok(list.Select(MessageResponse.From));
+			var result = new List<MessageResponse>();
+			foreach (var msg in list)
+			{
+				bool hideForward = false;
+				if (msg.OriginalSenderID is not null && msg.OriginalSenderID != Me)
+				{
+					var rawSettings = await privacy.GetRawSettingsAsync(msg.OriginalSenderID);
+					if (rawSettings is not null)
+					{
+						bool isContact = await privacy.AreContactsAsync(Me, msg.OriginalSenderID);
+						if (rawSettings.ForwardedMessagesPrivacy == PrivacyLevel.Nobody
+							|| (rawSettings.ForwardedMessagesPrivacy == PrivacyLevel.Contacts && !isContact))
+							hideForward = true;
+					}
+				}
+				result.Add(MessageResponse.From(msg, hideForward));
+			}
+			return Ok(result);
 		}
 
 		[HttpGet("{messageID}")]
@@ -46,6 +63,19 @@ namespace SecureChat.Controllers
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
+
+		// For direct conversations, check if recipient allows messages from this sender
+		var conv = await conversations.GetByIdWithMembersAsync(conversationID);
+		if (conv?.Type == ConversationType.Direct)
+		{
+			var other = conv.Members.FirstOrDefault(m => m.UserID != Me && m.LeftAt == null);
+			if (other is not null && !await privacy.CanSendMessageAsync(Me, other.UserID))
+				return Forbid();
+
+			// Also enforce VoiceMessagesPrivacy for audio messages
+			if (req.Type == MessageType.Audio && other is not null && !await privacy.CanSendVoiceMessageAsync(Me, other.UserID))
+				return Forbid();
+		}
 
 		if (member.BannedUntil.HasValue && member.BannedUntil > DateTime.UtcNow)
 			return BadRequest(new { error = "Bạn đang bị cấm gửi tin nhắn." });

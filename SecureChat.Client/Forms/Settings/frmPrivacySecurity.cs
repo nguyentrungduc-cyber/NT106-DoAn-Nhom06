@@ -1,7 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
+using SecureChat.Client.Services.Api;
+using SecureChat.DTOs;
 
 namespace SecureChat.Client.Forms.Settings
 {
@@ -16,22 +21,85 @@ namespace SecureChat.Client.Forms.Settings
         private static readonly Color C_BORDER = Color.FromArgb(0xE8, 0xEC, 0xF1);
 
         private TableLayoutPanel _table = null!;
-        private Label _lblTwoStepStatus = null!;
         private Label _lblAutoDeleteStatus = null!;
         private Label _lblLoginEmail = null!;
         private Label _lblBlocked = null!;
 
-        private bool _isTwoStepOn;
-        private string _pendingEmailCode = string.Empty;
+        private readonly PrivacyService _privacyService = new();
+        private PrivacySettingsDto _settings = new();
+
+        private static readonly Dictionary<string, string> PrivacyKeyMap = new()
+        {
+            ["Last seen online"] = "LastSeenPrivacy",
+            ["Profile photos"] = "ProfilePhotoPrivacy",
+            ["Forwarded messages"] = "ForwardedMessagesPrivacy",
+            ["Calls"] = "CallsPrivacy",
+            ["Voice messages"] = "VoiceMessagesPrivacy",
+            ["Messages"] = "MessagesPrivacy",
+            ["Birthday"] = "BirthdayPrivacy",
+            ["Bio"] = "BioPrivacy"
+        };
 
         public frmPrivacySecurity()
         {
             InitializeComponent();
             BuildUI();
-            Load += (_, __) => UpdateSecurityUI();
+            Load += async (_, __) => await LoadSettingsAsync();
         }
 
         private void InitializeComponent() { }
+
+        private async Task LoadSettingsAsync()
+        {
+            var result = await _privacyService.GetSettingsAsync();
+            if (result.Success && result.Data is not null)
+            {
+                _settings = result.Data;
+                ApplySettingsToUI();
+            }
+
+            var meResult = await ApiClient.Instance.GetAsync<UserResponse>("api/users/me");
+            if (meResult.IsSuccess && meResult.Data is not null && !string.IsNullOrWhiteSpace(meResult.Data.Email))
+                _lblLoginEmail.Text = meResult.Data.Email;
+        }
+
+        private void ApplySettingsToUI()
+        {
+            _lblAutoDeleteStatus.Text = AutoDeleteLabel(_settings.AutoDeleteMode);
+
+            foreach (Control c in _table.Controls)
+            {
+                if (c is TableLayoutPanel p)
+                {
+                    Label? textLbl = null;
+                    Label? statusLbl = null;
+                    foreach (Control child in p.Controls)
+                    {
+                        if (child is Label l && l.TextAlign == ContentAlignment.MiddleLeft) textLbl = l;
+                        if (child is Label l2 && l2.ForeColor == C_ACCENT) statusLbl = l2;
+                    }
+                    if (textLbl != null && statusLbl != null && PrivacyKeyMap.TryGetValue(textLbl.Text, out var prop))
+                    {
+                        var val = GetSettingValue(prop);
+                        if (val is not null)
+                            statusLbl.Text = val;
+                    }
+                }
+            }
+        }
+
+        private string? GetSettingValue(string prop) => prop switch
+        {
+            "LastSeenPrivacy" => _settings.LastSeenPrivacy,
+            "ProfilePhotoPrivacy" => _settings.ProfilePhotoPrivacy,
+            "ForwardedMessagesPrivacy" => _settings.ForwardedMessagesPrivacy,
+            "CallsPrivacy" => _settings.CallsPrivacy,
+            "VoiceMessagesPrivacy" => _settings.VoiceMessagesPrivacy,
+            "MessagesPrivacy" => _settings.MessagesPrivacy,
+            "BirthdayPrivacy" => _settings.BirthdayPrivacy,
+            "BioPrivacy" => _settings.BioPrivacy,
+            _ => null
+        };
 
         private void BuildUI()
         {
@@ -70,10 +138,9 @@ namespace SecureChat.Client.Forms.Settings
             AddHeaderRow();
             AddSectionHeader("Security");
 
-            _lblTwoStepStatus = AddActionRow("Two-Step Verification", "mini_lock", "Off", () => OpenTwoStepFlow());
             _lblAutoDeleteStatus = AddActionRow("Auto-Delete Messages", "input_autodelete", "Off", () => ChooseAutoDelete());
-            _lblLoginEmail = AddActionRow("Login Email", "account_check", "hi*****@gmail.com", () => ChangeEmail());
-            _lblBlocked = AddActionRow("Blocked users", "info_block", "None", () => MessageBox.Show("No blocked users.", "Info"));
+            _lblLoginEmail = AddActionRow("Login Email", "account_check", "Loading...", () => ChangeEmail());
+            _lblBlocked = AddActionRow("Blocked users", "info_block", "None", () => OpenBlockedUsers());
 
             AddDivider();
             AddSectionHeader("Privacy");
@@ -86,8 +153,6 @@ namespace SecureChat.Client.Forms.Settings
             AddPrivacyOption("Messages");
             AddPrivacyOption("Birthday");
             AddPrivacyOption("Bio");
-
-            UpdateSecurityUI();
         }
 
         private void AddSectionHeader(string text)
@@ -246,10 +311,10 @@ namespace SecureChat.Client.Forms.Settings
 
         private void AddPrivacyOption(string text)
         {
-            AddActionRow(text, "info_rights_lock", "Everybody", () => CyclePrivacy(text));
+            var lbl = AddActionRow(text, "info_rights_lock", "Everybody", () => CyclePrivacy(text));
         }
 
-        private void CyclePrivacy(string key)
+        private async void CyclePrivacy(string key)
         {
             foreach (Control c in _table.Controls)
             {
@@ -273,13 +338,11 @@ namespace SecureChat.Client.Forms.Settings
                             ForeColor = C_TEXT,
                             FormBorderStyle = FormBorderStyle.FixedDialog
                         };
-                        var radios = new[] { "Everybody", "My contacts", "Nobody" };
+                        var radios = new[] { "Everybody", "Contacts", "Nobody" };
                         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(12, 12, 12, 12) };
-                        RadioButton? selected = null;
                         foreach (var r in radios)
                         {
                             var rb = new RadioButton { Text = r, ForeColor = C_TEXT, BackColor = C_BG, AutoSize = true, Checked = statusLbl.Text == r };
-                            if (rb.Checked) selected = rb;
                             panel.Controls.Add(rb);
                         }
                         var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = false, Width = 80, Height = 30, Padding = new Padding(6, 2, 6, 2) };
@@ -301,6 +364,7 @@ namespace SecureChat.Client.Forms.Settings
                                 if (ctrl is RadioButton rb && rb.Checked)
                                 {
                                     statusLbl.Text = rb.Text;
+                                    await SavePrivacyToApi(key, rb.Text);
                                     break;
                                 }
                             }
@@ -311,35 +375,30 @@ namespace SecureChat.Client.Forms.Settings
             }
         }
 
-        private void OpenTwoStepFlow()
+        private async Task SavePrivacyToApi(string key, string value)
         {
-            // If already enabled, go directly to manage
-            if (CheckTwoStepExists())
-            {
-                using var manageExisting = new frmTwoStepManage(() => { _isTwoStepOn = false; SaveTwoStepState(false); UpdateSecurityUI(); });
-                manageExisting.ShowDialog(this);
+            if (!PrivacyKeyMap.TryGetValue(key, out var prop))
                 return;
-            }
 
-            using var start = new frmTwoStepStart();
-            if (start.ShowDialog(this) == DialogResult.OK)
+            var update = new UpdatePrivacySettingsDto();
+            switch (prop)
             {
-                using var setPwd = new frmTwoStepPassword();
-                if (setPwd.ShowDialog(this) == DialogResult.OK)
-                {
-                    // Mark as enabled immediately after successful password set
-                    _isTwoStepOn = true;
-                    SaveTwoStepState(true);
-                    UpdateSecurityUI();
-
-                    // Allow user to manage/disable if desired
-                    using var manage = new frmTwoStepManage(() => { _isTwoStepOn = false; SaveTwoStepState(false); UpdateSecurityUI(); });
-                    manage.ShowDialog(this);
-                }
+                case "LastSeenPrivacy": update = update with { LastSeenPrivacy = value }; break;
+                case "ProfilePhotoPrivacy": update = update with { ProfilePhotoPrivacy = value }; break;
+                case "ForwardedMessagesPrivacy": update = update with { ForwardedMessagesPrivacy = value }; break;
+                case "CallsPrivacy": update = update with { CallsPrivacy = value }; break;
+                case "VoiceMessagesPrivacy": update = update with { VoiceMessagesPrivacy = value }; break;
+                case "MessagesPrivacy": update = update with { MessagesPrivacy = value }; break;
+                case "BirthdayPrivacy": update = update with { BirthdayPrivacy = value }; break;
+                case "BioPrivacy": update = update with { BioPrivacy = value }; break;
             }
+
+            var result = await _privacyService.UpdateSettingsAsync(update);
+            if (result.Success && result.Data is not null)
+                _settings = result.Data;
         }
 
-        private void ChooseAutoDelete()
+        private async void ChooseAutoDelete()
         {
             var items = new[] { "Off", "After 1 day", "After 1 week", "After 1 month" };
             using var dlg = new Form
@@ -363,87 +422,117 @@ namespace SecureChat.Client.Forms.Settings
                 ItemHeight = 28
             };
             list.Items.AddRange(items);
-            list.SelectedIndexChanged += (_, __) => { _lblAutoDeleteStatus.Text = list.SelectedItem?.ToString() ?? "Off"; dlg.DialogResult = DialogResult.OK; dlg.Close(); };
+
+            list.SelectedIndexChanged += async (_, __) =>
+            {
+                var selected = list.SelectedItem?.ToString() ?? "Off";
+                var mode = selected switch
+                {
+                    "After 1 day" => "TwentyFourHours",
+                    "After 1 week" => "SevenDays",
+                    "After 1 month" => "ThirtyDays",
+                    _ => "Off"
+                };
+                _lblAutoDeleteStatus.Text = selected;
+                var result = await _privacyService.UpdateSettingsAsync(new UpdatePrivacySettingsDto { AutoDeleteMode = mode });
+                if (result.Success && result.Data is not null)
+                    _settings = result.Data;
+                dlg.DialogResult = DialogResult.OK;
+                dlg.Close();
+            };
             dlg.Controls.Add(list);
             dlg.ShowDialog(this);
         }
 
         private void ChangeEmail()
         {
-            _pendingEmailCode = GenerateCode();
-            MessageBox.Show(this, "Login code sent to email", "Info");
-
-            if (!PromptVerifyCode()) return;
-
-            var (newEmailResult, newEmailValue) = PromptNewEmail();
-            if (newEmailResult == DialogResult.OK && !string.IsNullOrWhiteSpace(newEmailValue))
-            {
-                _lblLoginEmail.Text = newEmailValue;
-            }
+            MessageBox.Show(this, "Email changes are managed through the profile settings.", "Info");
         }
 
-        private bool PromptVerifyCode()
+        private async void OpenBlockedUsers()
         {
-            using var verify = new Form
+            var blockedResult = await ApiClient.Instance.GetAsync<List<BlockedUserItem>>("api/friends/blocked");
+            if (!blockedResult.IsSuccess)
             {
-                Text = "Verify Email",
-                Size = new Size(320, 160),
+                MessageBox.Show(this, $"Failed to load blocked users: {blockedResult.ErrorMessage}", "Error");
+                return;
+            }
+
+            var blocked = blockedResult.Data ?? new List<BlockedUserItem>();
+            _lblBlocked.Text = blocked.Count == 0 ? "None" : $"{blocked.Count} user(s)";
+
+            if (blocked.Count == 0)
+            {
+                MessageBox.Show(this, "No blocked users.", "Blocked Users");
+                return;
+            }
+
+            using var dlg = new Form
+            {
+                Text = "Blocked Users",
+                Size = new Size(400, 350),
                 StartPosition = FormStartPosition.CenterParent,
                 BackColor = C_BG,
                 ForeColor = C_TEXT,
                 FormBorderStyle = FormBorderStyle.FixedDialog
             };
-            var lbl = new Label { Text = "Enter code", ForeColor = C_TEXT, AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(12, 12, 12, 4) };
-            var tb = new TextBox { Dock = DockStyle.Top, BackColor = Color.White, ForeColor = C_TEXT, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(12), Height = 28 };
-            var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = false, Width = 90, Height = 32, Anchor = AnchorStyles.Right, Padding = new Padding(6, 2, 6, 2), BackColor = C_ACCENT, ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnOk.FlatAppearance.BorderSize = 0;
-            var pnlBtn = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(0, 4, 12, 8) };
-            pnlBtn.BackColor = C_BG;
-            pnlBtn.Controls.Add(btnOk);
-            btnOk.Location = new Point(pnlBtn.Width - btnOk.Width, 4);
-            pnlBtn.Resize += (_, __) => btnOk.Location = new Point(pnlBtn.Width - btnOk.Width, 4);
-            verify.Controls.Add(pnlBtn);
-            verify.Controls.Add(tb);
-            verify.Controls.Add(lbl);
 
-            var res = verify.ShowDialog(this);
-            if (res != DialogResult.OK) return false;
-
-            var inputCode = tb.Text?.Trim();
-            if (string.IsNullOrWhiteSpace(inputCode) || !string.Equals(inputCode, _pendingEmailCode, StringComparison.Ordinal))
+            var listBox = new ListBox
             {
-                MessageBox.Show(this, "Invalid code", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-            return true;
-        }
-
-        private (DialogResult result, string value) PromptNewEmail()
-        {
-            using var f = new Form
-            {
-                Text = "New Email",
-                Size = new Size(320, 160),
-                StartPosition = FormStartPosition.CenterParent,
+                Dock = DockStyle.Fill,
                 BackColor = C_BG,
                 ForeColor = C_TEXT,
-                FormBorderStyle = FormBorderStyle.FixedDialog
+                BorderStyle = BorderStyle.None,
+                Font = new Font("Segoe UI", 10.5f),
+                DisplayMember = "DisplayName"
             };
-            var lbl = new Label { Text = "Enter new email", ForeColor = C_TEXT, AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(12, 12, 12, 4) };
-            var tb = new TextBox { Dock = DockStyle.Top, BackColor = Color.White, ForeColor = C_TEXT, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(12), Height = 28 };
-            var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = false, Width = 90, Height = 32, Anchor = AnchorStyles.Right, Padding = new Padding(6, 2, 6, 2), BackColor = C_ACCENT, ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnOk.FlatAppearance.BorderSize = 0;
-            var pnlBtn = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(0, 4, 12, 8) };
-            pnlBtn.BackColor = C_BG;
-            pnlBtn.Controls.Add(btnOk);
-            btnOk.Location = new Point(pnlBtn.Width - btnOk.Width, 4);
-            pnlBtn.Resize += (_, __) => btnOk.Location = new Point(pnlBtn.Width - btnOk.Width, 4);
-            f.Controls.Add(pnlBtn);
-            f.Controls.Add(tb);
-            f.Controls.Add(lbl);
+            listBox.Items.AddRange(blocked.ToArray());
 
-            var res = f.ShowDialog(this);
-            return (res, tb.Text?.Trim() ?? string.Empty);
+            var btnUnblock = new Button
+            {
+                Text = "Unblock",
+                Dock = DockStyle.Bottom,
+                Height = 36,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(0xF1, 0x5B, 0x5B),
+                ForeColor = Color.White
+            };
+            btnUnblock.FlatAppearance.BorderSize = 0;
+            btnUnblock.Click += async (_, __) =>
+            {
+                if (listBox.SelectedItem is BlockedUserItem selected)
+                {
+                    var delResult = await ApiClient.Instance.DeleteAsync($"api/friends/blocked/{selected.BlockID}");
+                    if (delResult.IsSuccess)
+                    {
+                        listBox.Items.Remove(selected);
+                        _lblBlocked.Text = listBox.Items.Count == 0 ? "None" : $"{listBox.Items.Count} user(s)";
+                        if (listBox.Items.Count == 0)
+                            dlg.Close();
+                    }
+                    else
+                    {
+                        MessageBox.Show(this, $"Failed to unblock: {delResult.ErrorMessage}", "Error");
+                    }
+                }
+            };
+
+            dlg.Controls.Add(listBox);
+            dlg.Controls.Add(btnUnblock);
+            dlg.ShowDialog(this);
+        }
+
+        private class BlockedUserItem
+        {
+            public string BlockID { get; set; } = "";
+            public BlockedUserBlocked? Blocked { get; set; }
+            public string DisplayName => Blocked?.DisplayName ?? Blocked?.Username ?? "Unknown";
+        }
+
+        private class BlockedUserBlocked
+        {
+            public string DisplayName { get; set; } = "";
+            public string Username { get; set; } = "";
         }
 
         private static Image LoadIcon(string key)
@@ -452,162 +541,12 @@ namespace SecureChat.Client.Forms.Settings
             return SettingsGlyphIcons.Create(file, 24);
         }
 
-        private void UpdateTwoStepStatus()
+        private static string AutoDeleteLabel(string mode) => mode switch
         {
-            if (_lblTwoStepStatus == null) return;
-            _isTwoStepOn = CheckTwoStepExists();
-            if (_isTwoStepOn)
-            {
-                _lblTwoStepStatus.Text = "On";
-                _lblTwoStepStatus.ForeColor = C_STATUS_ON;
-            }
-            else
-            {
-                _lblTwoStepStatus.Text = "Off";
-                _lblTwoStepStatus.ForeColor = Color.Gray;
-            }
-        }
-
-        private bool CheckTwoStepExists()
-        {
-            var flagPath = Path.Combine(AppContext.BaseDirectory, "two_step.flag");
-            return File.Exists(flagPath);
-        }
-
-        private void SaveTwoStepState(bool enabled)
-        {
-            var flagPath = Path.Combine(AppContext.BaseDirectory, "two_step.flag");
-            try
-            {
-                if (enabled)
-                {
-                    File.WriteAllText(flagPath, "on");
-                }
-                else if (File.Exists(flagPath))
-                {
-                    File.Delete(flagPath);
-                }
-            }
-            catch { /* ignore */ }
-        }
-
-        private static string GenerateCode()
-        {
-            var rnd = new Random();
-            return rnd.Next(100000, 999999).ToString();
-        }
-
-        private void UpdateSecurityUI()
-        {
-            UpdateTwoStepStatus();
-            // Add any additional security-related UI updates here if needed in the future.
-        }
-    }
-
-    // Two-Step flow forms
-    internal class frmTwoStepStart : Form
-    {
-        public frmTwoStepStart()
-        {
-            Text = "Two-Step Verification";
-            Size = new Size(420, 230);
-            MinimumSize = new Size(420, 230);
-            StartPosition = FormStartPosition.CenterParent;
-            BackColor = Color.White;
-            ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D);
-            Font = new Font("Segoe UI", 10f);
-
-            var lblTitle = new Label
-            {
-                Text = "Protect your account",
-                Font = new Font("Segoe UI Semibold", 12f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
-                AutoSize = true,
-                Location = new Point(20, 20)
-            };
-
-            var lblSub = new Label
-            {
-                Text = "Set a cloud password for two-step verification.",
-                Font = new Font("Segoe UI", 9.8f),
-                ForeColor = Color.FromArgb(0x7A, 0x8A, 0x99),
-                AutoSize = false,
-                Size = new Size(360, 48),
-                Location = new Point(20, 52)
-            };
-
-            var btn = new Button { Text = "Create Password", AutoSize = false, Width = 160, Height = 34, FlatStyle = FlatStyle.Flat, Location = new Point(20, 104), BackColor = Color.FromArgb(0x33, 0x99, 0xFF), ForeColor = Color.White };
-            btn.FlatAppearance.BorderSize = 0;
-            btn.Click += (_, __) => { DialogResult = DialogResult.OK; Close(); };
-            Controls.Add(lblTitle);
-            Controls.Add(lblSub);
-            Controls.Add(btn);
-        }
-    }
-
-    internal class frmTwoStepPassword : Form
-    {
-        private TextBox _p1 = null!;
-        private TextBox _p2 = null!;
-        public frmTwoStepPassword()
-        {
-            Text = "Set Password";
-            Size = new Size(360, 220);
-            StartPosition = FormStartPosition.CenterParent;
-            BackColor = Color.White;
-            ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D);
-            Font = new Font("Segoe UI", 10f);
-            var l1 = new Label { Text = "Enter new password", ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D), AutoSize = true, Location = new Point(12, 14) };
-            _p1 = new TextBox { Location = new Point(12, 34), Width = 320, UseSystemPasswordChar = true, BackColor = Color.White, ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D), BorderStyle = BorderStyle.FixedSingle };
-            var l2 = new Label { Text = "Re-enter new password", ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D), AutoSize = true, Location = new Point(12, 74) };
-            _p2 = new TextBox { Location = new Point(12, 94), Width = 320, UseSystemPasswordChar = true, BackColor = Color.White, ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D), BorderStyle = BorderStyle.FixedSingle };
-            var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(220, 138), AutoSize = false, Width = 110, Height = 32, Padding = new Padding(6, 2, 6, 2), BackColor = Color.FromArgb(0x33, 0x99, 0xFF), ForeColor = Color.White };
-            ok.FlatStyle = FlatStyle.Flat;
-            ok.FlatAppearance.BorderSize = 0;
-            ok.Click += (_, __) =>
-            {
-                if (_p1.Text != _p2.Text || string.IsNullOrWhiteSpace(_p1.Text))
-                {
-                    MessageBox.Show(this, "Passwords do not match.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    DialogResult = DialogResult.None;
-                }
-            };
-            Controls.AddRange(new Control[] { l1, _p1, l2, _p2, ok });
-        }
-    }
-
-    internal class frmTwoStepManage : Form
-    {
-        private readonly Action _onDisable;
-        public frmTwoStepManage(Action onDisable)
-        {
-            _onDisable = onDisable ?? (() => { });
-            Text = "Manage Password";
-            Size = new Size(380, 220);
-            StartPosition = FormStartPosition.CenterParent;
-            BackColor = Color.White;
-            ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D);
-            Font = new Font("Segoe UI", 10f);
-
-            var lblTitle = new Label
-            {
-                Text = "Two-Step Verification",
-                Font = new Font("Segoe UI Semibold", 12f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
-                AutoSize = true,
-                Location = new Point(20, 18)
-            };
-
-            var btnChange = new Button { Text = "Change Password", AutoSize = false, Width = 170, Height = 34, FlatStyle = FlatStyle.Flat, Location = new Point(20, 58), ForeColor = Color.White, BackColor = Color.FromArgb(0x33, 0x99, 0xFF) };
-            btnChange.FlatAppearance.BorderSize = 0;
-            btnChange.Click += (_, __) => { using var pw = new frmTwoStepPassword(); pw.ShowDialog(this); };
-
-            var btnDisable = new Button { Text = "Disable cloud password", AutoSize = false, Width = 170, Height = 34, FlatStyle = FlatStyle.Flat, Location = new Point(20, 102), ForeColor = Color.White, BackColor = Color.FromArgb(0xF1, 0x5B, 0x5B) };
-            btnDisable.FlatAppearance.BorderSize = 0;
-            btnDisable.Click += (_, __) => { _onDisable(); DialogResult = DialogResult.OK; Close(); };
-            Controls.AddRange(new Control[] { lblTitle, btnChange, btnDisable });
-        }
-
-        public frmTwoStepManage() : this(() => { }) { }
+            "TwentyFourHours" => "After 1 day",
+            "SevenDays" => "After 1 week",
+            "ThirtyDays" => "After 1 month",
+            _ => "Off"
+        };
     }
 }

@@ -14,6 +14,7 @@ namespace SecureChat.Server.Hubs
         MessageRepository messages,
         CallRepository calls,
         UserRepository users,
+        PrivacyRepository privacy,
         PresenceTracker presence,
         ILogger<ChatHub> logger) : Hub
     {
@@ -79,9 +80,15 @@ namespace SecureChat.Server.Hubs
 
                     if (user.ShowOnlineStatus)
                     {
+                        // Respect LastSeenPrivacy before broadcasting
+                        var settings = await privacy.GetRawSettingsAsync(Me);
+                        DateTime? lastSeen = user.LastSeenUtc;
+                        if (settings is not null && settings.LastSeenPrivacy != PrivacyLevel.Everybody)
+                            lastSeen = null;
+
                         var myConvs = await conversations.GetConversationsByMemberAsync(Me);
                         foreach (var conv in myConvs)
-                            await Clients.Group(conv.ConversationID).SendAsync("UserPresenceChanged", Me, false, user.LastSeenUtc);
+                            await Clients.Group(conv.ConversationID).SendAsync("UserPresenceChanged", Me, false, lastSeen);
                     }
                 }
             }
@@ -104,7 +111,16 @@ namespace SecureChat.Server.Hubs
                 return;
             }
 
-            await Clients.Caller.SendAsync("UserPresenceChanged", userId, online, user.LastSeenUtc);
+            // Respect LastSeenPrivacy (only applies when offline)
+            DateTime? lastSeen = user.LastSeenUtc;
+            if (!online)
+            {
+                var settings = await privacy.GetRawSettingsAsync(userId);
+                if (settings is not null && settings.LastSeenPrivacy != PrivacyLevel.Everybody)
+                    lastSeen = null;
+            }
+
+            await Clients.Caller.SendAsync("UserPresenceChanged", userId, online, lastSeen);
         }
 
         /// <summary>
@@ -330,7 +346,7 @@ namespace SecureChat.Server.Hubs
         }
 
         /// <summary>
-        /// Notify all members in a conversation that an incoming call is happening.
+        /// Notify members in a conversation about an incoming call — respects CallsPrivacy.
         /// </summary>
         public async Task NotifyCallIncoming(string conversationId, string callId, string callerName, CallType callType)
         {
@@ -341,7 +357,12 @@ namespace SecureChat.Server.Hubs
             if (member is null || member.LeftAt is not null)
                 throw new HubException("You are not a member of this conversation.");
 
-            await Clients.GroupExcept(conversationId, Context.ConnectionId).SendAsync("CallIncoming", callId, callerName, callType, conversationId);
+            var activeMembers = await conversations.GetActiveMembersAsync(conversationId);
+            foreach (var m in activeMembers.Where(m => m.UserID != Me))
+            {
+                if (await privacy.CanStartCallAsync(Me, m.UserID))
+                    await Clients.User(m.UserID).SendAsync("CallIncoming", callId, callerName, callType, conversationId);
+            }
         }
 
         private bool IsCallParticipant(CallLog call)

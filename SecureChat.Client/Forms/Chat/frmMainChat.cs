@@ -95,7 +95,7 @@ namespace SecureChat.Client
         // Sync tin nhắn từ MariaDB (server) -> Client
         private readonly SecureChat.Client.Services.Api.MessageService _messageService = new();
         private readonly SecureChat.Client.Services.MessageDecryptor _decryptor = new();
-        private readonly Dictionary<string, string> _myMemberIdByConv = new();
+        private readonly ConcurrentDictionary<string, string> _myMemberIdByConv = new();
         private readonly HashSet<string> _syncedConversations = new();
         private const int MessageSyncPageSize = 50;
 
@@ -119,7 +119,7 @@ namespace SecureChat.Client
 
         private readonly Dictionary<string, string> _convOtherUserId = new();
 
-        private readonly Dictionary<string, (bool IsOnline, DateTime? LastSeenUtc)> _userPresence = new();
+        private readonly ConcurrentDictionary<string, (bool IsOnline, DateTime? LastSeenUtc)> _userPresence = new();
 
         // Key = convId, Value = danh sách tin nhắn của conversation đó
         // Thêm biến lưu trạng thái trả lời tin nhắn
@@ -1818,7 +1818,7 @@ namespace SecureChat.Client
 
             // Xóa khỏi cache sync
             _syncedConversations.Remove(conversationId);
-            _myMemberIdByConv.Remove(conversationId);
+            _myMemberIdByConv.TryRemove(conversationId, out _);
 
             // Xóa avatar cache
             if (_convAvatarCache.TryGetValue(conversationId, out var oldAvatar))
@@ -3836,7 +3836,7 @@ namespace SecureChat.Client
                 foreach (var key in _syncedConversations.Where(k => !newIds.Contains(k)).ToList())
                     _syncedConversations.Remove(key);
                 foreach (var key in _myMemberIdByConv.Keys.Where(k => !newIds.Contains(k)).ToList())
-                    _myMemberIdByConv.Remove(key);
+                    _myMemberIdByConv.TryRemove(key, out _);
 
                 foreach (var c in list)
                 {
@@ -5778,7 +5778,10 @@ namespace SecureChat.Client
                     }
                     if (userId == _currentUserId)
                     {
+                        _currentDisplayName = displayName ?? string.Empty;
+                        _currentUsername = username ?? string.Empty;
                         _currentAvatarUrl = avatarUrl ?? string.Empty;
+                        _decryptor.CurrentUsername = username ?? string.Empty;
                         UpdateSettingsHeaderUI();
                     }
                     // If this is a profile update for another user in a direct conversation,
@@ -5797,6 +5800,17 @@ namespace SecureChat.Client
                                 if (nameMatches && !string.IsNullOrWhiteSpace(displayName) && c.Name != displayName)
                                 {
                                     _convs[i] = (c.Id, displayName, c.Preview, c.Time, c.Unread, c.IsGroup);
+
+                                    if (_convRowCache.TryGetValue(c.Id, out var row))
+                                    {
+                                        foreach (Control ctrl in row.Controls)
+                                        {
+                                            if (ctrl is Label lbl && lbl.Location.Y == 10)
+                                                lbl.Text = displayName;
+                                            else if (ctrl is AvatarControl av)
+                                                av.SetName(displayName);
+                                        }
+                                    }
                                 }
 
                                 if (nameMatches)
@@ -5806,8 +5820,53 @@ namespace SecureChat.Client
                             }
                         }
                     }
+                    // Update active conversation header if it's a DM with the changed user
+                    if (!string.IsNullOrWhiteSpace(_activeConvId) && !string.IsNullOrWhiteSpace(capturedUserId))
+                    {
+                        var activeConv = _convs.Find(c => c.Id == _activeConvId);
+                        if (activeConv != default && !activeConv.IsGroup)
+                        {
+                            string activeOtherId = _convOtherUserId.TryGetValue(_activeConvId, out var oid) ? oid : "";
+                            if (activeOtherId == capturedUserId)
+                            {
+                                if (!string.IsNullOrWhiteSpace(displayName))
+                                {
+                                    _lblChatName.Text = displayName;
+                                    _chatAvatar.SetName(displayName);
+                                }
+                                else if (!string.IsNullOrWhiteSpace(capturedUsername))
+                                {
+                                    _lblChatName.Text = capturedUsername;
+                                    _chatAvatar.SetName(capturedUsername);
+                                }
+                                _ = RefreshAvatarForConversationAsync(_activeConvId, capturedUrl);
+                            }
+                        }
+                    }
                     // Refresh sidebar previews in case display name changed
                     RefreshAllSidebarPreviews();
+                    // Rebuild messages if sender display name changed in active conversation
+                    if (!string.IsNullOrWhiteSpace(_activeConvId) && !string.IsNullOrWhiteSpace(capturedUsername))
+                    {
+                        var activeConv = _convs.Find(c => c.Id == _activeConvId);
+                        if (activeConv != default)
+                        {
+                            bool needsRebuild = false;
+                            foreach (var msg in _currentMsgs)
+                            {
+                                if (msg.Sender == capturedUsername)
+                                {
+                                    needsRebuild = true;
+                                    break;
+                                }
+                            }
+                            if (needsRebuild)
+                                BuildMessages();
+                        }
+                    }
+                    // Refresh right sidebar if open
+                    if (_isSidebarOpen)
+                        _ = LoadRightSidebarContentAsync();
                 }));
             };
             _signalRClient.ConversationDeleted += async convId =>
@@ -5818,7 +5877,7 @@ namespace SecureChat.Client
                     {
                         _allMsgs.Remove(convId);
                         _syncedConversations.Remove(convId);
-                        _myMemberIdByConv.Remove(convId);
+                        _myMemberIdByConv.TryRemove(convId, out _);
                         _convAvatarCache.Remove(convId);
 
                         if (_activeConvId == convId)
@@ -5996,22 +6055,22 @@ namespace SecureChat.Client
                 {
                     await _signalRClient.JoinConversationAsync(_activeConvId);
 
-                    // Re-query presence for the other user in this conversation
-                    var conv = _convs.Find(c => c.Id == _activeConvId);
-                    if (conv != default && !conv.IsGroup && _convOtherUserId.TryGetValue(_activeConvId, out var otherId))
-                        await _signalRClient.QueryUserPresenceAsync(otherId);
-
-                    // Re-sync messages for the active conversation to catch up on missed ones
-                    _syncedConversations.Remove(_activeConvId);
-
                     BeginInvoke(new Action(() =>
                     {
+                        var conv = _convs.Find(c => c.Id == _activeConvId);
+                        if (conv != default && !conv.IsGroup && _convOtherUserId.TryGetValue(_activeConvId, out var otherId))
+                        {
+                            var _q = _signalRClient.QueryUserPresenceAsync(otherId);
+                        }
+
+                        _syncedConversations.Remove(_activeConvId);
                         _pinnedMessageIds.Clear();
                         _pinnedByMap.Clear();
                         _userPresence.Clear();
+
                         if (_isSidebarOpen)
                         {
-                            var __ = LoadRightSidebarContentAsync();
+                            var _s = LoadRightSidebarContentAsync();
                         }
                     }));
                 }

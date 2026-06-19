@@ -260,6 +260,38 @@ namespace SecureChat.Client.Services
                 return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
             }
         }
+		public async Task<(bool IsSuccess, TResponse? Data, string ErrorMessage)> PutAsync<TRequest, TResponse>(string endpoint, TRequest payload)
+		{
+			try
+			{
+				var json = JsonSerializer.Serialize(payload);
+				var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+				var response = await _httpClient.PutAsync(endpoint, content);
+				var responseStr = await response.Content.ReadAsStringAsync();
+
+				if (response.IsSuccessStatusCode)
+				{
+					if (string.IsNullOrEmpty(responseStr))
+						return (true, default, string.Empty);
+
+					var options = new JsonSerializerOptions
+					{
+						PropertyNameCaseInsensitive = true,
+						Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+					};
+					var data = JsonSerializer.Deserialize<TResponse>(responseStr, options);
+					return (true, data, string.Empty);
+				}
+
+				return (false, default, $"Lỗi server: {responseStr}");
+			}
+			catch (Exception ex)
+			{
+				return (false, default, $"Không thể kết nối máy chủ: {ex.Message}");
+			}
+		}
+
         public string GetBaseUrl() => _httpClient.BaseAddress?.ToString().TrimEnd('/') ?? "";
     }
 }

@@ -13,7 +13,7 @@ namespace SecureChat.Controllers
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations")]
-	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
+	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, PrivacyRepository privacy, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -76,6 +76,14 @@ namespace SecureChat.Controllers
 			foreach (var entry in req.Members)
 				if (!await users.ExistsByIdAsync(entry.UserID))
 					return BadRequest(new { error = $"User '{entry.UserID}' không tồn tại." });
+
+			// Respect MessagesPrivacy for direct conversations
+			if (req.Type == ConversationType.Direct)
+			{
+				var otherID = req.Members.FirstOrDefault(m => m.UserID != Me)?.UserID;
+				if (otherID is not null && !await privacy.CanSendMessageAsync(Me, otherID))
+					return Forbid();
+			}
 
 			if (req.Type == ConversationType.Direct)
 			{
