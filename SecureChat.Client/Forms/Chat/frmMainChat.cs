@@ -3971,25 +3971,34 @@ namespace SecureChat.Client
                         Array.Empty<byte>(), Array.Empty<byte>(), durationSec, isOut);
                 }
 
+                const int rightMargin = 12;
+                int leftOffset = (!isOut && isGroup) ? 44 : 10;
+
+                audioBubble.Width  = 300; // initial; Resize sẽ clamp đúng
                 audioBubble.Top    = 4;
-                audioBubble.Anchor = AnchorStyles.None;
-                panel.Height       = audioBubble.Height + 8;
+                // Anchor đúng hướng → WinForms tự giữ khoảng cách khi parent resize
+                // AnchorStyles.None sẽ căn giữa (sai), phải dùng Left hoặc Right anchor
+                audioBubble.Anchor = isOut
+                    ? AnchorStyles.Top | AnchorStyles.Right
+                    : AnchorStyles.Top | AnchorStyles.Left;
+                audioBubble.Left = isOut
+                    ? panel.Width - audioBubble.Width - rightMargin
+                    : leftOffset;
 
-                void LayoutVoice(object? s, EventArgs e)
+                panel.Height = audioBubble.Height + 8;
+
+                // Resize chỉ clamp Width; Left được WinForms tự điều chỉnh qua Anchor
+                panel.Resize += (s, e) =>
                 {
-                    int leftOffset  = (!isOut && isGroup) ? 44 : 10;
-                    int rightMargin = 12;
-                    int maxW        = panel.ClientSize.Width - leftOffset - rightMargin;
-                    if (maxW <= 0) return;
-                    audioBubble.Width = Math.Min(360, Math.Max(260, maxW));
+                    if (panel.ClientSize.Width <= 0) return;
+                    int avail = panel.ClientSize.Width - leftOffset - rightMargin;
+                    int newW  = Math.Min(360, Math.Max(260, avail));
+                    audioBubble.Width = newW;
+                    // Cập nhật Left thủ công để chắc chắn (Anchor đã giữ nhưng Width thay đổi cần re-pin)
                     audioBubble.Left  = isOut
-                        ? panel.ClientSize.Width - audioBubble.Width - rightMargin
+                        ? panel.ClientSize.Width - newW - rightMargin
                         : leftOffset;
-                }
-
-                panel.Resize        += LayoutVoice;
-                panel.HandleCreated += LayoutVoice;  // fire khi panel có kích thước thật
-                panel.ParentChanged += LayoutVoice;  // fire khi được add vào parent
+                };
 
                 panel.Controls.Add(audioBubble);
 
