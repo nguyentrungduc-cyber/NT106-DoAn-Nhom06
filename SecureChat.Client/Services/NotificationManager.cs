@@ -193,8 +193,8 @@ namespace SecureChat.Client.Services
                 while (_activePopups.Count > MaxVisiblePopups)
                 {
                     var oldest = _activePopups[0];
-                    oldest.Close();
-                    _activePopups.RemoveAt(0);
+                    try { oldest.Close(); }
+                    finally { _activePopups.RemoveAt(0); }
                 }
                 RepositionPopups();
             }
