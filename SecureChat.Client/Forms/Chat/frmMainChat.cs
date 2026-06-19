@@ -4486,7 +4486,7 @@ namespace SecureChat.Client
                         Array.Empty<byte>(), Array.Empty<byte>(), durationSec, isOut);
                 }
 
-                const int rightMargin = 12;
+                const int rightMargin = 10; // khớp với text bubble: x = ClientSize.Width - bw - 10
                 int voiceLeftOffset = (!isOut && isGroup) ? 44 : 10;
 
                 audioBubble.Width  = 300;
