@@ -4487,32 +4487,28 @@ namespace SecureChat.Client
                 }
 
                 const int rightMargin = 12;
-                int leftOffset = (!isOut && isGroup) ? 44 : 10;
+                int voiceLeftOffset = (!isOut && isGroup) ? 44 : 10;
 
-                audioBubble.Width  = 300; // initial; Resize sẽ clamp đúng
+                audioBubble.Width  = 300;
                 audioBubble.Top    = 4;
-                // Anchor đúng hướng → WinForms tự giữ khoảng cách khi parent resize
-                // AnchorStyles.None sẽ căn giữa (sai), phải dùng Left hoặc Right anchor
                 audioBubble.Anchor = isOut
                     ? AnchorStyles.Top | AnchorStyles.Right
                     : AnchorStyles.Top | AnchorStyles.Left;
                 audioBubble.Left = isOut
                     ? panel.Width - audioBubble.Width - rightMargin
-                    : leftOffset;
+                    : voiceLeftOffset;
 
                 panel.Height = audioBubble.Height + 8;
 
-                // Resize chỉ clamp Width; Left được WinForms tự điều chỉnh qua Anchor
                 panel.Resize += (s, e) =>
                 {
                     if (panel.ClientSize.Width <= 0) return;
-                    int avail = panel.ClientSize.Width - leftOffset - rightMargin;
+                    int avail = panel.ClientSize.Width - voiceLeftOffset - rightMargin;
                     int newW  = Math.Min(360, Math.Max(260, avail));
                     audioBubble.Width = newW;
-                    // Cập nhật Left thủ công để chắc chắn (Anchor đã giữ nhưng Width thay đổi cần re-pin)
                     audioBubble.Left  = isOut
                         ? panel.ClientSize.Width - newW - rightMargin
-                        : leftOffset;
+                        : voiceLeftOffset;
                 };
 
                 panel.Controls.Add(audioBubble);

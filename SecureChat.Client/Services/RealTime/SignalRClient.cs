@@ -29,9 +29,9 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, Task>? ConversationUpdated;
         public event Func<string, string, string, string, Task>? MessagePinned;
         public event Func<string, string, Task>? MessageUnpinned;
-public event Func<string, string, Task>? MemberAdded;
-public event Func<string, string, Task>? MemberRemoved;
-public event Func<string, bool, DateTime?, Task>? UserPresenceChanged;
+        public event Func<string, string, Task>? MemberAdded;
+        public event Func<string, string, Task>? MemberRemoved;
+        public event Func<string, bool, DateTime?, Task>? UserPresenceChanged;
 
         public bool IsConnected => _connection.State == HubConnectionState.Connected;
 
