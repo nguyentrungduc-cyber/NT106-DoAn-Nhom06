@@ -57,7 +57,11 @@ namespace SecureChat.Controllers
 
 			var existing = await calls.GetActiveCallAsync(conversationID);
 			if (existing is not null)
-				await calls.EndCallAsync(existing.CallID);
+				return Conflict(new { error = "Đã có cuộc gọi đang diễn ra trong cuộc hội thoại này." });
+
+			var existingUserCall = await calls.GetActiveCallByMemberAsync(member.MemberID);
+			if (existingUserCall is not null)
+				return Conflict(new { error = "Bạn đang có cuộc gọi trong cuộc hội thoại khác." });
 
 			var call = await calls.CreateCallAsync(new CallLog {
 				CallID = NewID(),
@@ -118,6 +122,10 @@ namespace SecureChat.Controllers
 			if (member is null)
 				return Forbid();
 
+			var existingUserCall = await calls.GetActiveCallByMemberAsync(member.MemberID);
+			if (existingUserCall is not null && existingUserCall.CallID != callID)
+				return Conflict(new { error = "Bạn đang có cuộc gọi trong cuộc hội thoại khác." });
+
 			var call = await calls.GetByIdAsync(callID);
 			if (call is null || call.ConversationID != conversationID)
 				return NotFound();
@@ -134,6 +142,21 @@ namespace SecureChat.Controllers
 			} catch (KeyNotFoundException) {
 				return NotFound(new { error = "Bạn không trong danh sách cuộc gọi này." });
 			}
+		}
+
+		[HttpPost("{callID}/end")]
+		public async Task<IActionResult> EndCall(string conversationID, string callID)
+		{
+			var member = await GetActiveMember(conversationID);
+			if (member is null)
+				return Forbid();
+
+			var call = await calls.GetByIdAsync(callID);
+			if (call is null || call.ConversationID != conversationID)
+				return NotFound();
+
+			await calls.EndCallAsync(callID);
+			return NoContent();
 		}
 
 		[HttpPost("{callID}/leave")]
@@ -155,14 +178,15 @@ namespace SecureChat.Controllers
 				return NotFound();
 			}
 
-			if (call.StartedBy == member.MemberID)
+			// Private call: leaving ends the entire call
+			if (call.Conversation?.Type == ConversationType.Direct)
 				await calls.EndCallAsync(callID);
 
 			return NoContent();
 		}
 
 		[HttpPut("{callID}/participants/{participantID}")]
-		public async Task<IActionResult> UpdateParticipant(string conversationID, string callID, string participantID, [FromBody] UpdateCallStatusRequest req)
+		public async Task<IActionResult> UpdateParticipant(string conversationID, string callID, string participantID, [FromBody] UpdateParticipantStatusRequest req)
 		{
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
@@ -173,7 +197,7 @@ namespace SecureChat.Controllers
 			if (call.StartedBy != member.MemberID && member.MemberID != participantID)
 				return Forbid();
 
-			var participant = await calls.UpdateParticipantStatusAsync(participantID, callID, (CallParticipantStatus)(int)req.Status);
+			var participant = await calls.UpdateParticipantStatusAsync(participantID, callID, req.Status);
 
 			return Ok(new ParticipantResponse(participant.ParticipantID, participant.CallID,
 						null, participant.Status, participant.JoinedAt, participant.LeftAt));

@@ -11,6 +11,10 @@ namespace SecureChat.DTOs
 		[Required] CallStatus Status
 	);
 
+	public record UpdateParticipantStatusRequest(
+		[Required] CallParticipantStatus Status
+	);
+
 	public record LeaveCallRequest(
 		CallParticipantStatus Status = CallParticipantStatus.LeftEarly
 	);

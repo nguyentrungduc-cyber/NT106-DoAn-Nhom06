@@ -924,9 +924,10 @@ namespace SecureChat.Client
                         return;
                     }
 
-                    await _signalRClient.NotifyCallIncomingAsync(_activeConvId, callData.CallID, _currentDisplayName, 1);
+                    await _signalRClient.NotifyCallIncomingAsync(_activeConvId, callData.CallID, _currentDisplayName, SecureChat.Models.CallType.Video);
 
-                    var callForm = new Forms.Call.frmVideoCall(_lblChatName.Text, callData.CallID, _activeConvId, _signalRClient);
+                    bool isGroupCall = _convs.Find(c => c.Id == _activeConvId).IsGroup;
+                    var callForm = new Forms.Call.frmVideoCall(_lblChatName.Text, callData.CallID, _activeConvId, _signalRClient, isGroupCall);
                     callForm.FormClosed += (_, __) => this.Activate();
                     callForm.Show();
                 }
@@ -6008,12 +6009,19 @@ namespace SecureChat.Client
             }
         }
 
+        private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _pendingCallSignals = new();
+
         private Task HandleSignalRCallSignalAsync(string callId, string signal)
         {
+            if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(signal))
+                return Task.CompletedTask;
+
+            var queue = _pendingCallSignals.GetOrAdd(callId, _ => new ConcurrentQueue<string>());
+            queue.Enqueue(signal);
             return Task.CompletedTask;
         }
 
-        private async Task HandleCallIncomingAsync(string callId, string callerName, int callType, string conversationId)
+        private async Task HandleCallIncomingAsync(string callId, string callerName, CallType callType, string conversationId)
         {
             if (IsDisposed) return;
 
@@ -6034,6 +6042,7 @@ namespace SecureChat.Client
 
             if (!accepted)
             {
+                _pendingCallSignals.TryRemove(callId, out _);
                 try
                 {
                     if (_signalRClient != null)
@@ -6062,8 +6071,15 @@ namespace SecureChat.Client
 
             BeginInvoke(new Action(() =>
             {
-                var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!);
-                callForm.FormClosed += (_, __) => this.Activate();
+                bool isGroupCall = _convs.Find(c => c.Id == conversationId).IsGroup;
+                var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!, isGroupCall);
+                callForm.FormClosed += (s, e) =>
+                {
+                    _pendingCallSignals.TryRemove(callId, out _);
+                    this.Activate();
+                };
+                if (_pendingCallSignals.TryRemove(callId, out var pending))
+                    callForm.ReplayPendingSignals(pending);
                 callForm.Show();
             }));
         }

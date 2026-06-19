@@ -9,7 +9,7 @@ using SecureChat.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
 
 var connStr = builder.Configuration.GetConnectionString("Default")
 	?? throw new InvalidOperationException("Connection string 'Default' not found.");
