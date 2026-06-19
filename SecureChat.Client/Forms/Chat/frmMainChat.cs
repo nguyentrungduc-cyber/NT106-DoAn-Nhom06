@@ -4280,6 +4280,21 @@ namespace SecureChat.Client
                 int fwdMinBw = (int)(fwdPrefixWidth + Math.Min(fwdNameMeasuredW, maxW - pad * 2 - 10 - fwdPrefixWidth) + pad * 2 + 10);
                 minBw = Math.Max(minBw, Math.Min(maxW, fwdMinBw));
             }
+            // Khi có timer tự hủy: đảm bảo bubble đủ rộng cho [⏱ Xs] + [time] + [tick]
+            bool hasExpiryTimer = !string.IsNullOrEmpty(messageId) && _expirationService.IsTracking(messageId);
+            if (hasExpiryTimer)
+            {
+                var timeSzMeasure = TextRenderer.MeasureText(time, TG.FontRegular(7.5f));
+                // Đo thực tế text dài nhất có thể — "3600s" để tránh undercount do TextRenderer padding
+                using var timerFontRef = TG.FontSemiBold(7.5f);
+                var maxTimerTextSz = TextRenderer.MeasureText("3600s", timerFontRef);
+                const int timerIconW = 14;
+                const int timerGap   = 6;
+                int tickW     = isOut ? 26 : 0;
+                int timerBlockMaxW = timerIconW + maxTimerTextSz.Width + timerGap;
+                int neededBw  = pad * 2 + timerBlockMaxW + timeSzMeasure.Width + tickW + 8;
+                minBw = Math.Max(minBw, neededBw);
+            }
             int bw = Math.Min(maxW, Math.Max((int)sz.Width + pad * 2 + 10, minBw));
 
             int bh = (int)sz.Height + pad * 2 + statusHeight + senderHeight + replyBlockHeight + forwardHeaderHeight;
@@ -4401,6 +4416,22 @@ namespace SecureChat.Client
 
                 // 4. Thời gian và dấu tick ✓✓
                 var timeSz = TextRenderer.MeasureText(time, TG.FontRegular(7.5f));
+
+                // Tính trước timerBlockW để dịch tx sang trái nhường chỗ cho timer
+                int timerBlockW = 0;
+                string? timerTextCached = null;
+                if (!string.IsNullOrWhiteSpace(messageId) && _expirationService.IsTracking(messageId))
+                {
+                    int? remSec = _expirationService.GetRemainingSeconds(messageId);
+                    if (remSec.HasValue && remSec.Value > 0)
+                    {
+                        timerTextCached = FormatRemainingTime(remSec.Value);
+                        using var timerFontMeasure = TG.FontSemiBold(7.5f);
+                        var timerSzMeasure = TextRenderer.MeasureText(timerTextCached, timerFontMeasure);
+                        timerBlockW = 14 + timerSzMeasure.Width + 6; // iconW + textW + gap
+                    }
+                }
+
                 float tx = x + bw - timeSz.Width - pad - (isOut ? 26 : 0);
                 float ty = y + bh - timeSz.Height - 6;
                 e.Graphics.DrawString(time, TG.FontRegular(7.5f), new SolidBrush(TG.TextTime), tx, ty);
@@ -4434,22 +4465,27 @@ namespace SecureChat.Client
                     e.Graphics.DrawString(tickText, tickFont, new SolidBrush(tickColor), tickX, ty - 1);
                 }
 
-                // 5. Self-destruct timer indicator (nếu message có expiration)
-                if (!string.IsNullOrWhiteSpace(messageId) && _expirationService.IsTracking(messageId))
+                // 5. Self-destruct timer indicator — vẽ inline bên trái timestamp
+                if (timerTextCached != null)
                 {
-                    int? remainingSeconds = _expirationService.GetRemainingSeconds(messageId);
-                    if (remainingSeconds.HasValue && remainingSeconds.Value > 0)
-                    {
-                        string timerText = FormatRemainingTime(remainingSeconds.Value);
-                        using var timerFont = TG.FontSemiBold(7.5f);
-                        var timerSz = e.Graphics.MeasureString(timerText, timerFont);
-                        float timerX = x + pad;
-                        float timerY = y + bh - timerSz.Height - 6;
+                    using var timerFont = TG.FontSemiBold(7.5f);
+                    const int timerIconW = 14;
 
-                        // Draw timer icon and text
-                        e.Graphics.DrawString("⏱", new Font("Segoe UI Emoji", 8f), new SolidBrush(Color.FromArgb(255, 87, 34)), timerX, timerY - 1);
-                        e.Graphics.DrawString(timerText, timerFont, new SolidBrush(Color.FromArgb(255, 87, 34)), timerX + 14, timerY);
-                    }
+                    // tx = điểm bắt đầu vẽ timestamp (đã đúng vị trí)
+                    // timer nằm NGAY BÊN TRÁI tx — không trừ timerBlockW lần nữa
+                    int timerX = (int)tx - timerBlockW;
+                    timerX = Math.Max(x + pad, timerX);
+                    int timerY = (int)ty;
+
+                    using var iconFont = new Font("Segoe UI Symbol", 7.5f);
+                    TextRenderer.DrawText(e.Graphics, "⏱", iconFont,
+                        new Point(timerX, timerY),
+                        Color.FromArgb(220, 87, 34),
+                        TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(e.Graphics, timerTextCached, timerFont,
+                        new Point(timerX + timerIconW, timerY),
+                        Color.FromArgb(220, 87, 34),
+                        TextFormatFlags.NoPadding);
                 }
             };
 
@@ -5805,16 +5841,15 @@ namespace SecureChat.Client
                         timeStr,
                         ""
                     );
+
+                    // EXPIRATION TRACKING: track TRƯỚC khi BuildMessages() để
+                    // hasExpiryTimer = true ngay từ lúc tính minBw lần đầu
+                    // (tránh bubble hẹp rồi timer/timestamp tràn ra ngoài)
+                    if (messageResponse.ExpiresAt.HasValue)
+                        _expirationService.TrackMessage(messageResponse.MessageID, messageResponse.ExpiresAt.Value);
+
                     BuildMessages();
                     RefreshConversationItem(_activeConvId, finalMessageText, true, "", timeStr);
-                }
-
-                // ─────────────────────────────────────────────────────────────────
-                // EXPIRATION TRACKING: Track message nếu có ExpiresAt
-                // ─────────────────────────────────────────────────────────────────
-                if (messageResponse.ExpiresAt.HasValue)
-                {
-                    _expirationService.TrackMessage(messageResponse.MessageID, messageResponse.ExpiresAt.Value);
                 }
             }
             catch (InvalidOperationException ex)
