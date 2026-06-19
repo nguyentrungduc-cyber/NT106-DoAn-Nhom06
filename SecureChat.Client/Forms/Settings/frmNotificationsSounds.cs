@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
+using SecureChat.Client.Settings;
 
 namespace SecureChat.Client.Forms.Settings
 {
@@ -13,14 +14,60 @@ namespace SecureChat.Client.Forms.Settings
         private static readonly Color C_SEPARATOR = Color.FromArgb(0xE8, 0xEC, 0xF1);
 
         private TrackBar _volume = null!;
+        private Label _lblVolumeVal = null!;
+        private CheckBox _chkDesktop = null!;
+        private CheckBox _chkFlash = null!;
+        private CheckBox _chkSound = null!;
+        private CheckBox _chkPrivate = null!;
+        private CheckBox _chkGroup = null!;
+        private CheckBox _chkChannel = null!;
+        private CheckBox _chkContactJoined = null!;
+        private CheckBox _chkPinned = null!;
 
         public frmNotificationsSounds()
         {
             InitializeComponent();
             BuildUI();
+            LoadSettings();
         }
 
         private void InitializeComponent() { }
+
+        private void LoadSettings()
+        {
+            var s = NotificationSettings.Default;
+            _chkDesktop.Checked = s.DesktopNotifications;
+            _chkFlash.Checked = s.FlashTaskbar;
+            _chkSound.Checked = s.AllowSound;
+            _volume.Value = s.Volume;
+            _chkPrivate.Checked = s.PrivateChatNotifications;
+            _chkGroup.Checked = s.GroupNotifications;
+            _chkChannel.Checked = s.ChannelNotifications;
+            _chkContactJoined.Checked = s.ContactJoinedNotifications;
+            _chkPinned.Checked = s.PinnedMessageNotifications;
+        }
+
+        private void SaveSettings()
+        {
+            var s = NotificationSettings.Default;
+            s.DesktopNotifications = _chkDesktop.Checked;
+            s.FlashTaskbar = _chkFlash.Checked;
+            s.AllowSound = _chkSound.Checked;
+            s.Volume = _volume.Value;
+            s.PrivateChatNotifications = _chkPrivate.Checked;
+            s.GroupNotifications = _chkGroup.Checked;
+            s.ChannelNotifications = _chkChannel.Checked;
+            s.ContactJoinedNotifications = _chkContactJoined.Checked;
+            s.PinnedMessageNotifications = _chkPinned.Checked;
+            s.Save();
+            NotificationSettings.Reload();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            SaveSettings();
+            base.OnFormClosed(e);
+        }
 
         private void BuildUI()
         {
@@ -66,21 +113,32 @@ namespace SecureChat.Client.Forms.Settings
 
             int y = 0;
             AddSectionHeader(container, "Global settings", ref y);
-            AddToggle(container, "Desktop notifications", "notifications.png", ref y);
-            AddToggle(container, "Flash the taskbar icon", "notifications.png", ref y);
-            AddToggle(container, "Allow sound", "volume_mute.png", ref y);
+            _chkDesktop = AddToggle(container, "Desktop notifications", "notifications.png", ref y);
+            _chkFlash = AddToggle(container, "Flash the taskbar icon", "notifications.png", ref y);
+            _chkSound = AddToggle(container, "Allow sound", "volume_mute.png", ref y);
+
+            _chkDesktop.CheckedChanged += (_, __) => SaveSettings();
+            _chkFlash.CheckedChanged += (_, __) => SaveSettings();
+            _chkSound.CheckedChanged += (_, __) => SaveSettings();
 
             AddSectionHeader(container, "Volume", ref y);
             AddVolume(container, ref y);
 
             AddSectionHeader(container, "Notifications for chats", ref y);
-            AddToggle(container, "Private chats", "mode_messages.png", ref y, true);
-            AddToggle(container, "Groups", "stories_to_chats.png", ref y, true);
-            AddToggle(container, "Channels", "show_in_chat.png", ref y, true);
+            _chkPrivate = AddToggle(container, "Private chats", "mode_messages.png", ref y, true);
+            _chkGroup = AddToggle(container, "Groups", "stories_to_chats.png", ref y, true);
+            _chkChannel = AddToggle(container, "Channels", "show_in_chat.png", ref y, true);
+
+            _chkPrivate.CheckedChanged += (_, __) => SaveSettings();
+            _chkGroup.CheckedChanged += (_, __) => SaveSettings();
+            _chkChannel.CheckedChanged += (_, __) => SaveSettings();
 
             AddSectionHeader(container, "Events", ref y);
-            AddToggle(container, "Contact joined", "upload_chat_photo.png", ref y, true);
-            AddToggle(container, "Pinned messages", "saved_messages.png", ref y, true);
+            _chkContactJoined = AddToggle(container, "Contact joined", "upload_chat_photo.png", ref y, true);
+            _chkPinned = AddToggle(container, "Pinned messages", "saved_messages.png", ref y, true);
+
+            _chkContactJoined.CheckedChanged += (_, __) => SaveSettings();
+            _chkPinned.CheckedChanged += (_, __) => SaveSettings();
 
             Controls.AddRange(new Control[] { btnBack, btnClose, lblTitle, container });
         }
@@ -99,7 +157,7 @@ namespace SecureChat.Client.Forms.Settings
             y += 32;
         }
 
-        private void AddToggle(Control parent, string text, string iconFile, ref int y, bool withDivider = false)
+        private CheckBox AddToggle(Control parent, string text, string iconFile, ref int y, bool withDivider = false)
         {
             var leftPad = parent.Padding.Left;
             var rightPad = parent.Padding.Right;
@@ -150,6 +208,7 @@ namespace SecureChat.Client.Forms.Settings
                 parent.Controls.Add(sep);
                 y += 10;
             }
+            return toggle;
         }
 
         private void AddVolume(Control parent, ref int y)
@@ -172,7 +231,7 @@ namespace SecureChat.Client.Forms.Settings
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
 
-            var lblVal = new Label
+            _lblVolumeVal = new Label
             {
                 Text = "100%",
                 ForeColor = C_SUB,
@@ -181,14 +240,14 @@ namespace SecureChat.Client.Forms.Settings
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
 
-            void PositionVal() => lblVal.Location = new Point(parent.Width - rightPad - lblVal.Width, volumeY + 8);
+            void PositionVal() => _lblVolumeVal.Location = new Point(parent.Width - rightPad - _lblVolumeVal.Width, volumeY + 8);
 
             PositionVal();
             parent.Resize += (_, __) => PositionVal();
-            _volume.ValueChanged += (_, __) => { lblVal.Text = _volume.Value + "%"; PositionVal(); };
+            _volume.ValueChanged += (_, __) => { _lblVolumeVal.Text = _volume.Value + "%"; PositionVal(); SaveSettings(); };
 
             parent.Controls.Add(_volume);
-            parent.Controls.Add(lblVal);
+            parent.Controls.Add(_lblVolumeVal);
             y += 42;
         }
 
