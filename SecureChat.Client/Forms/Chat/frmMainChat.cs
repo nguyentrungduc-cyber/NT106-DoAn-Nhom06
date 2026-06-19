@@ -116,6 +116,10 @@ namespace SecureChat.Client
 
         private readonly Dictionary<string, Image> _convAvatarCache = new();
 
+        private readonly Dictionary<string, string> _convOtherUserId = new();
+
+        private readonly Dictionary<string, (bool IsOnline, DateTime? LastSeenUtc)> _userPresence = new();
+
         // Key = convId, Value = danh sách tin nhắn của conversation đó
         // Thêm biến lưu trạng thái trả lời tin nhắn
         private string _replyingToMessageId = null;
@@ -288,6 +292,7 @@ namespace SecureChat.Client
                     }
 
                     _convs.Clear();
+                    _convOtherUserId.Clear();
                     foreach (var c in list)
                     {
                         bool isGroup = c.Type == SecureChat.Models.ConversationType.Group;
@@ -306,6 +311,9 @@ namespace SecureChat.Client
 
                         string convName = !string.IsNullOrWhiteSpace(c.Name) ? c.Name! : (isGroup ? "Group" : "Conversation");
                         _convs.Add((c.ConversationID, convName, preview, time, 0, isGroup));
+
+                        if (!isGroup && !string.IsNullOrWhiteSpace(c.OtherUserId))
+                            _convOtherUserId[c.ConversationID] = c.OtherUserId;
                     }
                     BuildConvList();
                     RefreshSidebarPreview();
@@ -720,6 +728,9 @@ namespace SecureChat.Client
                     string time = conv.LastActivityAt?.ToLocalTime().ToString("h:mm tt")
                         ?? string.Empty;
                     _convs.Insert(0, (conv.ConversationID, display, string.Empty, time, 0, isGroup));
+
+                    if (!isGroup && !string.IsNullOrWhiteSpace(conv.OtherUserId))
+                        _convOtherUserId[conv.ConversationID] = conv.OtherUserId;
                 }
 
                 _activeConvId = targetConvId;
@@ -1427,7 +1438,9 @@ namespace SecureChat.Client
                     if (list != null)
                         members = list.Select(m => new SecureChat.Client.Forms.Chat.MemberModel(
     m.User?.DisplayName ?? m.Nickname ?? "Unknown",
-    "last seen recently",
+    m.User != null && m.User.ShowOnlineStatus
+        ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User.LastSeenUtc)
+        : "offline",
     m.Role switch
     {
         SecureChat.Models.MemberRole.Owner => "Admin",
@@ -1886,11 +1899,23 @@ namespace SecureChat.Client
                     return;
                 }
 
+                string otherUserId = other.UserID ?? other.User.UserID;
+                bool isOnline = other.IsOnline;
+                DateTime? lastSeen = other.User.LastSeenUtc;
+                if (_userPresence.TryGetValue(otherUserId, out var pData))
+                {
+                    isOnline = isOnline || pData.IsOnline;
+                    lastSeen = lastSeen ?? pData.LastSeenUtc;
+                }
+
                 using var dlg = new frmUserProfile(
                     other.User.DisplayName ?? "Unknown",
                     other.User.Username ?? "unknown",
                     other.User.Email,
-                    other.User.BioText
+                    other.User.BioText,
+                    isOnline,
+                    lastSeen,
+                    other.User.ShowOnlineStatus
                 );
                 dlg.ShowDialog(this);
             }
@@ -3498,6 +3523,12 @@ namespace SecureChat.Client
             _lblChatName.Text = conv.Name;
             RestoreChatStatus();
 
+            if (!conv.IsGroup && _signalRClient != null && _signalRClient.IsConnected)
+            {
+                if (_convOtherUserId.TryGetValue(convId, out var otherId))
+                    _ = _signalRClient.QueryUserPresenceAsync(otherId);
+            }
+
             // Set ảnh header từ cache nếu có (tạo bản sao riêng để tránh shared reference)
             if (_convAvatarCache.TryGetValue(convId, out var cachedImg) && cachedImg != null)
                 _chatAvatar.Photo = new Bitmap(cachedImg);
@@ -3591,6 +3622,8 @@ namespace SecureChat.Client
                 if (other == null) return;
             }
 
+            var otherId = members.FirstOrDefault(m => m.UserID != _currentUserId)?.UserID ?? other.UserID;
+
             int y = 24;
 
             // Large avatar (centered)
@@ -3611,7 +3644,20 @@ namespace SecureChat.Client
             // Username (centered, fixed width)
             AppendCenteredLabel(body, $"@{other.Username}",
                 TG.FontRegular(12f), TG.TextSecondary, ref y);
-            y += 24;
+            y += 6;
+
+            // Presence status (centered, fixed width)
+            string presenceText;
+            if (_userPresence.TryGetValue(otherId, out var p))
+                presenceText = Helpers.PresenceFormatter.GetPresenceText(p.IsOnline, p.LastSeenUtc);
+            else if (other.ShowOnlineStatus)
+                presenceText = Helpers.PresenceFormatter.GetPresenceText(false, other.LastSeenUtc);
+            else
+                presenceText = "offline";
+
+            AppendCenteredLabel(body, presenceText,
+                TG.FontRegular(10f), presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary, ref y);
+            y += 16;
 
             // Divider
             AppendDivider(body, ref y);
@@ -3674,7 +3720,10 @@ namespace SecureChat.Client
             foreach (var m in members)
             {
                 var displayName = m.User?.DisplayName ?? m.Nickname ?? "Unknown";
-                var status = m.User?.ShowOnlineStatus == true ? "online" : "offline";
+                var status = (m.User?.ShowOnlineStatus == true)
+                    ? (m.IsOnline ? Helpers.PresenceFormatter.GetPresenceText(true, null)
+                                  : Helpers.PresenceFormatter.GetPresenceText(false, m.User?.LastSeenUtc))
+                    : "offline";
                 var role = m.Role switch
                 {
                     SecureChat.Models.MemberRole.Owner => "Admin",
@@ -5689,6 +5738,10 @@ namespace SecureChat.Client
                         : (isGroup ? "Group" : "Direct chat");
                     string time = conv.LastActivityAt?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
                     _convs.Insert(0, (convId, display, string.Empty, time, 0, isGroup));
+
+                    if (!isGroup && !string.IsNullOrWhiteSpace(conv.OtherUserId))
+                        _convOtherUserId[convId] = conv.OtherUserId;
+
                     BuildConvList();
                     // Trigger avatar loading if the conversation has an avatar URL
                     if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
@@ -5773,6 +5826,9 @@ namespace SecureChat.Client
                     string display = !string.IsNullOrWhiteSpace(conv.Name) ? conv.Name! : (old.IsGroup ? "Group" : "Conversation");
                     _convs[idx] = (convId, display, old.Preview, old.Time, old.Unread, old.IsGroup);
 
+                    if (!old.IsGroup && !string.IsNullOrWhiteSpace(conv.OtherUserId))
+                        _convOtherUserId[convId] = conv.OtherUserId;
+
                     // Always refresh avatar URL for all conversations (both active and inactive)
                     if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
                     {
@@ -5784,6 +5840,8 @@ namespace SecureChat.Client
                     {
                         _lblChatName.Text = display;
                         _chatAvatar.SetName(display);
+                        if (!old.IsGroup && _convOtherUserId.TryGetValue(_activeConvId, out var otherId))
+                            _ = _signalRClient?.QueryUserPresenceAsync(otherId);
                     }
                     BuildConvList();
                 }));
@@ -5812,6 +5870,31 @@ namespace SecureChat.Client
                     // Refresh right sidebar if open and showing this conversation
                     if (_isSidebarOpen && _activeConvId == convId)
                         _ = LoadRightSidebarContentAsync();
+                }));
+            };
+            _signalRClient.UserPresenceChanged += async (userId, isOnline, lastSeenUtc) =>
+            {
+                _userPresence[userId] = (isOnline, lastSeenUtc);
+
+                BeginInvoke(new Action(() =>
+                {
+                    if (string.IsNullOrWhiteSpace(_activeConvId)) return;
+                    var conv = _convs.Find(c => c.Id == _activeConvId);
+                    if (conv == default) return;
+
+                    if (!conv.IsGroup)
+                    {
+                        if (_convOtherUserId.TryGetValue(_activeConvId, out var otherId) && otherId == userId)
+                        {
+                            RestoreChatStatus();
+                            if (_isSidebarOpen)
+                                _ = LoadRightSidebarContentAsync();
+                        }
+                    }
+                    else if (_isSidebarOpen)
+                    {
+                        _ = LoadRightSidebarContentAsync();
+                    }
                 }));
             };
             _signalRClient.MessagePinned += async (convId, messageId, pinnedByUserId, pinnedByName) =>
@@ -5844,7 +5927,23 @@ namespace SecureChat.Client
             {
                 await ReRegisterPublicKeyAsync();
                 if (!string.IsNullOrWhiteSpace(_activeConvId))
+                {
                     await _signalRClient.JoinConversationAsync(_activeConvId);
+
+                    // Re-query presence for the other user in this conversation
+                    var conv = _convs.Find(c => c.Id == _activeConvId);
+                    if (conv != default && !conv.IsGroup && _convOtherUserId.TryGetValue(_activeConvId, out var otherId))
+                        await _signalRClient.QueryUserPresenceAsync(otherId);
+
+                    BeginInvoke(new Action(() =>
+                    {
+                        _userPresence.Clear();
+                        if (_isSidebarOpen)
+                        {
+                            var __ = LoadRightSidebarContentAsync();
+                        }
+                    }));
+                }
             };
 
             try
@@ -6174,7 +6273,23 @@ namespace SecureChat.Client
             }
 
             var conv = _convs.Find(c => c.Id == _activeConvId);
-            _lblChatStatus.Text = conv == default ? "" : conv.IsGroup ? "last seen recently" : "last seen recently";
+            if (conv == default)
+            {
+                _lblChatStatus.Text = "";
+                return;
+            }
+
+            if (conv.IsGroup)
+            {
+                _lblChatStatus.Text = "";
+                return;
+            }
+
+            if (_convOtherUserId.TryGetValue(_activeConvId, out var otherId) &&
+                _userPresence.TryGetValue(otherId, out var presence))
+                _lblChatStatus.Text = Helpers.PresenceFormatter.GetPresenceText(presence.IsOnline, presence.LastSeenUtc);
+            else
+                _lblChatStatus.Text = "";
         }
 
         private bool TryTrackMessageId(string messageId)

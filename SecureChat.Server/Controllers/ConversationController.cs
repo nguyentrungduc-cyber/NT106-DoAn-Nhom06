@@ -6,13 +6,14 @@ using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Hubs;
+using SecureChat.Server.Services;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations")]
-	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, IHubContext<ChatHub> hubContext) : BaseController
+	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -34,6 +35,7 @@ namespace SecureChat.Controllers
                             res = res with { Name = other.User.DisplayName };
                         if (!string.IsNullOrWhiteSpace(other.User.AvatarURL))
                             res = res with { AvatarURL = other.User.AvatarURL };
+                        res = res with { OtherUserId = other.UserID };
                     }
                 }
 
@@ -62,6 +64,7 @@ namespace SecureChat.Controllers
 						res = res with { Name = other.User.DisplayName };
 					if (!string.IsNullOrWhiteSpace(other.User.AvatarURL))
 						res = res with { AvatarURL = other.User.AvatarURL };
+					res = res with { OtherUserId = other.UserID };
 				}
 			}
 			return Ok(res);
@@ -447,7 +450,7 @@ namespace SecureChat.Controllers
 				.Where(m => m.LeftAt == null)
 				.ToList();
 
-			return Ok(activeMembers.Select(MemberResponse.From));
+			return Ok(activeMembers.Select(m => MemberResponse.From(m, presence.IsOnline(m.UserID))));
 		}
 	}
 }

@@ -14,7 +14,8 @@ namespace SecureChat.DTOs
 	public record FriendResponse(
 		string FriendshipID,
 		UserResponse Friend,
-		DateTime CreatedAt
+		DateTime CreatedAt,
+		bool IsOnline = false
 	);
 
 	public record FriendRequestResponse(

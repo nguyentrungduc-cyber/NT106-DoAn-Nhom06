@@ -7,13 +7,14 @@ using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Hubs;
 using SecureChat.Server.Security;
+using SecureChat.Server.Services;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/users")]
-	public class UserController(UserRepository users, ConversationRepository conversations, IHubContext<ChatHub> hubContext) : BaseController
+	public class UserController(UserRepository users, ConversationRepository conversations, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -183,7 +184,7 @@ namespace SecureChat.Controllers
         {
             var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var results = await users.SearchAsync(q, currentUserId);
-            return Ok(results.Select(UserResponse.From));
+            return Ok(results.Select(u => UserResponse.From(u, presence.IsOnline(u.UserID))));
         }
 
         [HttpGet("{userID}")]

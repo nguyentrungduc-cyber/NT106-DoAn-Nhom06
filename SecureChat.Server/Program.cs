@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Services;
 using SecureChat.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -35,6 +36,7 @@ builder.Services.AddScoped<FriendRepository>();
 builder.Services.AddScoped<ConversationRepository>();
 builder.Services.AddScoped<MessageRepository>();
 builder.Services.AddScoped<CallRepository>();
+builder.Services.AddSingleton<PresenceTracker>();
 builder.Services.AddScoped<JwtTokenService>();
 // Email service used by forgot-password flow. Registered as singleton so it can be reused.
 builder.Services.AddSingleton<EmailService>();

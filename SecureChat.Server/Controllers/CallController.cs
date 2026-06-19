@@ -180,7 +180,16 @@ namespace SecureChat.Controllers
 
 			// Private call: leaving ends the entire call
 			if (call.Conversation?.Type == ConversationType.Direct)
+			{
 				await calls.EndCallAsync(callID);
+			}
+			else
+			{
+				// Group call: auto-end when no active participants remain
+				var activeCount = await calls.GetActiveParticipantCountAsync(callID);
+				if (activeCount == 0)
+					await calls.EndCallAsync(callID);
+			}
 
 			return NoContent();
 		}
