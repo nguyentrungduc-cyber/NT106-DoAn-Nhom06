@@ -75,7 +75,7 @@ namespace SecureChat.Client.Components.Chat
         // ── Layout ────────────────────────────────────────────────────────────
         private void BuildLayout()
         {
-            const int W = 300, H = 76;
+            const int W = 300, H = 64;
             Size      = new Size(W + 8, H + 8);
             BackColor = Color.Transparent;
 
@@ -88,10 +88,10 @@ namespace SecureChat.Client.Components.Chat
             };
             _pnlBubble.Paint += PnlBubble_Paint;
 
-            // Play/Pause button — circle, drawn manually
+            // Play/Pause button — circle, drawn manually, căn giữa theo chiều dọc
             _btnPlayPause = new Button
             {
-                Location  = new Point(10, 18),
+                Location  = new Point(12, (H - 38) / 2),
                 Size      = new Size(38, 38),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
@@ -106,11 +106,11 @@ namespace SecureChat.Client.Components.Chat
             _btnPlayPause.Paint += BtnPlayPause_Paint;
             _btnPlayPause.Click += BtnPlayPause_Click;
 
-            // Title
+            // Title — căn đều phía trên nội dung bên phải nút play
             _lblTitle = new Label
             {
-                Location  = new Point(58, 8),
-                Size      = new Size(230, 18),
+                Location  = new Point(60, 10),
+                Size      = new Size(228, 18),
                 Font      = new Font("Segoe UI", 8.5f, FontStyle.Bold),
                 ForeColor = TextDark,
                 Text      = "Voice message",
@@ -120,8 +120,8 @@ namespace SecureChat.Client.Components.Chat
             // Seek track (nền) — Panel tuỳ chỉnh, không dùng TrackBar
             _pnlSeekTrack = new Panel
             {
-                Location  = new Point(58, 34),
-                Size      = new Size(230, 6),
+                Location  = new Point(60, 32),
+                Size      = new Size(228, 6),
                 BackColor = SeekBg,
                 Cursor    = Cursors.Hand,
             };
@@ -152,11 +152,11 @@ namespace SecureChat.Client.Components.Chat
             _pnlSeekFill.Controls.Add(_pnlSeekThumb);
             _pnlSeekTrack.Controls.Add(_pnlSeekFill);
 
-            // Time label
+            // Time label — sát ngay dưới seek track, không để khoảng trắng thừa
             _lblTime = new Label
             {
-                Location  = new Point(58, 48),
-                Size      = new Size(230, 16),
+                Location  = new Point(60, 42),
+                Size      = new Size(228, 16),
                 Font      = new Font("Segoe UI", 7.5f),
                 ForeColor = TextGray,
                 Text      = "0:00 / 0:00",
