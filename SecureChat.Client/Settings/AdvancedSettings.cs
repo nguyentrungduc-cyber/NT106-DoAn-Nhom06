@@ -65,6 +65,9 @@ namespace SecureChat.Client.Settings
                     if (bool.TryParse(parts[6], out var p5)) s.ShowTaskbarIcon = p5;
                     if (bool.TryParse(parts[7], out var p6)) s.UseMonochromeIcon = p6;
                 }
+
+                if (s.DownloadPathMode == 2 && string.IsNullOrWhiteSpace(s.CustomDownloadPath))
+                    s.DownloadPathMode = 0;
             }
             catch { }
 

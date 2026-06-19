@@ -180,7 +180,7 @@ namespace SecureChat.Client
         private readonly HashSet<string> _pinnedMessageIds = new();
         private readonly Dictionary<string, DateTime?> _convMuteUntil = new(); // conversationId → muted until (null = not muted)
         private Icon? _originalIcon;
-        private static Icon? _monochromeIcon;
+        private Icon? _monochromeIcon;
         private Panel _pnlPinnedBar = null!;
         private Label _lblPinnedText = null!;
         private Button _btnUnpin = null!;
@@ -7520,6 +7520,13 @@ namespace SecureChat.Client
             {
                 _processedMessageIds.Clear();
             }
+
+            // Restore original icon so Form.Dispose doesn't dispose _monochromeIcon
+            if (_originalIcon != null && this.Icon != _originalIcon)
+                this.Icon = _originalIcon;
+            _monochromeIcon?.Dispose();
+            _monochromeIcon = null;
+
             base.OnFormClosed(e);
         }
 
