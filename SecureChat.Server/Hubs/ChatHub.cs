@@ -14,6 +14,7 @@ namespace SecureChat.Server.Hubs
         MessageRepository messages,
         CallRepository calls,
         UserRepository users,
+        FriendRepository friends,
         PresenceTracker presence,
         ILogger<ChatHub> logger) : Hub
     {
