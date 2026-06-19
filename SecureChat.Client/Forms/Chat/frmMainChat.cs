@@ -3569,14 +3569,6 @@ namespace SecureChat.Client
                         }
                         break;
                     }
-                    /*case "Night Mode":
-                        {
-                            bool current = _settingsToggles.TryGetValue("Night Mode", out var v) ? v : false;
-                            _settingsToggles["Night Mode"] = !current;
-                            UpdateThemeForNightMode(!current);
-                            break;
-
-                        }*/
             }
         }
 
