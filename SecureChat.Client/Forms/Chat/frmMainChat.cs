@@ -4488,8 +4488,9 @@ namespace SecureChat.Client
 
                 const int rightMargin = 10; // khớp với text bubble: x = ClientSize.Width - bw - 10
                 int voiceLeftOffset = (!isOut && isGroup) ? 44 : 10;
+                const int voiceBubbleW = 300; // cố định, KHÔNG co giãn theo panel.Width
 
-                audioBubble.Width  = 300;
+                audioBubble.Width  = voiceBubbleW;
                 audioBubble.Top    = 4;
                 audioBubble.Anchor = isOut
                     ? AnchorStyles.Top | AnchorStyles.Right
@@ -4506,11 +4507,11 @@ namespace SecureChat.Client
                 void LayoutVoice()
                 {
                     if (panel.ClientSize.Width <= 0) return;
-                    int avail = panel.ClientSize.Width - voiceLeftOffset - rightMargin;
-                    int newW  = Math.Min(360, Math.Max(260, avail));
-                    audioBubble.Width = newW;
+                    // audioBubble GIỮ NGUYÊN 300px (giống bubble text co theo nội dung,
+                    // không full-width theo panel chứa nó) — chỉ Left thay đổi để căn phải/trái
+                    audioBubble.Width = voiceBubbleW;
                     audioBubble.Left  = isOut
-                        ? panel.ClientSize.Width - newW - rightMargin
+                        ? panel.ClientSize.Width - voiceBubbleW - rightMargin
                         : voiceLeftOffset;
                 }
 
