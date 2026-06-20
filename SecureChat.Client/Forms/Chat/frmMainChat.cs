@@ -111,6 +111,7 @@ namespace SecureChat.Client
         private string _currentDisplayName = string.Empty;
         private string _currentUsername = string.Empty;
         private string _currentEmail = string.Empty;
+        private bool _isLoggingOut;
         private string _currentAvatarUrl = string.Empty;
 
         private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new();
@@ -3615,6 +3616,7 @@ namespace SecureChat.Client
                                 catch { }
 
                                 // 2. Stop SignalR so OnDisconnectedAsync does NOT double-broadcast
+                                _isLoggingOut = true;
                                 if (_signalRClient != null)
                                 {
                                     try { await _signalRClient.StopAsync(); }
@@ -6722,6 +6724,7 @@ namespace SecureChat.Client
             };
             _signalRClient.Closed += async _ =>
             {
+                if (_isLoggingOut) return;
                 BeginInvoke(new Action(() =>
                 {
                     MessageBox.Show(this, "Connection to server lost. Please re-login.", "Disconnected",
