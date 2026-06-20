@@ -32,6 +32,9 @@ namespace SecureChat.Client.Forms.Settings
         public frmLanguage()
         {
             InitializeComponent();
+            // Night mode: refresh khi toggle
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             BuildUI();
             Load += (_, __) => LoadFromSettings();
             Resize += (_, __) => Relayout();
@@ -631,5 +634,33 @@ namespace SecureChat.Client.Forms.Settings
             public bool ShowTranslateButton { get; set; } = true;
             public List<string> DoNotTranslateCodes { get; set; } = new();
         }
+        private void OnThemeChanged()
+        {{
+            if (InvokeRequired) {{ Invoke(new Action(OnThemeChanged)); return; }}
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }}
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {{
+            foreach (Control c in controls)
+            {{
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+
+                if (c.ForeColor != Color.White &&
+                    c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }}
+        }}
+
     }
 }

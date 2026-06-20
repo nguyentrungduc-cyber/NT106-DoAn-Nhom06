@@ -18,6 +18,8 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmMembersSettings(string conversationId)
         {
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             _conversationId = conversationId;  // Gán vào biến
             _ = LoadMembersAsync();
             Text = "Members";
@@ -324,5 +326,30 @@ namespace SecureChat.Client.Forms.Chat
                 BuildMemberRows(string.Empty);
             }
         }
+        private void OnThemeChanged()
+        {{
+            if (InvokeRequired) {{ Invoke(new Action(OnThemeChanged)); return; }}
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }}
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {{
+            foreach (Control c in controls)
+            {{
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+                if (c.ForeColor != Color.White && c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }}
+        }}
+
     }
 }

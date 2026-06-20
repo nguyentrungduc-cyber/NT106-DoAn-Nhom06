@@ -30,6 +30,9 @@ namespace SecureChat.Client
             _identifier = identifier ?? string.Empty;
             InitializeComponent();
 
+            // Night mode: refresh khi toggle
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             // vì khi biết email thì gửi Opt đầu tiên, lúc này bộ đếm sẽ chạy lần đầu tiên
             StartCountdown();
         }
@@ -392,5 +395,33 @@ namespace SecureChat.Client
         private void HideError() { _lblError.Visible = false; }
 
         protected override void OnFormClosed(FormClosedEventArgs e) { _timer?.Stop(); base.OnFormClosed(e); }
+        private void OnThemeChanged()
+        {{
+            if (InvokeRequired) {{ Invoke(new Action(OnThemeChanged)); return; }}
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }}
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {{
+            foreach (Control c in controls)
+            {{
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+
+                if (c.ForeColor != Color.White &&
+                    c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }}
+        }}
+
     }
 }

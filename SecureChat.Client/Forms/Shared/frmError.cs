@@ -38,6 +38,8 @@ namespace SecureChat.Client.Forms.Shared
             _title = string.IsNullOrWhiteSpace(title) ? "Thông báo" : title;
             _message = message ?? string.Empty;
             BuildUi();
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
         }
 
         // ── Static helpers ─────────────────────────────────────────────
@@ -211,5 +213,12 @@ namespace SecureChat.Client.Forms.Shared
         // P/Invoke để bo tròn cho FormBorderStyle.None
         [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
         private static extern IntPtr NativeRoundRect(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect, int nWidthEllipse, int nHeightEllipse);
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+        }
+
     }
 }
