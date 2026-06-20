@@ -1590,6 +1590,12 @@ namespace SecureChat.Client
             dlg.LoadGroup(_lblChatName.Text, avatarImage, members);
             dlg.SetContext(_activeConvId, _currentDisplayName);
             dlg.StartPosition = FormStartPosition.CenterParent;
+            dlg.AddMemberRequested += () =>
+            {
+                using var settingsDlg = new SecureChat.Client.Forms.Chat.frmMembersSettings(_activeConvId);
+                settingsDlg.StartPosition = FormStartPosition.CenterParent;
+                settingsDlg.ShowDialog(dlg);
+            };
             dlg.ShowDialog(this);
             avatarImage?.Dispose();
         }

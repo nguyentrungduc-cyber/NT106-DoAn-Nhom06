@@ -244,6 +244,32 @@ namespace SecureChat.Client.Services
         }
 
         /// <summary>
+        /// Lấy conversation AES key cho conversationId, RSA-encrypt nó bằng
+        /// publicKeyPem của member mới, trả về Base64.
+        /// Dùng khi thêm thành viên mới vào group để gửi encryptedKey lên server.
+        /// </summary>
+        public async Task<string?> EncryptConversationKeyForMemberAsync(string conversationId, string memberPublicKeyPem)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId) || string.IsNullOrWhiteSpace(memberPublicKeyPem))
+                return null;
+
+            var key = await EnsureConversationKeyAsync(conversationId).ConfigureAwait(false);
+            if (key is null)
+                return null;
+
+            try
+            {
+                byte[] enc = RSAEncryption.Encrypt(key, memberPublicKeyPem);
+                return Convert.ToBase64String(enc);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Failed to encrypt key for new member: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Xóa conversation key đã cache (gọi khi rời / xoá conversation).
         /// </summary>
         public void ForgetConversation(string conversationId)
