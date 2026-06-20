@@ -487,6 +487,7 @@ namespace SecureChat.Client.Forms.Chat
                 {
                     item.Width = available;
                     item.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+                    item.RefreshLayout();
                 }
             }
         }
