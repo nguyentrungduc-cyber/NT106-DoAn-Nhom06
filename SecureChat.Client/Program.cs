@@ -1,4 +1,5 @@
 ﻿using System.Windows.Forms;
+using System.IO;
 using SecureChat.Client.Forms.Settings;
 using SecureChat.Client.Models;
 
@@ -110,6 +111,14 @@ namespace SecureChat.Client
 
             Console.WriteLine(fullLog);
             try { System.Diagnostics.Debug.WriteLine(fullLog); } catch { }
+
+            // Ghi ra file để xem được khi chạy .exe trực tiếp (không có console/Debug Output)
+            try
+            {
+                string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "client_error.log");
+                File.AppendAllText(logPath, fullLog + "\n\n========================================\n\n");
+            }
+            catch { /* không để lỗi log làm crash app */ }
         }
     }
 }
