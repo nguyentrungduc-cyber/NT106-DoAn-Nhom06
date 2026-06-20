@@ -16,7 +16,7 @@ namespace SecureChat.Server.Hubs
         UserRepository users,
         PrivacyRepository privacy,
         FriendRepository friends,
-        PresenceTracker presence,
+        UserPresenceService presence,
         ILogger<ChatHub> logger) : Hub
     {
         private string Me => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
@@ -34,28 +34,15 @@ namespace SecureChat.Server.Hubs
                 return;
             }
 
-            // Track connectionId → userId for block suppression
             _connToUser[Context.ConnectionId] = Me;
 
-            bool wasOffline = presence.IsFirstConnection(Me);
-            presence.AddConnection(Me, Context.ConnectionId);
+            // Track presence via UserPresenceService (DB + broadcast)
+            await presence.UserConnectedAsync(Me, Context.ConnectionId);
 
-            // Always join conversation groups for every connection (not just first)
+            // Always join conversation groups
             var myConvs = await conversations.GetConversationsByMemberAsync(Me);
             foreach (var conv in myConvs)
                 await Groups.AddToGroupAsync(Context.ConnectionId, conv.ConversationID);
-
-            // Only broadcast online if this is the user's first active connection
-            // AND they have ShowOnlineStatus enabled
-            if (wasOffline)
-            {
-                var user = await users.GetByIdAsync(Me);
-                if (user?.ShowOnlineStatus == true)
-                {
-                    foreach (var conv in myConvs)
-                        await Clients.Group(conv.ConversationID).SendAsync("UserPresenceChanged", Me, true, (DateTime?)null);
-                }
-            }
 
             await base.OnConnectedAsync();
         }
@@ -73,35 +60,10 @@ namespace SecureChat.Server.Hubs
                 return;
             }
 
-            // Clean up connection tracking for block suppression
             _connToUser.TryRemove(Context.ConnectionId, out _);
 
-            presence.RemoveConnection(Me, Context.ConnectionId);
-
-            // Re-check online status — a new connection may have been established
-            // during the disconnect handler (race condition mitigation)
-            if (!presence.IsOnline(Me))
-            {
-                var user = await users.GetByIdAsync(Me);
-                if (user != null)
-                {
-                    user.LastSeenUtc = DateTime.UtcNow;
-                    await users.UpdateAsync(user);
-
-                    if (user.ShowOnlineStatus)
-                    {
-                        // Respect LastSeenPrivacy before broadcasting
-                        var settings = await privacy.GetRawSettingsAsync(Me);
-                        DateTime? lastSeen = user.LastSeenUtc;
-                        if (settings is not null && settings.LastSeenPrivacy != PrivacyLevel.Everybody)
-                            lastSeen = null;
-
-                        var myConvs = await conversations.GetConversationsByMemberAsync(Me);
-                        foreach (var conv in myConvs)
-                            await Clients.Group(conv.ConversationID).SendAsync("UserPresenceChanged", Me, false, lastSeen);
-                    }
-                }
-            }
+            // Track presence via UserPresenceService (DB + broadcast)
+            await presence.UserDisconnectedAsync(Me, Context.ConnectionId);
 
             await base.OnDisconnectedAsync(exception);
         }
@@ -117,11 +79,10 @@ namespace SecureChat.Server.Hubs
             // Respect ShowOnlineStatus privacy toggle
             if (user.ShowOnlineStatus == false)
             {
-                await Clients.Caller.SendAsync("UserPresenceChanged", userId, false, (DateTime?)null);
+                await Clients.Caller.SendAsync("UserStatusChanged", userId, "Offline", (DateTime?)null);
                 return;
             }
 
-            // Respect LastSeenPrivacy (only applies when offline)
             DateTime? lastSeen = user.LastSeenUtc;
             if (!online)
             {
@@ -130,7 +91,7 @@ namespace SecureChat.Server.Hubs
                     lastSeen = null;
             }
 
-            await Clients.Caller.SendAsync("UserPresenceChanged", userId, online, lastSeen);
+            await Clients.Caller.SendAsync("UserStatusChanged", userId, online ? "Online" : "Offline", lastSeen);
         }
 
         /// <summary>

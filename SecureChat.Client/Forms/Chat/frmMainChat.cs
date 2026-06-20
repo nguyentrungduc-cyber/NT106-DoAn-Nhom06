@@ -111,6 +111,7 @@ namespace SecureChat.Client
         private string _currentDisplayName = string.Empty;
         private string _currentUsername = string.Empty;
         private string _currentEmail = string.Empty;
+        private bool _isLoggingOut;
         private string _currentAvatarUrl = string.Empty;
 
         private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new();
@@ -3606,7 +3607,23 @@ namespace SecureChat.Client
                             }
                             else if (dr == DialogResult.No)
                             {
-                                // 1. Xóa Access Token để không gọi API được nữa
+                                // 1. Call logout API to set Offline immediately
+                                try
+                                {
+                                    var http = ApiClient.Instance.GetHttpClient();
+                                    await http.PostAsync("api/auth/logout", null);
+                                }
+                                catch { }
+
+                                // 2. Stop SignalR so OnDisconnectedAsync does NOT double-broadcast
+                                _isLoggingOut = true;
+                                if (_signalRClient != null)
+                                {
+                                    try { await _signalRClient.StopAsync(); }
+                                    catch { }
+                                }
+
+                                // 3. Xóa Access Token để không gọi API được nữa
                                 ApiClient.Instance.SetAccessToken(null);
                                 SecureChat.Shared.Security.KeyManager.Clear();
                                 lock (_processedMessageIdsLock)
@@ -3614,7 +3631,7 @@ namespace SecureChat.Client
                                     _processedMessageIds.Clear();
                                 }
 
-                                // 2. Tìm login form cũ đang ẩn và hiện lại
+                                // 4. Tìm login form cũ đang ẩn và hiện lại
                                 var oldLogin = Application.OpenForms.OfType<frmLoginRegister>().FirstOrDefault();
                                 if (oldLogin != null)
                                 {
@@ -3626,7 +3643,7 @@ namespace SecureChat.Client
                                     loginForm.Show();
                                 }
 
-                                // 3. Ẩn Form Main thay vì đóng để không kích hoạt FormClosed cascade
+                                // 5. Ẩn Form Main thay vì đóng để không kích hoạt FormClosed cascade
                                 this.Hide();
                             }
                         }
@@ -6636,9 +6653,9 @@ namespace SecureChat.Client
                         _ = LoadRightSidebarContentAsync();
                 }));
             };
-            _signalRClient.UserPresenceChanged += async (userId, isOnline, lastSeenUtc) =>
+            _signalRClient.UserStatusChanged += async (userId, status, lastSeenUtc) =>
             {
-                _userPresence[userId] = (isOnline, lastSeenUtc);
+                _userPresence[userId] = (status == "Online", lastSeenUtc);
 
                 BeginInvoke(new Action(() =>
                 {
@@ -6707,6 +6724,7 @@ namespace SecureChat.Client
             };
             _signalRClient.Closed += async _ =>
             {
+                if (_isLoggingOut) return;
                 BeginInvoke(new Action(() =>
                 {
                     MessageBox.Show(this, "Connection to server lost. Please re-login.", "Disconnected",

@@ -14,7 +14,7 @@ namespace SecureChat.Controllers
 	[Authorize]
 	[ApiController]
 	[Route("api/users")]
-	public class UserController(UserRepository users, ConversationRepository conversations, PrivacyRepository privacy, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
+	public class UserController(UserRepository users, ConversationRepository conversations, PrivacyRepository privacy, IHubContext<ChatHub> hubContext, UserPresenceService presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 

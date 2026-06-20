@@ -82,4 +82,11 @@ namespace SecureChat.Models
 		SevenDays = 2,
 		ThirtyDays = 3
 	}
+
+	public enum UserStatus : byte
+	{
+		Offline = 0,
+		Online = 1,
+		Idle = 2
+	}
 }

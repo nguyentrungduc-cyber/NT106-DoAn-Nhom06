@@ -2,17 +2,19 @@ namespace SecureChat.Client.Helpers;
 
 public static class PresenceFormatter
 {
-    public static string GetPresenceText(bool isOnline, DateTime? lastSeenUtc)
+    public static string GetPresenceText(string status, DateTime? lastSeenUtc)
     {
-        if (isOnline)
+        if (status == "Online")
             return "Online";
+
+        if (status == "Idle")
+            return "Idle";
 
         if (lastSeenUtc is null)
             return "offline";
 
         var now = DateTime.UtcNow;
 
-        // Handle clock skew / future timestamps gracefully
         if (lastSeenUtc.Value > now)
             return "last seen just now";
 
@@ -35,4 +37,7 @@ public static class PresenceFormatter
 
         return $"last seen on {lastSeenUtc.Value.ToLocalTime():MMM dd} at {lastSeenUtc.Value.ToLocalTime():HH:mm}";
     }
+
+    public static string GetPresenceText(bool isOnline, DateTime? lastSeenUtc)
+        => GetPresenceText(isOnline ? "Online" : "Offline", lastSeenUtc);
 }

@@ -20,6 +20,7 @@ namespace SecureChat.Models
 		public DbSet<CallLog>           CallLogs		=> Set<CallLog>();
 		public DbSet<CallParticipant>   CallParticipants	=> Set<CallParticipant>();
 		public DbSet<UserPrivacySettings> UserPrivacySettings => Set<UserPrivacySettings>();
+		public DbSet<UserPresence> UserPresences => Set<UserPresence>();
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
 		{
