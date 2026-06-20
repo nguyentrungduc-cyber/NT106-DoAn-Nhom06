@@ -43,6 +43,9 @@ namespace SecureChat.Client.Forms.Chat
         {
             InitializeComponent();
             BuildUI();
+            // Refresh theme nếu Night Mode toggle khi form đang mở
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             // Dữ liệu nhóm sẽ được load từ bên ngoài qua LoadGroup(...)
         }
 
@@ -412,6 +415,28 @@ namespace SecureChat.Client.Forms.Chat
             _conversationId = conversationId;
             _currentUserDisplayName = currentUserDisplayName;
         }
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            this.Invalidate(true);
+            foreach (Control c in this.Controls)
+                ApplyThemeRecursive(c);
+        }
+
+        private static void ApplyThemeRecursive(Control c)
+        {
+            if (c.BackColor != Color.Transparent &&
+                c.BackColor != TG.Blue &&
+                c.BackColor != TG.SidebarActive)
+                c.BackColor = TG.WindowBg;
+            if (c.Tag is string t && t == "secondary-text")
+                c.ForeColor = TG.TextSecondary;
+            c.Invalidate();
+            foreach (Control child in c.Controls)
+                ApplyThemeRecursive(child);
+        }
+
     }
 
     public record MemberModel(string Name, string Status, string Role, Image? Avatar, Color AvatarColor, string MemberId = "");

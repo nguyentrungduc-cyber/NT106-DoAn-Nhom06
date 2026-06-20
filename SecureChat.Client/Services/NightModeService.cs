@@ -9,6 +9,9 @@ namespace SecureChat.Client.Services
     {
         public static bool IsEnabled { get; private set; }
 
+        /// <summary>Fired on UI thread after theme switch completes.</summary>
+        public static event Action? ThemeChanged;
+
         public static void Initialize()
         {
             NightModeSettings.Load();
@@ -35,6 +38,7 @@ namespace SecureChat.Client.Services
             NightModeSettings.IsEnabled = IsEnabled;
             NightModeSettings.Save();
             RefreshOpenForms();
+            ThemeChanged?.Invoke();
         }
 
         private static void RefreshOpenForms()

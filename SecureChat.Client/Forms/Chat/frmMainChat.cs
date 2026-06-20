@@ -644,7 +644,7 @@ namespace SecureChat.Client
                 Text = "☰",
                 FlatStyle = FlatStyle.Flat, // Đặt kiểu hiển thị phẳng, không có hiệu ứng nổi 3D của Windows cổ điển.
                 Font = TG.FontRegular(14f),
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 Size = new Size(48, 52),
                 Location = new Point(0, 0), // Đặt nút ở góc trên cùng bên trái của header.
                 BackColor = Color.Transparent, // Nền trong suốt để lộ màu xanh của header.
@@ -672,7 +672,7 @@ namespace SecureChat.Client
                 Text = "✏",
                 FlatStyle = FlatStyle.Flat,
                 Font = TG.FontRegular(13f),
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 Size = new Size(40, 52),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
@@ -933,9 +933,9 @@ namespace SecureChat.Client
                 if (isActive())
                 {
                     pnl.BackColor = TG.SidebarActive;
-                    lblName.ForeColor = Color.White;
-                    lblPreview.ForeColor = Color.FromArgb(220, 240, 255);
-                    lblTime.ForeColor = Color.FromArgb(200, 230, 255);
+                    lblName.ForeColor = TG.TitleBarFg;
+                    lblPreview.ForeColor = Color.FromArgb(220, TG.TitleBarFg.R, TG.TitleBarFg.G, TG.TitleBarFg.B);
+                    lblTime.ForeColor = Color.FromArgb(200, TG.TitleBarFg.R, TG.TitleBarFg.G, TG.TitleBarFg.B);
                 }
                 else
                 {
@@ -1130,7 +1130,7 @@ namespace SecureChat.Client
             _lblChatEmpty = new Label
             {
                 AutoSize = true,
-                BackColor = Color.FromArgb(220, 255, 255, 255),
+                BackColor = Color.FromArgb(220, TG.WindowBg.R, TG.WindowBg.G, TG.WindowBg.B),
                 ForeColor = TG.TextSecondary,
                 Font = TG.FontSemiBold(9.5f),
                 Padding = new Padding(12, 6, 12, 6)
@@ -3167,7 +3167,7 @@ namespace SecureChat.Client
                 Text = "✕",
                 FlatStyle = FlatStyle.Flat,
                 Font = TG.FontRegular(12f),
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 Size = new Size(36, 36),
                 Location = new Point(8, 8),
                 BackColor = Color.Transparent,
@@ -3183,7 +3183,7 @@ namespace SecureChat.Client
             {
                 Text = _currentDisplayName,
                 Font = TG.FontSemiBold(11f),
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 AutoSize = false,
                 Height = 28,           // tăng từ 22 → 28 để chứa dấu tiếng Việt (ễ, ắ...)
                 Width = smw - 80 - 14, // smw - leftPos(80) - rightMargin(14)
@@ -3582,8 +3582,70 @@ namespace SecureChat.Client
 
         public void OnNightModeChanged()
         {
+            // ── Sidebar ────────────────────────────────────────────────
             _pnlConvList.BackColor = TG.SidebarBg;
             _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
+
+            // Header bar (hamburger + title area)
+            if (_pnlSidebarHeader != null)
+            {
+                _pnlSidebarHeader.BackColor = TG.TitleBarBg;
+                foreach (Control c in _pnlSidebarHeader.Controls)
+                {
+                    if (c is Label lbl) { lbl.ForeColor = TG.TitleBarFg; lbl.BackColor = Color.Transparent; }
+                    else if (c is Button btn) btn.ForeColor = TG.TitleBarFg;
+                }
+            }
+
+            // Settings menu header
+            if (_pnlSettingsHeader != null)
+            {
+                _pnlSettingsHeader.BackColor = TG.TitleBarBg;
+                foreach (Control c in _pnlSettingsHeader.Controls)
+                {
+                    if (c is Label lbl) lbl.ForeColor = TG.TitleBarFg;
+                    else if (c is Button btn) btn.ForeColor = TG.TitleBarFg;
+                }
+            }
+            if (_lblSettingsUserName != null) _lblSettingsUserName.ForeColor = TG.TitleBarFg;
+
+            // Settings menu body
+            if (_pnlSettingsMenu != null) _pnlSettingsMenu.BackColor = TG.WindowBg;
+
+            // Chat empty state label
+            if (_lblChatEmpty != null)
+                _lblChatEmpty.BackColor = Color.FromArgb(220, TG.WindowBg.R, TG.WindowBg.G, TG.WindowBg.B);
+
+            // Chat header (title bar top)
+            if (_pnlChatHeader != null)
+            {
+                _pnlChatHeader.BackColor = TG.TitleBarBg;
+                foreach (Control c in _pnlChatHeader.Controls)
+                {
+                    if (c is Label l) l.ForeColor = TG.TitleBarFg;
+                    else if (c is Button b) b.ForeColor = TG.TitleBarFg;
+                }
+            }
+
+            // Input bar
+            if (_pnlInput != null) _pnlInput.BackColor = TG.WindowBg;
+            if (_tbMessage != null)
+            {
+                _tbMessage.BackColor = TG.InputBg;
+                _tbMessage.ForeColor = TG.TextPrimary;
+            }
+
+            // Right sidebar
+            if (_pnlRightSidebar != null) _pnlRightSidebar.BackColor = TG.WindowBg;
+            if (_sbHeader != null)
+            {
+                _sbHeader.BackColor = TG.TitleBarBg;
+                foreach (Control c in _sbHeader.Controls)
+                {
+                    if (c is Label l) l.ForeColor = TG.TitleBarFg;
+                    else if (c is Button b) b.ForeColor = TG.TitleBarFg;
+                }
+            }
 
             foreach (var pnl in _convRowCache.Values)
             {

@@ -38,6 +38,9 @@ namespace SecureChat.Client.Forms.Settings
         {
             InitializeComponent();
             BuildUI();
+            // Refresh theme nếu Night Mode toggle khi form đang mở
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             Load += async (_, __) => await LoadSettingsAsync();
         }
 
@@ -542,5 +545,27 @@ namespace SecureChat.Client.Forms.Settings
             "ThirtyDays" => "After 1 month",
             _ => "Off"
         };
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            this.Invalidate(true);
+            foreach (Control c in this.Controls)
+                ApplyThemeRecursive(c);
+        }
+
+        private static void ApplyThemeRecursive(Control c)
+        {
+            if (c.BackColor != Color.Transparent &&
+                c.BackColor != TG.Blue &&
+                c.BackColor != TG.SidebarActive)
+                c.BackColor = TG.WindowBg;
+            if (c.Tag is string t && t == "secondary-text")
+                c.ForeColor = TG.TextSecondary;
+            c.Invalidate();
+            foreach (Control child in c.Controls)
+                ApplyThemeRecursive(child);
+        }
+
     }
 }
