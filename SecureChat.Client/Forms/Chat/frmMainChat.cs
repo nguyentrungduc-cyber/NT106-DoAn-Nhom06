@@ -4983,7 +4983,7 @@ namespace SecureChat.Client
                         Array.Empty<byte>(), Array.Empty<byte>(), durationSec, isOut);
                 }
 
-                const int rightMargin = 10; // khớp với text bubble: x = ClientSize.Width - bw - 10
+                const int rightMargin = 30; // tăng để bubble voice lùi sang trái
                 int voiceLeftOffset = (!isOut && isGroup) ? 44 : 10;
                 const int voiceBubbleW = 300; // cố định, KHÔNG co giãn theo panel.Width
 
