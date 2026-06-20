@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using SecureChat.Client;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -18,7 +19,7 @@ namespace SecureChat.Client.Forms.Chat
             HelpButton = false;
             ControlBox = false;
             ClientSize = new Size(400, 400);
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
@@ -33,13 +34,13 @@ namespace SecureChat.Client.Forms.Chat
                 Location = new Point(ClientSize.Width - 46, 14),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
+                ForeColor = TG.TextPrimary,
                 Cursor = Cursors.Hand,
                 TabStop = false,
             };
             btnClose.FlatAppearance.BorderSize = 0;
-            btnClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xF0, 0xF4, 0xF8);
-            btnClose.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEE, 0xF5);
+            btnClose.FlatAppearance.MouseOverBackColor = TG.SidebarHover;
+            btnClose.FlatAppearance.MouseDownBackColor = TG.SidebarHover;
             btnClose.Click += (_, __) => Close();
             Controls.Add(btnClose);
 

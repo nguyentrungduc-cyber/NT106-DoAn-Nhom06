@@ -19,7 +19,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(400, 290);
 
@@ -27,7 +27,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = $"Are you sure you want to delete all\r\nmessages in \"{chatName}\"?",
                 Font = new Font("Segoe UI", 16f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 26),
                 Size = new Size(340, 76)
             };
@@ -36,7 +36,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "This action cannot be undone.",
                 Font = new Font("Segoe UI", 13f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 112),
                 Size = new Size(300, 34)
             };
@@ -45,13 +45,13 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Delete for everyone",
                 Font = new Font("Segoe UI", 13f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 168),
                 Size = new Size(260, 32),
                 AutoSize = false
             };
 
-            var btnCancel = BuildActionButton("Cancel", Color.FromArgb(0x1F, 0x88, 0xD8));
+            var btnCancel = BuildActionButton("Cancel", TG.Blue);
             btnCancel.Location = new Point(222, 238);
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 

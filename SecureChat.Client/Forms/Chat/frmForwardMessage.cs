@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -18,7 +19,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ShowIcon = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(320, 450);
 
@@ -26,7 +27,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
 
             var filtered = excludeConversationId is not null
@@ -63,7 +64,7 @@ namespace SecureChat.Client.Forms.Chat
                 row.Controls.AddRange(new Control[] { lblIcon, lblName });
 
                 row.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
-                row.MouseLeave += (s, e) => row.BackColor = Color.White;
+                row.MouseLeave += (s, e) => row.BackColor = TG.WindowBg;
                 lblName.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
                 lblIcon.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
 
@@ -106,7 +107,7 @@ namespace SecureChat.Client.Forms.Chat
                 row.Controls.AddRange(new Control[] { avatar, lblName });
 
                 row.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
-                row.MouseLeave += (s, e) => row.BackColor = Color.White;
+                row.MouseLeave += (s, e) => row.BackColor = TG.WindowBg;
                 lblName.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
                 avatar.MouseEnter += (s, e) => row.BackColor = TG.SidebarHover;
 

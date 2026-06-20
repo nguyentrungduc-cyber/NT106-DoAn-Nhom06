@@ -1,4 +1,5 @@
 ﻿using SecureChat.Client.Components.Group;
+using SecureChat.Client.Services;
 using System.Drawing.Drawing2D;
 
 namespace SecureChat.Client.Forms.Chat
@@ -36,15 +37,6 @@ namespace SecureChat.Client.Forms.Chat
         private const int BOTTOM_HEIGHT = 60;
         private const int CONTENT_HEIGHT = FORM_HEIGHT - BOTTOM_HEIGHT;
         private const int SCROLLBAR_WIDTH = 18;
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_SURFACE = Color.FromArgb(0xF4, 0xF6, 0xF8);
-        private static readonly Color C_INPUT_BG = Color.FromArgb(0xF3, 0xF5, 0xF8);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x2A, 0xAB, 0xEE);
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUBTEXT = Color.FromArgb(0x7D, 0x8B, 0x98);
-        private static readonly Color C_SEPARATOR = Color.FromArgb(0xE4, 0xE4, 0xE4);
-        private static readonly Color C_UNDERLINE = Color.FromArgb(0xE5, 0xE5, 0xE5);
-        private static readonly Color C_AVATAR_D = Color.FromArgb(0x5C, 0xA5, 0xEC);
 
         // ═══════════════════════════════════════════════════
         //  CONTROLS – Step 1
@@ -169,7 +161,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 9.75f);
             DoubleBuffered = true;
 
@@ -187,11 +179,11 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 0),
                 Size = new Size(FORM_WIDTH, CONTENT_HEIGHT),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
             };
 
             // "Group name" heading
-            var lblHead = Label("Group name", 10f, C_SUBTEXT);
+            var lblHead = Label("Group name", 10f, TG.TextSecondary);
             lblHead.TextAlign = ContentAlignment.MiddleCenter;
             lblHead.Size = new Size(FORM_WIDTH, 28);
             lblHead.Location = new Point(0, 22);
@@ -203,7 +195,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Size = new Size(AVA, AVA),
                 Location = new Point(avaL, 66),
-                BackColor = C_AVATAR_D,
+                BackColor = TG.Blue,
                 SizeMode = PictureBoxSizeMode.Zoom,
                 Cursor = Cursors.Hand,
             };
@@ -223,7 +215,7 @@ namespace SecureChat.Client.Forms.Chat
             // TextBox
             const int TX = 52, TY = 182;
             int TW = FORM_WIDTH - (TX * 2);
-            _lblPlaceholder = Label("Group name", 13.5f, C_SUBTEXT);
+            _lblPlaceholder = Label("Group name", 13.5f, TG.TextSecondary);
             _lblPlaceholder.Location = new Point(TX, TY);
             _lblPlaceholder.Size = new Size(TW, 30);
             _lblPlaceholder.Cursor = Cursors.IBeam;
@@ -233,8 +225,8 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(TX, TY),
                 Size = new Size(TW, 30),
-                BackColor = C_BG,
-                ForeColor = C_TEXT,
+                BackColor = TG.WindowBg,
+                ForeColor = TG.TextPrimary,
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 13.5f),
                 MaxLength = 128,
@@ -255,7 +247,7 @@ namespace SecureChat.Client.Forms.Chat
                 BackColor = Color.Transparent,
             };
             _pnlUnderline.Paint += (_, e) =>
-                e.Graphics.Clear(_txtGroupName.Focused ? C_ACCENT : C_UNDERLINE);
+                e.Graphics.Clear(_txtGroupName.Focused ? TG.TextBlue : TG.Divider);
 
             _pnlStep1.Controls.AddRange(new Control[]
             {
@@ -278,15 +270,15 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 0),
                 Size = new Size(FORM_WIDTH, CONTENT_HEIGHT),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Visible = false,
             };
 
-            var lblTitle = Label("Add Members", 13f, C_TEXT, bold: true);
+            var lblTitle = Label("Add Members", 13f, TG.TextPrimary, bold: true);
             lblTitle.Location = new Point(18, 16);
             lblTitle.AutoSize = true;
 
-            _lblMemberCount = Label("0 / 200000", 10f, C_SUBTEXT);
+            _lblMemberCount = Label("0 / 200000", 10f, TG.TextSecondary);
             _lblMemberCount.AutoSize = true;
             _lblMemberCount.Location = new Point(FORM_WIDTH - _lblMemberCount.Width - 18, 20);
 
@@ -295,7 +287,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 52),
                 Size = new Size(FORM_WIDTH, 0),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 FlowDirection = FlowDirection.LeftToRight,
                 WrapContents = false,
                 AutoScroll = false,
@@ -308,25 +300,25 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 52),
                 Size = new Size(FORM_WIDTH, 50),
-                BackColor = C_INPUT_BG,
+                BackColor = TG.InputBg,
             };
-            var lblIcon = Label("🔍", 13f, C_SUBTEXT);
+            var lblIcon = Label("🔍", 13f, TG.TextSecondary);
             lblIcon.Size = new Size(42, 50);
             lblIcon.Location = new Point(6, 0);
             lblIcon.TextAlign = ContentAlignment.MiddleCenter;
-            lblIcon.BackColor = C_INPUT_BG;
+            lblIcon.BackColor = TG.InputBg;
 
-            var lblPH = Label("Search", 12f, C_SUBTEXT);
+            var lblPH = Label("Search", 12f, TG.TextSecondary);
             lblPH.Location = new Point(50, 13);
             lblPH.Size = new Size(200, 24);
-            lblPH.BackColor = C_INPUT_BG;
+            lblPH.BackColor = TG.InputBg;
 
             _txtSearch = new TextBox
             {
                 Location = new Point(50, 10),
                 Size = new Size(FORM_WIDTH - 62, 30),
-                BackColor = C_INPUT_BG,
-                ForeColor = C_TEXT,
+                BackColor = TG.InputBg,
+                ForeColor = TG.TextPrimary,
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 12f),
             };
@@ -345,7 +337,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 102),
                 Size = new Size(FORM_WIDTH, CONTENT_HEIGHT - 102),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 AutoScroll = true,
                 Padding = new Padding(12, 0, 12, 0),
             };
@@ -367,18 +359,18 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Dock = DockStyle.Bottom,
                 Height = BOTTOM_HEIGHT,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
             };
 
-            var sep = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = C_SEPARATOR };
+            var sep = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = TG.Divider };
 
             _btnAction = FlatBtn("Next", 84, 36);
-            _btnAction.ForeColor = C_ACCENT;
+            _btnAction.ForeColor = TG.TextBlue;
             _btnAction.Enabled = false;
             _btnAction.Click += BtnAction_Click;
 
             _btnCancel = FlatBtn("Cancel", 90, 36);
-            _btnCancel.ForeColor = C_SUBTEXT;
+            _btnCancel.ForeColor = TG.TextSecondary;
             _btnCancel.Click += (_, __) => { DialogResult = DialogResult.Cancel; Close(); };
 
             int margin = 18;
@@ -411,7 +403,7 @@ namespace SecureChat.Client.Forms.Chat
                 Text = "Add Members";
                 _btnAction.Text = "Create";
                 _btnAction.Enabled = true;
-                _btnAction.ForeColor = C_ACCENT;
+                _btnAction.ForeColor = TG.TextBlue;
                 RefreshCount();
                 BeginInvoke((Action)(() => _txtSearch.Focus()));
             }
@@ -439,7 +431,7 @@ namespace SecureChat.Client.Forms.Chat
         {
             bool ok = !string.IsNullOrWhiteSpace(_txtGroupName?.Text);
             _btnAction.Enabled = ok;
-            _btnAction.ForeColor = ok ? C_ACCENT : C_SUBTEXT;
+            _btnAction.ForeColor = ok ? TG.TextBlue : TG.TextSecondary;
         }
 
         // ═══════════════════════════════════════════════════

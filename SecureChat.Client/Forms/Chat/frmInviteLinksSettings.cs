@@ -18,7 +18,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(500, 440);
             Opacity = 0;
@@ -35,7 +35,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Invite links",
                 Font = new Font("Segoe UI Semibold", 18f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(20, 16),
                 Size = new Size(260, 34)
             };
@@ -44,7 +44,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Primary link",
                 Font = new Font("Segoe UI Semibold", 12f),
-                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
+                ForeColor = TG.Blue,
                 Location = new Point(24, 72),
                 Size = new Size(150, 30)
             };
@@ -53,7 +53,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(24, 106),
                 Size = new Size(452, 52),
-                BackColor = Color.FromArgb(0xF3, 0xF5, 0xF8)
+                BackColor = TG.SidebarHover
             };
 
             var txtLink = new TextBox
@@ -61,8 +61,8 @@ namespace SecureChat.Client.Forms.Chat
                 Text = "t.me/+S3QfQvxTOhk5ZTY9",
                 BorderStyle = BorderStyle.None,
                 ReadOnly = true,
-                BackColor = Color.FromArgb(0xF3, 0xF5, 0xF8),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                BackColor = TG.SidebarHover,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 13f),
                 Location = new Point(16, 15),
                 Size = new Size(390, 28)
@@ -73,7 +73,7 @@ namespace SecureChat.Client.Forms.Chat
                 Text = "?",
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(0x8E, 0x9A, 0xA7),
+                ForeColor = TG.TextSecondary,
                 Font = new Font("Segoe UI", 12f),
                 Size = new Size(30, 30),
                 Location = new Point(418, 10)
@@ -92,23 +92,23 @@ namespace SecureChat.Client.Forms.Chat
             btnShare.Click += (_, __) =>
                 MessageBox.Show(this, "Share link flow will be connected next.", "Invite links", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            var sep = new Panel { Location = new Point(0, 238), Size = new Size(500, 1), BackColor = Color.FromArgb(0xE6, 0xEB, 0xF1) };
+            var sep = new Panel { Location = new Point(0, 238), Size = new Size(500, 1), BackColor = TG.Divider };
 
             var rowNewLink = new Panel
             {
                 Location = new Point(0, 240),
                 Size = new Size(500, 58),
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Cursor = Cursors.Hand
             };
             rowNewLink.MouseEnter += (_, __) => rowNewLink.BackColor = Color.FromArgb(0xF7, 0xFA, 0xFD);
-            rowNewLink.MouseLeave += (_, __) => rowNewLink.BackColor = Color.White;
+            rowNewLink.MouseLeave += (_, __) => rowNewLink.BackColor = TG.WindowBg;
 
             var lblCreate = new Label
             {
                 Text = "\u2795  Create a New Link",
                 Font = new Font("Segoe UI Emoji", 13f),
-                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
+                ForeColor = TG.Blue,
                 Location = new Point(24, 12),
                 Size = new Size(260, 34),
                 BackColor = Color.Transparent
@@ -128,7 +128,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "You can generate invite links that expire after they are used.",
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = Color.FromArgb(0x8A, 0x98, 0xA6),
+                ForeColor = TG.TextSecondary,
                 Location = new Point(24, 18),
                 Size = new Size(450, 50)
             };
@@ -138,12 +138,12 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = $"Total links: {_linksCount}",
                 Font = new Font("Segoe UI", 9.8f),
-                ForeColor = Color.FromArgb(0x8A, 0x98, 0xA6),
+                ForeColor = TG.TextSecondary,
                 Location = new Point(24, 392),
                 Size = new Size(170, 24)
             };
 
-            var btnDone = BuildBottomButton("Done", Color.FromArgb(0x2A, 0xAB, 0xEE), true);
+            var btnDone = BuildBottomButton("Done", TG.Blue, true);
             btnDone.Location = new Point(394, 396);
             btnDone.Click += (_, __) => DialogResult = DialogResult.OK;
 
@@ -167,7 +167,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = text,
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0x45, 0xA9, 0xE3),
+                BackColor = TG.Blue,
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI Emoji", 11f, FontStyle.Bold),
                 Size = new Size(220, 42),

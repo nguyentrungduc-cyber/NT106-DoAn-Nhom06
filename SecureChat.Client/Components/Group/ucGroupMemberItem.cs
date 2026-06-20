@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Components.Group
 {
@@ -9,10 +10,6 @@ namespace SecureChat.Client.Components.Group
         private const int RIGHT_PAD = 18;
         private const int TEXT_LEFT = LEFT_PAD + AVATAR_SIZE + 12;
         private const int ITEM_HEIGHT = 78;
-        private static readonly Color C_BG_HOVER = Color.FromArgb(0xF4, 0xF7, 0xFB);
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUBTEXT = Color.FromArgb(0x8A, 0x98, 0xA6);
-        private static readonly Color C_ROLE = Color.FromArgb(0x7D, 0x5F, 0xC9);
 
         private PictureBox _avatar = null!;
         private Label _lblInitial = null!;
@@ -80,6 +77,13 @@ namespace SecureChat.Client.Components.Group
             BuildUI();
         }
 
+        public void OnNightModeChanged()
+        {
+            _lblName.ForeColor = TG.TextPrimary;
+            _lblStatus.ForeColor = TG.TextSecondary;
+            Invalidate();
+        }
+
         private void BuildUI()
         {
             _avatar = new PictureBox
@@ -109,7 +113,7 @@ namespace SecureChat.Client.Components.Group
                 Location = new Point(TEXT_LEFT, 14),
                 Size = new Size(240, 26),
                 Font = new Font("Segoe UI Semibold", 11f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Text = "Name",
                 BackColor = Color.Transparent,
             };
@@ -120,7 +124,7 @@ namespace SecureChat.Client.Components.Group
                 Location = new Point(TEXT_LEFT, 40),
                 Size = new Size(240, 24),
                 Font = new Font("Segoe UI", 9.5f),
-                ForeColor = C_SUBTEXT,
+                ForeColor = TG.TextSecondary,
                 Text = "last seen...",
                 BackColor = Color.Transparent,
             };
@@ -139,7 +143,7 @@ namespace SecureChat.Client.Components.Group
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI Semibold", 9f),
-                ForeColor = C_ROLE,
+                ForeColor = Color.FromArgb(0x7D, 0x5F, 0xC9),
                 Text = string.Empty,
                 BackColor = Color.Transparent,
             };
@@ -151,7 +155,7 @@ namespace SecureChat.Client.Components.Group
             Resize += (_, __) => { LayoutDynamic(); };
             LayoutDynamic();
 
-            MouseEnter += (_, __) => BackColor = C_BG_HOVER;
+            MouseEnter += (_, __) => BackColor = TG.SidebarHover;
             MouseLeave += (_, __) => BackColor = Color.Transparent;
         }
 

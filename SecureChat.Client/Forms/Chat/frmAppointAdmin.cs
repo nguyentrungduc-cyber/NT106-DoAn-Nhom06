@@ -43,7 +43,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(454, 740);
             Opacity = 0;
@@ -53,7 +53,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Appoint New Admin",
                 Font = new Font("Segoe UI Semibold", 16f),
-                ForeColor = Color.FromArgb(0x10, 0x28, 0x45),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(24, 20),
                 Size = new Size(300, 34),
                 TextAlign = ContentAlignment.MiddleLeft
@@ -63,7 +63,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 58),
                 Size = new Size(ClientSize.Width, 56),
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
             EnableDoubleBuffer(pnlSearch);
 
@@ -71,14 +71,14 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(24, 16),
                 Size = new Size(22, 22),
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
 
             _txtSearch = new TextBox
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 14f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(58, 16),
                 Size = new Size(360, 26),
                 PlaceholderText = "Search"
@@ -92,21 +92,21 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 112),
                 Size = new Size(ClientSize.Width, 1),
-                BackColor = Color.FromArgb(0xE6, 0xEC, 0xF2)
+                BackColor = TG.InputBg
             };
 
             var pnlGroupHeader = new Panel
             {
                 Location = new Point(0, 113),
                 Size = new Size(ClientSize.Width, 34),
-                BackColor = Color.FromArgb(0xF4, 0xF6, 0xF8)
+                BackColor = TG.SidebarHover
             };
 
             var lblGroupMembers = new Label
             {
                 Text = "Group members",
                 Font = new Font("Segoe UI Semibold", 10.5f),
-                ForeColor = Color.FromArgb(0x7D, 0x8B, 0x98),
+                ForeColor = TG.TextSecondary,
                 Location = new Point(24, 5),
                 Size = new Size(220, 24)
             };
@@ -116,7 +116,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 147),
                 Size = new Size(ClientSize.Width, 500),
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 AutoScroll = true
             };
             EnableDoubleBuffer(_pnlMembers);
@@ -126,7 +126,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Appoint and Leave Group",
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0x45, 0xA1, 0xD6),
+                BackColor = TG.Blue,
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI Semibold", 15f),
                 Size = new Size(396, 42),
@@ -134,8 +134,8 @@ namespace SecureChat.Client.Forms.Chat
                 Cursor = Cursors.Hand
             };
             _btnAppointAndLeave.FlatAppearance.BorderSize = 0;
-            _btnAppointAndLeave.FlatAppearance.MouseOverBackColor = Color.FromArgb(0x3D, 0x97, 0xCC);
-            _btnAppointAndLeave.FlatAppearance.MouseDownBackColor = Color.FromArgb(0x36, 0x8E, 0xC2);
+            _btnAppointAndLeave.FlatAppearance.MouseOverBackColor = TG.BlueHover;
+            _btnAppointAndLeave.FlatAppearance.MouseDownBackColor = TG.BlueActive;
             _btnAppointAndLeave.Paint += (_, e) =>
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -207,7 +207,7 @@ namespace SecureChat.Client.Forms.Chat
                 {
                     Text = "No members found",
                     Font = new Font("Segoe UI", 11f),
-                    ForeColor = Color.FromArgb(0x8E, 0x9A, 0xA7),
+                    ForeColor = TG.TextSecondary,
                     AutoSize = false,
                     Location = new Point(24, 18),
                     Size = new Size(_pnlMembers.ClientSize.Width - 48, 24),
@@ -223,7 +223,7 @@ namespace SecureChat.Client.Forms.Chat
         private Panel BuildMemberRow(MemberItem member)
         {
             var selected = string.Equals(_selectedMemberName, member.Name, StringComparison.OrdinalIgnoreCase);
-            var baseColor = selected ? Color.FromArgb(0xE9, 0xF4, 0xFC) : Color.White;
+            var baseColor = selected ? TG.SidebarHover : TG.WindowBg;
 
             var row = new Panel
             {
@@ -244,7 +244,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = member.Name,
                 Font = new Font("Segoe UI Semibold", 15f),
-                ForeColor = Color.FromArgb(0x0F, 0x1B, 0x2A),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(94, 10),
                 Size = new Size(260, 30),
                 AutoEllipsis = true,
@@ -255,7 +255,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = member.Status,
                 Font = new Font("Segoe UI", 10f),
-                ForeColor = Color.FromArgb(0x8E, 0x9A, 0xA7),
+                ForeColor = TG.TextSecondary,
                 Location = new Point(94, 41),
                 Size = new Size(260, 22),
                 AutoEllipsis = true,
@@ -291,7 +291,7 @@ namespace SecureChat.Client.Forms.Chat
             row.MouseEnter += (_, __) =>
             {
                 if (!selected)
-                    row.BackColor = Color.FromArgb(0xF7, 0xFA, 0xFD);
+                    row.BackColor = TG.SidebarHover;
             };
             row.MouseLeave += (_, __) => row.BackColor = baseColor;
 
@@ -309,8 +309,8 @@ namespace SecureChat.Client.Forms.Chat
             var canSubmit = !string.IsNullOrWhiteSpace(_selectedMemberName);
             _btnAppointAndLeave.Enabled = canSubmit;
             _btnAppointAndLeave.BackColor = canSubmit
-                ? Color.FromArgb(0x45, 0xA1, 0xD6)
-                : Color.FromArgb(0xA8, 0xC7, 0xDB);
+                ? TG.Blue
+                : TG.TextHint;
         }
 
         private static void EnableDoubleBuffer(Control control)
@@ -331,7 +331,7 @@ namespace SecureChat.Client.Forms.Chat
             protected override void OnPaint(PaintEventArgs e)
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                var color = Color.FromArgb(0x97, 0xA4, 0xB2);
+                var color = TG.TextHint;
                 using var pen = new Pen(color, 2f);
                 e.Graphics.DrawEllipse(pen, 3, 3, 11, 11);
                 e.Graphics.DrawLine(pen, 12, 12, 18, 18);
@@ -348,7 +348,7 @@ namespace SecureChat.Client.Forms.Chat
             protected override void OnPaint(PaintEventArgs e)
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var brush = new SolidBrush(Color.FromArgb(0x45, 0xA1, 0xD6));
+                using var brush = new SolidBrush(TG.Blue);
                 e.Graphics.FillEllipse(brush, 2, 2, 20, 20);
 
                 using var pen = new Pen(Color.White, 2f)

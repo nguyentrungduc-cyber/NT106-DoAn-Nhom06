@@ -8,16 +8,13 @@ using System.Management;
 using System.Text;
 using System.Windows.Forms;
 using NAudio.CoreAudioApi;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Settings
 {
     public class frmSpeakersCamera : Form
     {
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x7A, 0x8A, 0x99);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x33, 0x99, 0xFF);
-        private static readonly Color C_DIVIDER = Color.FromArgb(0xE8, 0xEC, 0xF1);
+        // Colors read from TG at paint time
 
         private Panel _content = null!;
 
@@ -75,7 +72,7 @@ namespace SecureChat.Client.Forms.Settings
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 840);
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
@@ -83,7 +80,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
-                BackColor = C_BG
+                BackColor = TG.WindowBg
             };
             Controls.Add(scroll);
 
@@ -91,7 +88,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Dock = DockStyle.Top,
                 Height = 1200,
-                BackColor = C_BG
+                BackColor = TG.WindowBg
             };
             scroll.Controls.Add(_content);
 
@@ -179,7 +176,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private int AddHeader(int y)
         {
-            var header = new Panel { Height = 74, BackColor = C_BG };
+            var header = new Panel { Height = 74, BackColor = TG.WindowBg };
 
             var back = new PictureBox
             {
@@ -196,7 +193,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = "Speakers and Camera",
                 Font = new Font("Segoe UI Semibold", 13f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 AutoSize = true,
                 Location = new Point(46, 20),
                 BackColor = Color.Transparent
@@ -208,7 +205,7 @@ namespace SecureChat.Client.Forms.Settings
                 AutoSize = true,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 TabStop = false,
                 Padding = new Padding(6, 2, 6, 2)
@@ -217,7 +214,7 @@ namespace SecureChat.Client.Forms.Settings
             close.Click += (_, __) => Close();
             header.Resize += (_, __) => close.Location = new Point(header.Width - close.Width - 14, 16);
 
-            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = C_DIVIDER };
+            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
 
             header.Controls.Add(back);
             header.Controls.Add(title);
@@ -233,11 +230,11 @@ namespace SecureChat.Client.Forms.Settings
             var lbl = new Label
             {
                 Text = text,
-                ForeColor = C_ACCENT,
+                ForeColor = TG.CAccent,
                 Font = new Font("Segoe UI Semibold", 11f),
                 AutoSize = false,
                 Height = 42,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Padding = new Padding(28, 10, 0, 0)
             };
             _content.Controls.Add(lbl);
@@ -249,7 +246,7 @@ namespace SecureChat.Client.Forms.Settings
             var div = new Panel
             {
                 Height = 10,
-                BackColor = Color.FromArgb(0xF4, 0xF6, 0xF9)
+                BackColor = TG.Divider
             };
             _content.Controls.Add(div);
             return y + div.Height;
@@ -267,7 +264,7 @@ namespace SecureChat.Client.Forms.Settings
             var row = new Panel
             {
                 Height = 50,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Cursor = Cursors.Hand
             };
 
@@ -276,7 +273,7 @@ namespace SecureChat.Client.Forms.Settings
                 Text = text,
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 14),
                 BackColor = Color.Transparent
             };
@@ -285,7 +282,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 AutoSize = false,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = C_ACCENT,
+                ForeColor = TG.CAccent,
                 TextAlign = ContentAlignment.MiddleRight,
                 AutoEllipsis = true,
                 BackColor = Color.Transparent
@@ -294,13 +291,13 @@ namespace SecureChat.Client.Forms.Settings
 
             row.Resize += (_, __) => value.SetBounds(row.Width - 210, 12, 180, 24);
 
-            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = C_DIVIDER };
+            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
 
             foreach (Control c in new Control[] { row, lbl, value })
             {
                 c.Click += (_, __) => onClick();
-                c.MouseEnter += (_, __) => row.BackColor = Color.FromArgb(0xF8, 0xFA, 0xFD);
-                c.MouseLeave += (_, __) => row.BackColor = C_BG;
+                c.MouseEnter += (_, __) => row.BackColor = TG.SidebarHover;
+                c.MouseLeave += (_, __) => row.BackColor = TG.WindowBg;
             }
 
             row.Controls.Add(lbl);
@@ -311,14 +308,14 @@ namespace SecureChat.Client.Forms.Settings
 
         private int AddToggleRow(string text, int y, out CheckBox toggle, bool initial, EventHandler onChanged)
         {
-            var row = new Panel { Height = 54, BackColor = C_BG };
+            var row = new Panel { Height = 54, BackColor = TG.WindowBg };
 
             var lbl = new Label
             {
                 Text = text,
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 16),
                 BackColor = Color.Transparent
             };
@@ -340,7 +337,7 @@ namespace SecureChat.Client.Forms.Settings
 
             row.Resize += (_, __) => t.Location = new Point(row.Width - t.Width - 24, (row.Height - t.Height) / 2);
 
-            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = C_DIVIDER };
+            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
 
             row.Controls.Add(lbl);
             row.Controls.Add(toggle);
@@ -351,7 +348,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private int AddMicMeter(int y)
         {
-            var host = new Panel { Height = 44, BackColor = C_BG };
+            var host = new Panel { Height = 44, BackColor = TG.WindowBg };
             host.Paint += (_, e) =>
             {
                 int startX = 28;
@@ -366,7 +363,7 @@ namespace SecureChat.Client.Forms.Settings
                 }
             };
 
-            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = C_DIVIDER };
+            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
             host.Controls.Add(sep);
             _content.Controls.Add(host);
             return y + host.Height;
@@ -374,19 +371,19 @@ namespace SecureChat.Client.Forms.Settings
 
         private int AddCameraPreview(int y)
         {
-            var host = new Panel { Height = 250, BackColor = C_BG };
+            var host = new Panel { Height = 250, BackColor = TG.WindowBg };
             _cameraPreview = new PictureBox
             {
                 Location = new Point(28, 14),
                 Size = new Size(464, 210),
                 SizeMode = PictureBoxSizeMode.Zoom,
-                BackColor = Color.FromArgb(0xF2, 0xF5, 0xF9)
+                BackColor = TG.SidebarHover
             };
             ShowCameraFallback();
             host.Resize += (_, __) => _cameraPreview.Size = new Size(Math.Max(120, host.Width - 56), 210);
             host.Resize += (_, __) => ApplyRoundedRegion(_cameraPreview, 10);
 
-            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = C_DIVIDER };
+            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
             host.Controls.Add(_cameraPreview);
             host.Controls.Add(sep);
             _content.Controls.Add(host);
@@ -413,7 +410,7 @@ namespace SecureChat.Client.Forms.Settings
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             var rect = new Rectangle(0, 0, chk.Width - 1, chk.Height - 1);
             int r = rect.Height / 2;
-            var track = chk.Checked ? C_ACCENT : Color.FromArgb(0xC7, 0xD2, 0xDE);
+            var track = chk.Checked ? TG.CAccent : TG.TextSecondary;
 
             using var trackBrush = new SolidBrush(track);
             using var thumbBrush = new SolidBrush(Color.White);
@@ -590,7 +587,7 @@ namespace SecureChat.Client.Forms.Settings
                 ShowIcon = false,
                 ShowInTaskbar = false,
                 ClientSize = new Size(520, 124 + listHeight),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Font = new Font("Segoe UI", 10.5f)
             };
 
@@ -598,7 +595,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = title,
                 Font = new Font("Segoe UI Semibold", 17f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 AutoSize = true,
                 Location = new Point(28, 22),
                 BackColor = Color.Transparent
@@ -611,7 +608,7 @@ namespace SecureChat.Client.Forms.Settings
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
                 AutoScroll = true,
-                BackColor = C_BG
+                BackColor = TG.WindowBg
             };
 
             var radios = new List<RadioButton>();
@@ -624,8 +621,8 @@ namespace SecureChat.Client.Forms.Settings
                     AutoSize = false,
                     Width = 438,
                     Height = 30,
-                    ForeColor = C_TEXT,
-                    BackColor = C_BG,
+                    ForeColor = TG.TextPrimary,
+                    BackColor = TG.WindowBg,
                     Font = new Font("Segoe UI", 11f),
                     Margin = new Padding(0, 0, 0, 8),
                     Checked = string.Equals(opt, current, StringComparison.OrdinalIgnoreCase),
@@ -643,9 +640,9 @@ namespace SecureChat.Client.Forms.Settings
                 Text = "OK",
                 AutoSize = true,
                 LinkBehavior = LinkBehavior.NeverUnderline,
-                LinkColor = C_ACCENT,
-                ActiveLinkColor = C_ACCENT,
-                VisitedLinkColor = C_ACCENT,
+                LinkColor = TG.CAccent,
+                ActiveLinkColor = TG.CAccent,
+                VisitedLinkColor = TG.CAccent,
                 Font = new Font("Segoe UI Semibold", 10.8f),
                 Location = new Point(456, 82 + listHeight),
                 BackColor = Color.Transparent

@@ -5,6 +5,7 @@ using System.Drawing.Imaging;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using SecureChat.Client.Models;
+using SecureChat.Client.Services;
 using System.IO;
 
 namespace SecureChat.Client.Forms.Profile
@@ -13,11 +14,7 @@ namespace SecureChat.Client.Forms.Profile
     {
         private void InitializeComponent() { /* built in code */ }
 
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x7A, 0x8A, 0x99);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x33, 0x99, 0xFF);
-        private static readonly Color C_BORDER = Color.FromArgb(0xE8, 0xEC, 0xF1);
+        // Colors read from TG at paint time
 
         private readonly ProfileModel _profile;
 
@@ -54,7 +51,7 @@ namespace SecureChat.Client.Forms.Profile
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(540, 720);
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
@@ -92,7 +89,7 @@ namespace SecureChat.Client.Forms.Profile
                 AutoSize = true,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_ACCENT,
+                ForeColor = TG.CAccent,
                 Font = new Font("Segoe UI", 9.5f),
                 TabStop = false
             };
@@ -103,7 +100,7 @@ namespace SecureChat.Client.Forms.Profile
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI Semibold", 13f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 BackColor = Color.Transparent,
                 Location = new Point((ClientSize.Width / 2) - 60, 170),
             };
@@ -112,7 +109,7 @@ namespace SecureChat.Client.Forms.Profile
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = C_ACCENT,
+                ForeColor = TG.CAccent,
                 BackColor = Color.Transparent,
                 Location = new Point((ClientSize.Width / 2) - 20, 195),
             };
@@ -130,11 +127,11 @@ namespace SecureChat.Client.Forms.Profile
                 Location = new Point(26, fieldTop + 26),
                 Size = new Size(ClientSize.Width - 52, 32),
                 Font = new Font("Segoe UI", 10.5f),
-                CalendarForeColor = C_TEXT,
-                CalendarMonthBackground = Color.White,
-                CalendarTitleBackColor = Color.White,
-                CalendarTitleForeColor = C_TEXT,
-                CalendarTrailingForeColor = Color.Gray,
+                CalendarForeColor = TG.TextPrimary,
+                CalendarMonthBackground = TG.WindowBg,
+                CalendarTitleBackColor = TG.WindowBg,
+                CalendarTitleForeColor = TG.TextPrimary,
+                CalendarTrailingForeColor = TG.TextHint,
                 Format = DateTimePickerFormat.Custom,
                 CustomFormat = "dd/MM/yyyy",
                 ShowUpDown = false,
@@ -142,7 +139,7 @@ namespace SecureChat.Client.Forms.Profile
             var lblBirth = new Label
             {
                 Text = "Birthday",
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI Semibold", 10.5f),
                 AutoSize = true,
                 Location = new Point(26, fieldTop),
@@ -152,7 +149,7 @@ namespace SecureChat.Client.Forms.Profile
 
             _lblError = new Label
             {
-                ForeColor = Color.OrangeRed,
+                ForeColor = TG.Blue,
                 Font = new Font("Segoe UI", 9.5f),
                 AutoSize = false,
                 Size = new Size(ClientSize.Width - 52, 40),
@@ -167,7 +164,7 @@ namespace SecureChat.Client.Forms.Profile
                 Size = new Size(110, 34),
                 Location = new Point(ClientSize.Width - 26 - 110, fieldTop),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0x2F, 0x6A, 0xC1),
+                BackColor = TG.Blue,
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI Semibold", 10.5f),
             };
@@ -193,7 +190,7 @@ namespace SecureChat.Client.Forms.Profile
             var lbl = new Label
             {
                 Text = label,
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI Semibold", 10.5f),
                 AutoSize = true,
                 Location = new Point(26, top),
@@ -205,8 +202,8 @@ namespace SecureChat.Client.Forms.Profile
                 Location = new Point(26, top + 24),
                 Size = new Size(ClientSize.Width - 52, 28),
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = C_TEXT,
-                BackColor = C_BG,
+                ForeColor = TG.TextPrimary,
+                BackColor = TG.WindowBg,
                 BorderStyle = BorderStyle.None,
             };
 
@@ -214,11 +211,11 @@ namespace SecureChat.Client.Forms.Profile
             {
                 Location = new Point(txt.Left, txt.Bottom + 2),
                 Size = new Size(txt.Width, 1),
-                BackColor = C_BORDER,
+                BackColor = TG.Divider,
             };
 
-            txt.GotFocus += (_, __) => underline.BackColor = C_ACCENT;
-            txt.LostFocus += (_, __) => underline.BackColor = C_BORDER;
+            txt.GotFocus += (_, __) => underline.BackColor = TG.CAccent;
+            txt.LostFocus += (_, __) => underline.BackColor = TG.Divider;
 
             return (lbl, txt, underline);
         }
@@ -471,7 +468,7 @@ namespace SecureChat.Client.Forms.Profile
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 TabStop = false,
                 Cursor = Cursors.Hand,
@@ -527,13 +524,13 @@ namespace SecureChat.Client.Forms.Profile
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(760, 660);
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
 
             var lblHint = new Label
             {
                 Text = "Drag the square to choose area, use zoom for precision.",
                 AutoSize = true,
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 10f),
                 Location = new Point(16, 12)
             };
@@ -542,7 +539,7 @@ namespace SecureChat.Client.Forms.Profile
             {
                 Location = new Point(16, 40),
                 Size = new Size(728, 500),
-                BackColor = Color.FromArgb(0xF5, 0xF7, 0xFA),
+                BackColor = TG.SidebarHover,
                 BorderStyle = BorderStyle.FixedSingle
             };
 
@@ -550,7 +547,7 @@ namespace SecureChat.Client.Forms.Profile
             {
                 Text = "Zoom: 100%",
                 AutoSize = true,
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 9.5f),
                 Location = new Point(16, 552)
             };
@@ -590,7 +587,7 @@ namespace SecureChat.Client.Forms.Profile
                 Size = new Size(96, 34),
                 Location = new Point(ClientSize.Width - 108, 614),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0x33, 0x99, 0xFF),
+                BackColor = TG.CAccent,
                 ForeColor = Color.White
             };
             btnApply.FlatAppearance.BorderSize = 0;

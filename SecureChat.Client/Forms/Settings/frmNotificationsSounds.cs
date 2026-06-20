@@ -1,17 +1,14 @@
 ﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
 using SecureChat.Client.Settings;
 
 namespace SecureChat.Client.Forms.Settings
 {
     public class frmNotificationsSounds : Form
     {
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x7A, 0x8A, 0x99);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x33, 0x99, 0xFF);
-        private static readonly Color C_SEPARATOR = Color.FromArgb(0xE8, 0xEC, 0xF1);
+        // Colors read from TG at paint time
 
         private TrackBar _volume = null!;
         private Label _lblVolumeVal = null!;
@@ -79,7 +76,7 @@ namespace SecureChat.Client.Forms.Settings
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 740);
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
             Font = TG.FontRegular(10.5f);
             DoubleBuffered = true;
 
@@ -95,7 +92,7 @@ namespace SecureChat.Client.Forms.Settings
             var lblTitle = new Label
             {
                 Text = "Notifications and Sounds",
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = TG.FontSemiBold(12.5f),
                 AutoSize = true,
                 Location = new Point(18, 48)
@@ -106,7 +103,7 @@ namespace SecureChat.Client.Forms.Settings
                 Location = new Point(12, 80),
                 Size = new Size(ClientSize.Width - 24, ClientSize.Height - 92),
                 AutoScroll = true,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Padding = new Padding(12, 0, 12, 12),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
@@ -148,7 +145,7 @@ namespace SecureChat.Client.Forms.Settings
             var lbl = new Label
             {
                 Text = text,
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = TG.FontSemiBold(11f),
                 AutoSize = true,
                 Location = new Point(18, y + 12)
@@ -181,7 +178,7 @@ namespace SecureChat.Client.Forms.Settings
             var lbl = new Label
             {
                 Text = text,
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = TG.FontRegular(10.5f),
                 AutoSize = true,
                 Location = new Point(leftPad + 30, 14)
@@ -202,7 +199,7 @@ namespace SecureChat.Client.Forms.Settings
                 {
                     Location = new Point(leftPad, y),
                     Size = new Size(parent.Width - leftPad - rightPad, 1),
-                    BackColor = C_SEPARATOR,
+                    BackColor = TG.Divider,
                     Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
                 };
                 parent.Controls.Add(sep);
@@ -225,7 +222,7 @@ namespace SecureChat.Client.Forms.Settings
                 TickStyle = TickStyle.None,
                 SmallChange = 1,
                 LargeChange = 5,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Size = new Size(parent.Width - leftPad - rightPad - 80, 30),
                 Location = new Point(leftPad, volumeY + 6),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
@@ -234,7 +231,7 @@ namespace SecureChat.Client.Forms.Settings
             _lblVolumeVal = new Label
             {
                 Text = "100%",
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 Font = TG.FontRegular(10.5f),
                 AutoSize = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
@@ -272,7 +269,7 @@ namespace SecureChat.Client.Forms.Settings
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             var rect = new Rectangle(0, 0, chk.Width - 1, chk.Height - 1);
             int r = rect.Height / 2;
-            var track = chk.Checked ? C_ACCENT : Color.FromArgb(0xC7, 0xD2, 0xDE);
+            var track = chk.Checked ? TG.CAccent : TG.TextSecondary;
 
             using var trackBrush = new SolidBrush(track);
             using var thumbBrush = new SolidBrush(Color.White);
@@ -294,7 +291,7 @@ namespace SecureChat.Client.Forms.Settings
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 Font = TG.FontSemiBold(11f),
                 TabStop = false,
                 Cursor = Cursors.Hand,
@@ -303,7 +300,7 @@ namespace SecureChat.Client.Forms.Settings
             };
             b.FlatAppearance.BorderSize = 0;
             b.FlatAppearance.MouseOverBackColor = TG.SidebarHover;
-            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xEA, 0xEA, 0xEA);
+            b.FlatAppearance.MouseDownBackColor = TG.SidebarHover;
             return b;
         }
     }

@@ -22,7 +22,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(440, 330);
 
@@ -30,7 +30,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Mute notifications",
                 Font = new Font("Segoe UI Semibold", 14f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(18, 16),
                 Size = new Size(330, 32)
             };
@@ -40,7 +40,7 @@ namespace SecureChat.Client.Forms.Chat
                 Text = "\u2715",
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 11f),
                 Size = new Size(30, 28),
                 Location = new Point(390, 14)
@@ -121,11 +121,11 @@ namespace SecureChat.Client.Forms.Chat
 
             SyncMuteForControlState();
 
-            var btnCancel = BuildActionButton("Cancel", Color.FromArgb(0x2A, 0xAB, 0xEE), false);
+            var btnCancel = BuildActionButton("Cancel", TG.Blue, false);
             btnCancel.Location = new Point(234, 272);
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
-            var btnSave = BuildActionButton("Save", Color.FromArgb(0x2A, 0xAB, 0xEE), true);
+            var btnSave = BuildActionButton("Save", TG.Blue, true);
             btnSave.Location = new Point(328, 272);
             btnSave.Click += (_, __) =>
             {
@@ -161,7 +161,7 @@ namespace SecureChat.Client.Forms.Chat
         private void SyncMuteForControlState()
         {
             _cbDuration.Enabled = _rbMuteFor.Checked;
-            _cbDuration.BackColor = _cbDuration.Enabled ? Color.White : Color.FromArgb(0xF1, 0xF4, 0xF8);
+            _cbDuration.BackColor = _cbDuration.Enabled ? TG.WindowBg : TG.SidebarHover;
         }
 
         private TimeSpan GetSelectedDuration()

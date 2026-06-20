@@ -1,4 +1,6 @@
-﻿namespace SecureChat.Client.Forms.Chat
+﻿using SecureChat.Client.Services;
+
+namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmEditGroup : Form
     {
@@ -43,7 +45,7 @@
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA);
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(520, 720);
             DoubleBuffered = true;
@@ -65,7 +67,7 @@
             {
                 Text = "Edit group",
                 Font = new Font("Segoe UI Semibold", 18f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(20, 18),
                 Size = new Size(260, 38)
             };
@@ -81,7 +83,7 @@
             _avatar = new PictureBox
             {
                 Dock = DockStyle.Fill,
-                BackColor = Color.FromArgb(0x5C, 0xA5, 0xEC),
+                BackColor = TG.Blue,
                 // Fill the full circular frame when user selects an image.
                 SizeMode = PictureBoxSizeMode.StretchImage,
                 Cursor = Cursors.Hand
@@ -91,7 +93,7 @@
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 if (_avatar.Image == null)
                 {
-                    e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0x5C, 0xA5, 0xEC)), 0, 0, _avatar.Width - 1, _avatar.Height - 1);
+                    e.Graphics.FillEllipse(new SolidBrush(TG.Blue), 0, 0, _avatar.Width - 1, _avatar.Height - 1);
                     TextRenderer.DrawText(e.Graphics, "\U0001F4F7", new Font("Segoe UI Emoji", 24f), _avatar.ClientRectangle, Color.White,
                         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                 }
@@ -108,7 +110,7 @@
             {
                 Text = "Group name",
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
+                ForeColor = TG.TextBlue,
                 Location = new Point(150, 86),
                 Size = new Size(170, 28)
             };
@@ -118,15 +120,15 @@
                 Text = currentName,
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 16f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(150, 116),
                 Size = new Size(320, 36),
-                BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA)
+                BackColor = TG.WindowBg
             };
 
             var nameUnderline = new Panel
             {
-                BackColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
+                BackColor = TG.TextBlue,
                 Location = new Point(150, 156),
                 Size = new Size(280, 2)
             };
@@ -135,7 +137,7 @@
             {
                 Text = "Description (optional)",
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = Color.FromArgb(0x9A, 0xA6, 0xB3),
+                ForeColor = TG.TextSecondary,
                 Location = new Point(28, 186),
                 Size = new Size(240, 26),
                 BackColor = Color.Transparent,
@@ -146,11 +148,11 @@
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = Color.FromArgb(0x3B, 0x4A, 0x5A),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 214),
                 Size = new Size(460, 58),
                 Multiline = true,
-                BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA)
+                BackColor = TG.WindowBg
             };
             _txtDescription.TextChanged += (_, __) => _lblDescPlaceholder.Visible = string.IsNullOrWhiteSpace(_txtDescription.Text);
             _lblDescPlaceholder.Click += (_, __) => _txtDescription.Focus();
@@ -159,9 +161,9 @@
             {
                 Location = new Point(0, 286),
                 Size = new Size(520, 312),
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
-            section.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = Color.FromArgb(0xE6, 0xEB, 0xF1) });
+            section.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = TG.Divider });
 
             var rowGroupType = BuildSettingsRow("\u2699\uFE0F  Group type", _groupType, out _lblGroupTypeValue);
             rowGroupType.Location = new Point(0, 8);
@@ -185,11 +187,11 @@
 
             section.Controls.AddRange(new Control[] { rowGroupType, rowHistory, rowInvite, rowAdmins, rowMembers });
 
-            var btnCancel = BuildBottomButton("Cancel", Color.FromArgb(0x2A, 0xAB, 0xEE));
+            var btnCancel = BuildBottomButton("Cancel", TG.TextBlue);
             btnCancel.Location = new Point(300, 676);
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
-            var btnSave = BuildBottomButton("Save", Color.FromArgb(0x2A, 0xAB, 0xEE), bold: true);
+            var btnSave = BuildBottomButton("Save", TG.TextBlue, bold: true);
             btnSave.Location = new Point(392, 676);
             btnSave.Click += (_, __) =>
             {
@@ -219,7 +221,7 @@
             var pnl = new Panel
             {
                 Size = new Size(520, 46),
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Cursor = Cursors.Hand
             };
 
@@ -227,7 +229,7 @@
             {
                 Text = leftText,
                 Font = new Font("Segoe UI Emoji", 10.5f),
-                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(30, 8),
                 Size = new Size(330, 30),
                 BackColor = Color.Transparent
@@ -237,7 +239,7 @@
             {
                 Text = rightText,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
+                ForeColor = TG.TextBlue,
                 TextAlign = ContentAlignment.MiddleRight,
                 Location = new Point(360, 8),
                 Size = new Size(130, 30),
@@ -248,13 +250,13 @@
             {
                 Location = new Point(30, 45),
                 Size = new Size(460, 1),
-                BackColor = Color.FromArgb(0xEE, 0xF2, 0xF7)
+                BackColor = TG.Divider
             };
 
             pnl.Controls.AddRange(new Control[] { left, rightValue, sep });
 
-            pnl.MouseEnter += (_, __) => pnl.BackColor = Color.FromArgb(0xF7, 0xFA, 0xFD);
-            pnl.MouseLeave += (_, __) => pnl.BackColor = Color.White;
+            pnl.MouseEnter += (_, __) => pnl.BackColor = TG.SidebarHover;
+            pnl.MouseLeave += (_, __) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }
