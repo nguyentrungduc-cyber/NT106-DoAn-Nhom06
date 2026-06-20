@@ -1,10 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SecureChat.Models;
 
 namespace SecureChat.Repositories
 {
 	public class ConversationRepository(AppDbContext db)
 	{
+		public AppDbContext DbContext => db;
+
+		public async Task<IDbContextTransaction> BeginTransactionAsync(System.Data.IsolationLevel isolationLevel)
+			=> await db.Database.BeginTransactionAsync(isolationLevel);
 		/*
 		 * CONVERSATION
 		 */
@@ -73,6 +78,28 @@ namespace SecureChat.Repositories
 			await db.SaveChangesAsync();
 		}
 
+		public async Task HardDeleteConversationAsync(string conversationID)
+		{
+			var conv = await db.Conversations
+				.Include(c => c.Members)
+				.Include(c => c.PinnedMessages)
+				.FirstOrDefaultAsync(c => c.ConversationID == conversationID);
+			if (conv is null)
+				return;
+
+			// Break SetNull FK references before deletion
+			conv.LastMessageID = null;
+			foreach (var m in conv.Members)
+				m.LastReadMsgID = null;
+			foreach (var p in conv.PinnedMessages)
+				p.PinnedBy = null;
+
+			await db.SaveChangesAsync();
+
+			db.Conversations.Remove(conv);
+			await db.SaveChangesAsync();
+		}
+
 		public async Task DeleteAsync(string conversationID)
 		{
 			var conv = await db.Conversations
@@ -127,6 +154,10 @@ namespace SecureChat.Repositories
 				.Include(m => m.User)
 				.FirstOrDefaultAsync(m => m.ConversationID == conversationID &&
 				                          m.UserID == userID);
+
+		public async Task<int> GetActiveMemberCountAsync(string conversationID)
+			=> await db.ConversationMembers
+				.CountAsync(m => m.ConversationID == conversationID && m.LeftAt == null);
 
 		public async Task<List<ConversationMember>> GetActiveMembersAsync(string conversationID)
 			=> await db.ConversationMembers
