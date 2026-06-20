@@ -10,6 +10,9 @@ namespace SecureChat.Models
 		[Key, Column("conversation_id"), MaxLength(8)]
 		public string ConversationID { get; set; } = "";
 
+		[Column("version")]
+		public int Version { get; set; }
+
 		[Column("conversation_type")]
 		public ConversationType Type { get; set; } = ConversationType.Direct;
 

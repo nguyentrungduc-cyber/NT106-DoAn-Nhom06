@@ -1590,6 +1590,12 @@ namespace SecureChat.Client
             dlg.LoadGroup(_lblChatName.Text, avatarImage, members);
             dlg.SetContext(_activeConvId, _currentDisplayName);
             dlg.StartPosition = FormStartPosition.CenterParent;
+            dlg.AddMemberRequested += () =>
+            {
+                using var settingsDlg = new SecureChat.Client.Forms.Chat.frmMembersSettings(_activeConvId);
+                settingsDlg.StartPosition = FormStartPosition.CenterParent;
+                settingsDlg.ShowDialog(dlg);
+            };
             dlg.ShowDialog(this);
             avatarImage?.Dispose();
         }
@@ -1727,8 +1733,24 @@ namespace SecureChat.Client
 
                     if (memberNames.Count == 0)
                     {
-                        MessageBox.Show(this, "Cannot leave group: no other members available to appoint as the new admin.\n\nAdd more members first, then try again.", "No Members",
-                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        var result = MessageBox.Show(this,
+                            "You are the only member in this group. Leaving will permanently delete the group for everyone.\n\nContinue?",
+                            "Leave group",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning);
+
+                        if (result != DialogResult.Yes)
+                            return;
+
+                        // No admin needed — call delete (server will auto-delete when last member leaves)
+                        if (!await TryRemoveConversationOnServerAsync(targetConvId, null))
+                        {
+                            MessageBox.Show(this, "Unable to leave the group right now.", "Leave group",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+
+                        RemoveConversationLocal(targetConvId);
                         return;
                     }
 
@@ -3569,14 +3591,6 @@ namespace SecureChat.Client
                         }
                         break;
                     }
-                    /*case "Night Mode":
-                        {
-                            bool current = _settingsToggles.TryGetValue("Night Mode", out var v) ? v : false;
-                            _settingsToggles["Night Mode"] = !current;
-                            UpdateThemeForNightMode(!current);
-                            break;
-
-                        }*/
             }
         }
 

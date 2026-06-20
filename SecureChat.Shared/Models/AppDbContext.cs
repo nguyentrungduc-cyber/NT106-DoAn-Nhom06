@@ -77,6 +77,11 @@ namespace SecureChat.Models
 				.OnDelete(DeleteBehavior.Cascade);
 
 				m.Entity<Conversation>()
+				.Property(c => c.Version)
+				.IsConcurrencyToken()
+				.HasDefaultValueSql("0");
+
+			m.Entity<Conversation>()
 				.HasOne(c => c.Creator)
 				.WithMany()
 				.HasForeignKey(c => c.CreatedBy)

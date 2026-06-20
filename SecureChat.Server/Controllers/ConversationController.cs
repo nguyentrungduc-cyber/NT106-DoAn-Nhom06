@@ -7,13 +7,14 @@ using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Hubs;
 using SecureChat.Server.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations")]
-	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, PrivacyRepository privacy, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
+	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, PrivacyRepository privacy, IHubContext<ChatHub> hubContext, PresenceTracker presence, GroupLockService groupLock) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -404,51 +405,113 @@ namespace SecureChat.Controllers
 		}
 
 		[HttpPost("{conversationID}/leave")]
-		public async Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
+		public Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
 		{
-			var conv = await conversations.GetByIdAsync(conversationID);
-			if (conv is null)
-				return NotFound();
-			if (conv.Type == ConversationType.SavedMessages)
-				return Forbid();
-
-			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
-			if (member is null || member.LeftAt is not null)
-				return NotFound();
-
-			// Nếu là Owner, cần chuyển quyền trước khi rời
-			if (member.Role == MemberRole.Owner)
+			var strategy = conversations.DbContext.Database.CreateExecutionStrategy();
+			return strategy.ExecuteAsync<IActionResult>(async () =>
 			{
-				if (req is null || string.IsNullOrWhiteSpace(req.NewOwnerMemberId))
+				const int maxRetries = 3;
+
+				for (int attempt = 1; attempt <= maxRetries; attempt++)
 				{
-					return BadRequest(new { error = "Owner must appoint a new admin before leaving." });
+					using var lockHandle = await groupLock.AcquireAsync(conversationID);
+
+					try
+					{
+						await using var tx = await conversations.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
+
+						var conv = await conversations.GetByIdWithMembersAsync(conversationID);
+						if (conv is null)
+							return NotFound();
+						if (conv.Type == ConversationType.SavedMessages)
+							return Forbid();
+
+						var member = conv.Members.FirstOrDefault(m => m.UserID == Me && m.LeftAt == null);
+						if (member is null)
+							return NotFound();
+
+						var activeMembers = conv.Members.Where(m => m.LeftAt == null).ToList();
+						int activeCount = activeMembers.Count;
+
+						if (member.LeftAt is not null)
+							return NoContent();
+
+						if (activeCount == 1)
+						{
+							member.LeftAt = DateTime.UtcNow;
+							await conversations.DbContext.SaveChangesAsync();
+
+							await conversations.HardDeleteConversationAsync(conv.ConversationID);
+
+							tx.Commit();
+
+							await NotifyGroupDeletedAsync(Me, conversationID);
+							return NoContent();
+						}
+
+						if (member.Role == MemberRole.Owner)
+						{
+							if (req is null || string.IsNullOrWhiteSpace(req.NewOwnerMemberId))
+								return BadRequest(new { error = "Owner must appoint a new admin before leaving." });
+
+							var target = activeMembers.FirstOrDefault(m =>
+								m.MemberID == req.NewOwnerMemberId && m.MemberID != member.MemberID);
+
+							if (target is null)
+								return BadRequest(new { error = "Selected member not found or is the current owner." });
+
+							target.Role = MemberRole.Owner;
+							member.LeftAt = DateTime.UtcNow;
+							await conversations.DbContext.SaveChangesAsync();
+
+							tx.Commit();
+
+							await NotifyOwnerLeftAsync(conversationID, Me, target.UserID, member.User?.DisplayName ?? "A member");
+							return NoContent();
+						}
+
+						member.LeftAt = DateTime.UtcNow;
+						await conversations.DbContext.SaveChangesAsync();
+
+						tx.Commit();
+
+						await NotifyMemberLeftAsync(conversationID, Me, member.User?.DisplayName ?? "A member");
+						return NoContent();
+					}
+					catch (DbUpdateConcurrencyException) when (attempt < maxRetries)
+					{
+						await Task.Delay(100 * attempt);
+						continue;
+					}
+					catch (DbUpdateConcurrencyException)
+					{
+						return Conflict(new { error = "The group was modified concurrently. Please try again." });
+					}
 				}
 
-				var newOwner = await conversations.GetActiveMembersAsync(conversationID);
-				var target = newOwner.FirstOrDefault(m => m.MemberID == req.NewOwnerMemberId && m.MemberID != member.MemberID);
-				if (target is null)
-					return BadRequest(new { error = "Selected member not found or is the current owner." });
+				return StatusCode(StatusCodes.Status500InternalServerError);
+			});
+		}
 
-				await conversations.UpdateRoleAsync(target.MemberID, MemberRole.Owner);
-			}
+		// ─── SignalR notification helpers (called after commit) ─────────
 
-			// Send ConversationDeleted to the LEAVING user so their UI removes the conversation
-			try
-			{
-				await hubContext.Clients.User(Me).SendAsync("ConversationDeleted", conversationID);
-			}
+		private async Task NotifyGroupDeletedAsync(string leavingUserId, string conversationId)
+		{
+			try { await hubContext.Clients.User(leavingUserId).SendAsync("ConversationDeleted", conversationId); }
+			catch { /* best-effort */ }
+		}
+
+		private async Task NotifyOwnerLeftAsync(string conversationId, string leavingUserId, string newOwnerUserId, string displayName)
+		{
+			try { await hubContext.Clients.User(leavingUserId).SendAsync("ConversationDeleted", conversationId); }
 			catch { /* best-effort */ }
 
-			await conversations.LeaveMemberAsync(member.MemberID);
-
-			// Gửi thông báo hệ thống cho các thành viên còn lại
 			try
 			{
-				var displayName = member.User?.DisplayName ?? "A member";
 				var sysMsg = new Message
 				{
 					MessageID      = NewID(),
-					ConversationID = conversationID,
+					ConversationID = conversationId,
 					Type           = MessageType.SystemNotification,
 					Content        = $"{displayName} has left the group",
 					SentAt         = DateTime.UtcNow,
@@ -456,19 +519,46 @@ namespace SecureChat.Controllers
 				};
 				var created = await messages.CreateAsync(sysMsg);
 				var msgResponse = SecureChat.DTOs.MessageResponse.From(created);
-				await hubContext.Clients.Group(conversationID).SendAsync("MessageReceived", msgResponse);
+				await hubContext.Clients.Group(conversationId).SendAsync("MessageReceived", msgResponse);
 
-				// Notify remaining members that someone left (for UI refresh)
-				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
-				foreach (var m in activeMembers)
+				var remaining = await conversations.GetActiveMembersAsync(conversationId);
+				foreach (var m in remaining)
 				{
-					if (m.UserID != Me)
-						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationID, Me);
+					if (m.UserID != leavingUserId)
+						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationId, leavingUserId);
 				}
 			}
-			catch { /* best-effort notification */ }
+			catch { /* best-effort */ }
+		}
 
-			return NoContent();
+		private async Task NotifyMemberLeftAsync(string conversationId, string leavingUserId, string displayName)
+		{
+			try { await hubContext.Clients.User(leavingUserId).SendAsync("ConversationDeleted", conversationId); }
+			catch { /* best-effort */ }
+
+			try
+			{
+				var sysMsg = new Message
+				{
+					MessageID      = NewID(),
+					ConversationID = conversationId,
+					Type           = MessageType.SystemNotification,
+					Content        = $"{displayName} has left the group",
+					SentAt         = DateTime.UtcNow,
+					SenderID       = null
+				};
+				var created = await messages.CreateAsync(sysMsg);
+				var msgResponse = SecureChat.DTOs.MessageResponse.From(created);
+				await hubContext.Clients.Group(conversationId).SendAsync("MessageReceived", msgResponse);
+
+				var remaining = await conversations.GetActiveMembersAsync(conversationId);
+				foreach (var m in remaining)
+				{
+					if (m.UserID != leavingUserId)
+						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationId, leavingUserId);
+				}
+			}
+			catch { /* best-effort */ }
 		}
 
 		[HttpGet("{conversationID}/members/me")]

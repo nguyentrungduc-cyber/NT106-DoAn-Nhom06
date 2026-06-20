@@ -1,4 +1,5 @@
 ﻿using SecureChat.Client.Services;
+using SecureChat.DTOs;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -7,6 +8,8 @@ namespace SecureChat.Client.Forms.Chat
 
         // Thêm biến này để lưu trữ ID của nhóm hiện tại
         private readonly string _conversationId;
+        private HashSet<string> _existingUserIds = new();
+        private bool _isAdding;
         public sealed record MemberItemData(string Name, string Status, string Role, Color AvatarColor, string Initials);
 
         private System.Windows.Forms.Timer _fadeTimer;
@@ -231,47 +234,135 @@ namespace SecureChat.Client.Forms.Chat
             return row;
         }
 
-        // SỬA LẠI HÀM AddMember() trong frmMembersSettings.cs
         private async void AddMember()
         {
-            // 1. Mở Form chọn bạn bè (Giả sử bạn có frmSelectFriend trả về ID)
-            // using var frm = new frmSelectFriend();
-            // if (frm.ShowDialog() != DialogResult.OK) return;
-            // string targetUserId = frm.SelectedUserId;
-
-            string targetUserId = "ID_LAY_TU_FORM_CHON_BAN_BE"; // Tạm thời để string cho bạn dễ hình dung
-
-            // Lưu ý: Cần thuật toán sinh khóa AES mới cho user này rồi mã hóa bằng Public Key của họ.
-            // Ở đây dùng string tạm, bạn nhớ thay bằng hàm Crypto thực tế nhé.
-            string encryptedKeyForNewMember = "KHOA_AES_DA_MA_HOA_BANG_PUBLIC_KEY_CUA_NEW_MEMBER";
-
-            var req = new SecureChat.DTOs.AddMemberRequest(
-                UserID: targetUserId,
-                EncryptedKey: encryptedKeyForNewMember,
-                Role: SecureChat.Models.MemberRole.Member
-            );
-
-            // Vô hiệu hóa nút trong lúc chờ API (tránh spam click)
-            var btn = (Button)ActiveControl;
-            btn.Enabled = false;
-            btn.Text = "Adding...";
-
-            var (ok, res, err) = await ApiClient.Instance.PostAsync<SecureChat.DTOs.AddMemberRequest, object>($"api/conversations/{_conversationId}/members", req);
-
-            btn.Enabled = true;
-            btn.Text = "Add members";
-
-            if (!ok)
-            {
-                MessageBox.Show($"Không thể thêm thành viên: {err}", "Lỗi Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            // 1. Open picker (no re-entrancy risk — modal dialog blocks clicks)
+            using var picker = new frmSelectFriend(_existingUserIds);
+            if (picker.ShowDialog(this) != DialogResult.OK) return;
+            if (string.IsNullOrWhiteSpace(picker.SelectedUserId))
                 return;
+
+            var targetUserId = picker.SelectedUserId;
+
+            // 2. Guard — prevent double-submit while API call is in flight
+            if (_isAdding) return;
+            _isAdding = true;
+            try
+            {
+                // 3. Re-check membership — member may have been added while
+                //    picker was open (by another admin or SignalR event).
+                if (_existingUserIds.Contains(targetUserId))
+                {
+                    MessageBox.Show(this, "This user is already a member.",
+                        "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                // 4. Validate public key — RSA-encrypt will fail if empty
+                if (string.IsNullOrWhiteSpace(picker.SelectedUserPublicKey))
+                {
+                    MessageBox.Show(this, "This friend does not have a public key. Cannot share group key.",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 5. Get fresh encrypted conversation key for the new member
+                //    (always fresh — cache is cleared inside the method to
+                //     avoid stale key after rekey).
+                var decryptor = new MessageDecryptor();
+                string? encryptedKey;
+                try
+                {
+                    encryptedKey = await decryptor.EncryptConversationKeyForMemberAsync(
+                        _conversationId, picker.SelectedUserPublicKey);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, $"Failed to encrypt group key: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(encryptedKey))
+                {
+                    MessageBox.Show(this, "Cannot retrieve group encryption key. Try again.",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                var req = new AddMemberRequest(
+                    UserID: targetUserId,
+                    EncryptedKey: encryptedKey,
+                    Role: SecureChat.Models.MemberRole.Member
+                );
+
+                // 6. Show progress in title bar
+                var titleBackup = Text;
+                Text = "Adding member...";
+
+                var (ok, res, err) = await ApiClient.Instance.PostAsync<AddMemberRequest, object>(
+                    $"api/conversations/{_conversationId}/members", req);
+
+                Text = titleBackup;
+
+                if (!ok)
+                {
+                    string userMsg = err switch
+                    {
+                        string e when e.Contains("Conflict") || e.Contains("already a member") =>
+                            "This user is already a member.",
+                        string e when e.Contains("Forbidden") || e.Contains("403") =>
+                            "You don't have permission to add members.",
+                        string e when e.Contains("Not Found") || e.Contains("404") =>
+                            "User or conversation not found.",
+                        string e when e.Contains("timeout") || e.Contains("timed out") =>
+                            "Request timed out. Please check your connection and try again.",
+                        _ => $"Cannot add member: {err}"
+                    };
+                    MessageBox.Show(this, userMsg, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 7. Success — refresh member list from API (authoritative).
+                _ = RefreshMembersAsync();
             }
+            finally
+            {
+                _isAdding = false;
+            }
+        }
 
-            MessageBox.Show("Thêm thành viên thành công!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        private async System.Threading.Tasks.Task RefreshMembersAsync()
+        {
+            var (ok, res, err) = await ApiClient.Instance
+                .GetAsync<List<MemberResponse>>($"api/conversations/{_conversationId}/members");
 
-            // 2. Gọi API tải lại danh sách thành viên mới (hoặc load lại form)
-            // Nếu bạn muốn tải lại, bạn có thể gọi lại 1 hàm FetchMembers() chứa logic lấy danh sách từ API ở đây, 
-            // sau đó gán lại vào _allMembers và gọi BuildMemberRows(_txtSearch.Text.Trim());
+            if (ok && res != null)
+            {
+                _existingUserIds = res
+                    .Where(m => m.LeftAt == null)
+                    .Select(m => m.UserID)
+                    .ToHashSet();
+
+                _allMembers = res.Select(m =>
+                {
+                    var status = (m.User?.ShowOnlineStatus == true)
+                        ? Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User?.LastSeenUtc)
+                        : "offline";
+                    return new MemberItemData(
+                        m.User?.DisplayName ?? m.Nickname ?? "Unknown",
+                        status,
+                        m.Role.ToString(),
+                        Color.FromArgb(0x5C, 0xA5, 0xEC),
+                        (m.User?.DisplayName ?? "U").Length > 0
+                            ? m.User!.DisplayName[..1].ToUpper()
+                            : "U"
+                    );
+                }).ToList();
+
+                BuildMemberRows(_txtSearch.Text.Trim());
+            }
         }
 
         private static Button BuildBottomButton(string text, Color color, bool bold, int width)
@@ -299,28 +390,32 @@ namespace SecureChat.Client.Forms.Chat
 
         private async Task LoadMembersAsync()
         {
-            // Gọi API lấy danh sách thành viên thật từ database
             var (ok, res, err) = await SecureChat.Client.Services.ApiClient.Instance
-                .GetAsync<List<SecureChat.DTOs.MemberResponse>>($"api/conversations/{_conversationId}/members");
+                .GetAsync<List<MemberResponse>>($"api/conversations/{_conversationId}/members");
 
             if (ok && res != null)
             {
-                // Chuyển đổi dữ liệu từ API (res) sang định dạng _allMembers của Form
+                _existingUserIds = res
+                    .Where(m => m.LeftAt == null)
+                    .Select(m => m.UserID)
+                    .ToHashSet();
+
                 _allMembers = res.Select(m =>
                 {
                     var status = (m.User?.ShowOnlineStatus == true)
                         ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User?.LastSeenUtc)
                         : "offline";
                     return new MemberItemData(
-                        m.User?.Username ?? "Unknown",
+                        m.User?.DisplayName ?? m.Nickname ?? "Unknown",
                         status,
                         m.Role.ToString(),
-                        Color.FromArgb(0x5C, 0xA5, 0xEC), // Màu mặc định
-                        (m.User?.Username ?? "U").Substring(0, 1).ToUpper()
+                        Color.FromArgb(0x5C, 0xA5, 0xEC),
+                        (m.User?.DisplayName ?? "U").Length > 0
+                            ? m.User!.DisplayName[..1].ToUpper()
+                            : "U"
                     );
                 }).ToList();
 
-                // Vẽ lại danh sách lên màn hình
                 BuildMemberRows(string.Empty);
             }
         }

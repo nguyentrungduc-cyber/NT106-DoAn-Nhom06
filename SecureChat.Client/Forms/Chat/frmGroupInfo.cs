@@ -300,19 +300,55 @@ namespace SecureChat.Client.Forms.Chat
 
             // Exclude current user from admin appointment list
             var currentIdx = memberNames.FindIndex(n => n.Equals(_currentUserDisplayName, StringComparison.OrdinalIgnoreCase));
-            string defaultNextOwner;
             if (currentIdx >= 0)
             {
                 memberNames.RemoveAt(currentIdx);
                 if (currentIdx < memberIds.Count)
                     memberIds.RemoveAt(currentIdx);
-                defaultNextOwner = memberNames.Count > 0 ? memberNames[0] : "Group member";
-            }
-            else
-            {
-                defaultNextOwner = _currentUserDisplayName;
             }
 
+            // CASE: Only one member (current user) — confirm direct delete
+            if (memberNames.Count == 0)
+            {
+                var result = MessageBox.Show(this,
+                    "You are the only member. Leaving will permanently delete the group.\n\nContinue?",
+                    "Leave group",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result != DialogResult.Yes)
+                    return;
+
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.DeleteAsync($"api/conversations/{_conversationId}");
+                    if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.NoContent)
+                        Close();
+                    else
+                    {
+                        // Fallback: try leave endpoint
+                        var leaveRes = await http.PostAsync(
+                            $"api/conversations/{_conversationId}/leave", null);
+                        if (leaveRes.IsSuccessStatusCode)
+                            Close();
+                        else
+                        {
+                            var err = await leaveRes.Content.ReadAsStringAsync();
+                            MessageBox.Show(this, $"Cannot leave group: {err}", "Error",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                return;
+            }
+
+            // CASE: Multiple members — must appoint successor
+            string defaultNextOwner = memberNames[0];
             using var f = new frmLeaveGroup(_lblName.Text, defaultNextOwner, memberNames, memberIds);
             if (f.ShowDialog(this) != DialogResult.OK || !f.LeaveConfirmed) return;
 
@@ -334,13 +370,13 @@ namespace SecureChat.Client.Forms.Chat
                 else
                 {
                     var err = await res.Content.ReadAsStringAsync();
-                    MessageBox.Show(this, $"Không thể rời nhóm: {err}", "Lỗi",
+                    MessageBox.Show(this, $"Cannot leave group: {err}", "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
