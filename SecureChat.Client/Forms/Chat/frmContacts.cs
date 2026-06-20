@@ -1404,16 +1404,16 @@ namespace SecureChat.Client
             switch (c.Status)
             {
                 case FriendStatus.Friend:
-                    statusCtrl = new Label { Text = "✓ Bạn bè", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x2E, 0x7D, 0x32), BackColor = Color.FromArgb(0xE8, 0xF5, 0xE9), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter, Padding = new Padding(6, 0, 6, 0), BorderStyle = BorderStyle.FixedSingle };
+                    statusCtrl = new Label { Text = "✓ Bạn bè", Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.FromArgb(40, TG.AccentGreen.R, TG.AccentGreen.G, TG.AccentGreen.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter, Padding = new Padding(6, 0, 6, 0), BorderStyle = BorderStyle.FixedSingle };
                     break;
                 case FriendStatus.PendingOutgoing:
-                    statusCtrl = new Label { Text = "Đã gửi", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0xE6, 0x5C, 0x00), BackColor = Color.FromArgb(0xFF, 0xF3, 0xE0), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Đã gửi", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.FromArgb(40, TG.TextSecondary.R, TG.TextSecondary.G, TG.TextSecondary.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingIncoming:
-                    statusCtrl = new Label { Text = "Chờ duyệt", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x15, 0x65, 0xC0), BackColor = Color.FromArgb(0xE3, 0xF2, 0xFD), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Chờ duyệt", Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.FromArgb(40, TG.Blue.R, TG.Blue.G, TG.Blue.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.Blocked:
-                    statusCtrl = new Label { Text = "Đã chặn", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x75, 0x75, 0x75), BackColor = Color.FromArgb(0xF5, 0xF5, 0xF5), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Đã chặn", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = TG.Divider, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 default:
                     var btn = new TelegramButton { Text = "+ Kết bạn", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
