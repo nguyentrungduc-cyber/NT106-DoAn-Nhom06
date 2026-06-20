@@ -76,6 +76,7 @@ namespace SecureChat.Client.Components.Chat
                 _lblTime.ForeColor = TG.TextSecondary;
                 _pnlSeekTrack.BackColor = TG.SeekBg;
                 _pnlSeekFill.BackColor = TG.AccentGreen;
+                _pnlSeekThumb.BackColor = TG.WindowBg; // thumb màu nền để đồng bộ dark/light
                 Invalidate(true);
             });
         }
@@ -149,7 +150,7 @@ namespace SecureChat.Client.Components.Chat
             {
                 Size      = new Size(14, 14),
                 Location  = new Point(-7, -4),
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Cursor    = Cursors.Hand,
             };
             _pnlSeekThumb.Paint    += SeekThumb_Paint;
