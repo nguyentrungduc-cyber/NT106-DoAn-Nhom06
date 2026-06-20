@@ -119,7 +119,7 @@ namespace SecureChat.Client.Components.Group
             {
                 AutoSize = false,
                 Location = new Point(TEXT_LEFT, 40),
-                Size = new Size(240, 24),
+                Size = new Size(240, 30), // 24 vẫn sát quá, bị cắt nhẹ đáy chữ - tăng lên 30
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = C_SUBTEXT,
                 Text = "last seen...",
