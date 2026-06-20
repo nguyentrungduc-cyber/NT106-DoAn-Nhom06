@@ -3935,6 +3935,11 @@ namespace SecureChat.Client
             });
             y += 22;
 
+            // Lấy role của mình để quyết định có hiện menu admin không
+            var myMember = members.FirstOrDefault(m => m.User?.UserID == _currentUserId);
+            var myRole   = myMember?.Role ?? SecureChat.Models.MemberRole.Member;
+            bool canManage = myRole >= SecureChat.Models.MemberRole.Moderator;
+
             // Member list
             foreach (var m in members)
             {
@@ -3950,25 +3955,217 @@ namespace SecureChat.Client
                     _ => "Member"
                 };
 
-                var item = new ucGroupMemberItem
+                // Wrapper panel để chứa item + nút ⋮
+                var rowPanel = new Panel
                 {
-                    Dock = DockStyle.None,
-                    Width = 300,
-                    Margin = Padding.Empty,
+                    Width  = body.ClientSize.Width > 0 ? body.ClientSize.Width : 300,
+                    Height = 56,
                     Location = new Point(0, y),
                     BackColor = Color.Transparent
                 };
+
+                var item = new ucGroupMemberItem
+                {
+                    Dock = DockStyle.None,
+                    Width = rowPanel.Width - (canManage ? 32 : 0),
+                    Height = 56,
+                    Location = Point.Empty,
+                    BackColor = Color.Transparent
+                };
                 item.DisplayName = displayName;
-                item.Status = status;
-                item.Role = role;
+                item.Status      = status;
+                item.Role        = role;
                 item.SetInitial(displayName.Length > 0
                     ? displayName[0].ToString().ToUpperInvariant()
                     : "?");
-                body.Controls.Add(item);
-                y += item.Height;
+                rowPanel.Controls.Add(item);
+
+                // Nút ⋮ — chỉ hiện nếu mình có quyền quản lý VÀ target không phải chính mình
+                // VÀ role target thấp hơn role mình (Moderator không kick Moderator khác)
+                bool isSelf        = m.User?.UserID == _currentUserId;
+                bool targetLower   = m.Role < myRole;
+                bool showMenu      = canManage && !isSelf && targetLower;
+
+                if (showMenu)
+                {
+                    var memberId  = m.MemberID; // capture cho closure
+                    var memberName = displayName;
+
+                    var btnMore = new Button
+                    {
+                        Text      = "⋮",
+                        FlatStyle = FlatStyle.Flat,
+                        Size      = new Size(28, 28),
+                        Location  = new Point(rowPanel.Width - 30, (56 - 28) / 2),
+                        Cursor    = Cursors.Hand,
+                        Font      = TG.FontSemiBold(13f),
+                        ForeColor = TG.TextSecondary,
+                        BackColor = Color.Transparent,
+                    };
+                    btnMore.FlatAppearance.BorderSize      = 0;
+                    btnMore.FlatAppearance.MouseOverBackColor  = Color.FromArgb(20, 0, 0, 0);
+                    btnMore.FlatAppearance.MouseDownBackColor  = Color.FromArgb(40, 0, 0, 0);
+
+                    btnMore.Click += (s, e) =>
+                    {
+                        var menu = new ContextMenuStrip();
+                        menu.Font = TG.FontRegular(9.5f);
+
+                        // ── Mute submenu ──
+                        var itemMute = new ToolStripMenuItem("  🔇  Mute");
+                        itemMute.ForeColor = TG.TextName;
+
+                        var muteOptions = new[]
+                        {
+                            ("5 phút",    5),
+                            ("30 phút",   30),
+                            ("1 giờ",     60),
+                            ("1 ngày",    60 * 24),
+                            ("Vĩnh viễn", 60 * 24 * 365 * 10),
+                        };
+
+                        foreach (var (label, minutes) in muteOptions)
+                        {
+                            var min = minutes;
+                            var sub = new ToolStripMenuItem($"  {label}");
+                            sub.Click += async (_, __) => await MuteMemberAsync(memberId, memberName, min);
+                            itemMute.DropDownItems.Add(sub);
+                        }
+
+                        // ── Unmute ──
+                        var itemUnmute = new ToolStripMenuItem("  🔔  Bỏ mute");
+                        itemUnmute.ForeColor = TG.TextName;
+                        itemUnmute.Click += async (_, __) => await UnmuteMemberAsync(memberId, memberName);
+
+                        // ── Kick ──
+                        var itemKick = new ToolStripMenuItem("  👢  Kick khỏi nhóm");
+                        itemKick.ForeColor = Color.FromArgb(0xE2, 0x4B, 0x4A);
+                        itemKick.Click += async (_, __) => await KickMemberAsync(memberId, memberName);
+
+                        menu.Items.Add(itemMute);
+                        menu.Items.Add(itemUnmute);
+                        menu.Items.Add(new ToolStripSeparator());
+                        menu.Items.Add(itemKick);
+                        menu.Show(btnMore, new Point(0, btnMore.Height));
+                    };
+
+                    rowPanel.Controls.Add(btnMore);
+
+                    // Cập nhật Left khi panel resize
+                    rowPanel.Resize += (s, e) =>
+                    {
+                        item.Width    = rowPanel.Width - 32;
+                        btnMore.Left  = rowPanel.Width - 30;
+                    };
+                }
+
+                body.Controls.Add(rowPanel);
+                y += rowPanel.Height;
             }
 
             body.AutoScrollMinSize = new Size(0, y + 20);
+        }
+
+        private async Task MuteMemberAsync(string memberId, string memberName, int minutes)
+        {
+            try
+            {
+                var bannedUntil = DateTime.UtcNow.AddMinutes(minutes);
+                var http = ApiClient.Instance.GetHttpClient();
+                var payload = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Role              = (object?)null,
+                    Nickname          = (string?)null,
+                    ShowNotifications = (bool?)null,
+                    BannedUntil       = bannedUntil,
+                    EncryptedKey      = (string?)null
+                });
+                var res = await http.PatchAsync(
+                    $"api/conversations/{_activeConvId}/members/{memberId}",
+                    new StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
+
+                if (res.IsSuccessStatusCode)
+                {
+                    string duration = minutes >= 60 * 24 * 365
+                        ? "vĩnh viễn"
+                        : minutes >= 60 * 24 ? $"{minutes / (60 * 24)} ngày"
+                        : minutes >= 60      ? $"{minutes / 60} giờ"
+                        : $"{minutes} phút";
+                    MessageBox.Show($"Đã mute {memberName} trong {duration}.", "Thành công",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    await LoadRightSidebarContentAsync();
+                }
+                else
+                    MessageBox.Show($"Mute thất bại ({(int)res.StatusCode}).", "Lỗi",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task UnmuteMemberAsync(string memberId, string memberName)
+        {
+            try
+            {
+                var http = ApiClient.Instance.GetHttpClient();
+                // Đặt BannedUntil = quá khứ để unmute
+                var payload = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Role              = (object?)null,
+                    Nickname          = (string?)null,
+                    ShowNotifications = (bool?)null,
+                    BannedUntil       = DateTime.UtcNow.AddSeconds(-1),
+                    EncryptedKey      = (string?)null
+                });
+                var res = await http.PatchAsync(
+                    $"api/conversations/{_activeConvId}/members/{memberId}",
+                    new StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
+
+                if (res.IsSuccessStatusCode)
+                {
+                    MessageBox.Show($"Đã bỏ mute {memberName}.", "Thành công",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    await LoadRightSidebarContentAsync();
+                }
+                else
+                    MessageBox.Show($"Bỏ mute thất bại ({(int)res.StatusCode}).", "Lỗi",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task KickMemberAsync(string memberId, string memberName)
+        {
+            var confirm = MessageBox.Show(
+                $"Kick {memberName} khỏi nhóm?",
+                "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (confirm != DialogResult.Yes) return;
+
+            try
+            {
+                var http = ApiClient.Instance.GetHttpClient();
+                var res = await http.DeleteAsync(
+                    $"api/conversations/{_activeConvId}/members/{memberId}");
+
+                if (res.IsSuccessStatusCode)
+                {
+                    MessageBox.Show($"Đã kick {memberName} khỏi nhóm.", "Thành công",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    await LoadRightSidebarContentAsync();
+                }
+                else
+                    MessageBox.Show($"Kick thất bại ({(int)res.StatusCode}).", "Lỗi",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private static void AppendCenteredLabel(Panel body, string text, Font font, Color color, ref int y)
