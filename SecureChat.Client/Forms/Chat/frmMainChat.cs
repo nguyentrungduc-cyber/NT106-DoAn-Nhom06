@@ -3612,8 +3612,17 @@ namespace SecureChat.Client
             // Settings menu body
             if (_pnlSettingsMenu != null) _pnlSettingsMenu.BackColor = TG.WindowBg;
 
-            // Chat empty state label
-            if (_lblChatEmpty != null)
+            // Context menu (chat header ⋮)
+            if (_chatMoreMenu != null)
+            {
+                _chatMoreMenu.BackColor = TG.SidebarBg;
+                _chatMoreMenu.ForeColor = TG.TextPrimary;
+                foreach (ToolStripItem item in _chatMoreMenu.Items)
+                {
+                    item.BackColor = TG.SidebarBg;
+                    item.ForeColor = TG.TextPrimary;
+                }
+            }
                 _lblChatEmpty.BackColor = Color.FromArgb(220, TG.WindowBg.R, TG.WindowBg.G, TG.WindowBg.B);
 
             // Chat header (title bar top)
@@ -3689,6 +3698,11 @@ namespace SecureChat.Client
             }
 
             _pnlMessages.Invalidate();
+
+            // Rebuild bubble panels để background color (MsgInBg/MsgOutBg/ChatBg) được áp dụng đúng
+            // Paint events đã dùng TG.* nên chỉ cần trigger repaint qua Invalidate(true)
+            foreach (Control c in _pnlMessages.Controls)
+                c.Invalidate(true);
         }
 
         private void UpdateSettingsHeaderUI()
@@ -7643,14 +7657,14 @@ namespace SecureChat.Client
 
         private sealed class ChatMenuColorTable : ProfessionalColorTable
         {
-            public override Color MenuItemSelected => Color.FromArgb(0xF2, 0xF5, 0xF9);
-            public override Color MenuItemBorder => Color.FromArgb(0xD9, 0xE1, 0xEB);
-            public override Color ToolStripDropDownBackground => Color.White;
-            public override Color SeparatorDark => Color.FromArgb(0xEA, 0xEE, 0xF3);
-            public override Color SeparatorLight => Color.FromArgb(0xEA, 0xEE, 0xF3);
-            public override Color ImageMarginGradientBegin => Color.White;
-            public override Color ImageMarginGradientMiddle => Color.White;
-            public override Color ImageMarginGradientEnd => Color.White;
+            public override Color MenuItemSelected           => TG.SidebarHover;
+            public override Color MenuItemBorder             => TG.Divider;
+            public override Color ToolStripDropDownBackground => TG.SidebarBg;
+            public override Color SeparatorDark              => TG.Divider;
+            public override Color SeparatorLight             => TG.Divider;
+            public override Color ImageMarginGradientBegin   => TG.SidebarBg;
+            public override Color ImageMarginGradientMiddle  => TG.SidebarBg;
+            public override Color ImageMarginGradientEnd     => TG.SidebarBg;
         }
 
         private Image LoadAndTintIcon(string fileName, Color tint)
