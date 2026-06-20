@@ -8,11 +8,11 @@ namespace SecureChat.Client.Forms.Chat
     {
         private void InitializeComponent() { }
 
-        private const int FORM_WIDTH = 540;
-        private const int FORM_HEIGHT = 760;
-        private const int HEADER_HEIGHT = 210;
+        private const int FORM_WIDTH = 580;
+        private const int FORM_HEIGHT = 800;
+        private const int HEADER_HEIGHT = 250;
         private const int ACTIONS_HEIGHT = 96;
-        private const int MEMBERS_HEADER_HEIGHT = 48;
+        private const int MEMBERS_HEADER_HEIGHT = 56;
         private const int BOTTOM_HEIGHT = 18;
         private const int SECTION_PAD = 18;
 
@@ -84,35 +84,35 @@ namespace SecureChat.Client.Forms.Chat
 
             _pbAvatar = new PictureBox
             {
-                Size = new Size(96, 96),
-                Location = new Point((FORM_WIDTH - 96) / 2, 34),
+                Size = new Size(110, 110),
+                Location = new Point((FORM_WIDTH - 110) / 2, 34),
                 BackColor = Color.FromArgb(0xF4, 0xA4, 0x44),
                 SizeMode = PictureBoxSizeMode.Zoom
             };
             _pbAvatar.SizeChanged += (_, __) => ClipCircle(_pbAvatar);
-            _pbAvatar.Paint += (_, __) => ClipCircle(_pbAvatar);
+            ClipCircle(_pbAvatar);
 
             _lblName = new Label
             {
                 Text = string.Empty,
-                Font = new Font("Segoe UI Semibold", 17f),
+                Font = new Font("Segoe UI Semibold", 18f),
                 ForeColor = C_TEXT,
                 AutoSize = false,
-                Size = new Size(FORM_WIDTH, 36),
+                Size = new Size(FORM_WIDTH - 40, 40),
                 TextAlign = ContentAlignment.MiddleCenter,
-                Location = new Point(0, 136),
+                Location = new Point(20, 148),
                 BackColor = Color.Transparent
             };
 
             _lblDescription = new Label
             {
                 Text = string.Empty,
-                Font = new Font("Segoe UI", 10.5f),
+                Font = new Font("Segoe UI", 11f),
                 ForeColor = C_SUBTEXT,
                 AutoSize = false,
-                Size = new Size(FORM_WIDTH - 40, 20),
+                Size = new Size(FORM_WIDTH - 40, 26),
                 TextAlign = ContentAlignment.MiddleCenter,
-                Location = new Point(20, 164),
+                Location = new Point(20, 190),
                 BackColor = Color.Transparent
             };
 
@@ -122,9 +122,9 @@ namespace SecureChat.Client.Forms.Chat
                 Font = new Font("Segoe UI", 11f),
                 ForeColor = C_SUBTEXT,
                 AutoSize = false,
-                Size = new Size(FORM_WIDTH, 28),
+                Size = new Size(FORM_WIDTH - 40, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
-                Location = new Point(0, 184),
+                Location = new Point(20, 218),
                 BackColor = Color.Transparent
             };
 
@@ -190,9 +190,9 @@ namespace SecureChat.Client.Forms.Chat
                 Font = new Font("Segoe UI Semibold", 11f),
                 ForeColor = C_TEXT,
                 AutoSize = false,
+                Size = new Size(400, 24),
                 TextAlign = ContentAlignment.MiddleLeft,
-                Location = new Point(SECTION_PAD + 34, 10),
-                Size = new Size(220, 28), // cao dư hẳn ra, không phụ thuộc AutoSize đo khít sát đáy chữ
+                Location = new Point(SECTION_PAD + 34, 16),
                 BackColor = Color.Transparent
             };
 
@@ -448,7 +448,7 @@ namespace SecureChat.Client.Forms.Chat
                 {
                     Dock = DockStyle.None,
                     Margin = Padding.Empty,
-                    Location = new Point(SECTION_PAD, y),
+                    Location = new Point(0, y),
                     BackColor = Color.Transparent
                 };
                 item.DisplayName = m.Name;
@@ -480,7 +480,7 @@ namespace SecureChat.Client.Forms.Chat
         private void LayoutMemberItems()
         {
             int scrollbar = SystemInformation.VerticalScrollBarWidth;
-            int available = _pnlList.ClientSize.Width - (SECTION_PAD * 2) - scrollbar;
+            int available = _pnlList.ClientSize.Width - SECTION_PAD - scrollbar;
             foreach (Control c in _pnlList.Controls)
             {
                 if (c is ucGroupMemberItem item)

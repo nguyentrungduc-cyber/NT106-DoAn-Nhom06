@@ -111,7 +111,7 @@ namespace SecureChat.Client.Forms.Chat
             _pnlList = new Panel
             {
                 Location = new Point(0, 108),
-                Size = new Size(420, 410),
+                Size = new Size(420, ClientSize.Height - 108 - 60),
                 AutoScroll = true,
                 BackColor = Color.White
             };
@@ -180,7 +180,7 @@ namespace SecureChat.Client.Forms.Chat
                 var row = BuildFriendRow(friend);
                 row.Location = new Point(0, top);
                 _pnlList.Controls.Add(row);
-                top += 72;
+                top += row.Height + 4;
             }
 
             if (top == 8)
@@ -201,9 +201,13 @@ namespace SecureChat.Client.Forms.Chat
 
         private Panel BuildFriendRow(FriendResponse friend)
         {
+            const int rowWidth = 420;
+            const int nameX = 84;
+            const int nameWidth = rowWidth - nameX - 16;
+
             var row = new Panel
             {
-                Size = new Size(420, 68),
+                Size = new Size(rowWidth, 80),
                 BackColor = Color.White,
                 Cursor = Cursors.Hand
             };
@@ -216,8 +220,8 @@ namespace SecureChat.Client.Forms.Chat
 
             var avatar = new Panel
             {
-                Location = new Point(20, 10),
-                Size = new Size(48, 48),
+                Location = new Point(20, 14),
+                Size = new Size(52, 52),
                 BackColor = avatarColor
             };
             avatar.Paint += (_, e) =>
@@ -233,7 +237,7 @@ namespace SecureChat.Client.Forms.Chat
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 14f)
+                Font = new Font("Segoe UI Semibold", 16f)
             };
             avatar.Controls.Add(lblInitial);
 
@@ -242,8 +246,9 @@ namespace SecureChat.Client.Forms.Chat
                 Text = f.DisplayName ?? f.Username ?? "Unknown",
                 Font = new Font("Segoe UI Semibold", 14f),
                 ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
-                Location = new Point(84, 14),
-                Size = new Size(300, 24)
+                Location = new Point(nameX, 14),
+                Size = new Size(nameWidth, 30),
+                AutoEllipsis = true
             };
 
             var lblUsername = new Label
@@ -251,8 +256,9 @@ namespace SecureChat.Client.Forms.Chat
                 Text = $"@{f.Username}",
                 Font = new Font("Segoe UI", 11f),
                 ForeColor = Color.FromArgb(0x8A, 0x98, 0xA6),
-                Location = new Point(84, 40),
-                Size = new Size(300, 20)
+                Location = new Point(nameX, 46),
+                Size = new Size(nameWidth, 24),
+                AutoEllipsis = true
             };
 
             row.Controls.AddRange(new Control[] { avatar, lblName, lblUsername });
