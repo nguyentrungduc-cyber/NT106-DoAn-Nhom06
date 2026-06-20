@@ -53,36 +53,34 @@ namespace SecureChat.Client.Forms.Chat
             Controls.Add(avatar);
             y += 114;
 
-            // Display Name (centered)
-            var lblName = new Label
+            // Helper: label full-width (trừ margin 2 bên), dùng TextAlign để căn giữa thật -
+            // không tự đo Width rồi tự chia đôi nữa nên không thể bị lệch/tràn mép như trước.
+            Label AddCenteredLabel(string text, Font font, Color color, int topY)
             {
-                Text = displayName,
-                Font = TG.FontSemiBold(18f),
-                ForeColor = TG.TextPrimary,
-                TextAlign = ContentAlignment.MiddleCenter,
-                AutoSize = true,
-                MaximumSize = new Size(ClientSize.Width - 40, 0),
-                BackColor = Color.Transparent,
-            };
-            if (lblName.Height < 28) lblName.Height = 28;
-            lblName.Location = new Point((ClientSize.Width - lblName.Width) / 2, y);
-            Controls.Add(lblName);
+                int w = ClientSize.Width - 40;
+                var measured = TextRenderer.MeasureText(text, font, new Size(w, int.MaxValue),
+                    TextFormatFlags.WordBreak | TextFormatFlags.HorizontalCenter);
+                var lbl = new Label
+                {
+                    Text = text,
+                    Font = font,
+                    ForeColor = color,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    AutoSize = false,
+                    BackColor = Color.Transparent,
+                    Location = new Point(20, topY),
+                    Size = new Size(w, measured.Height + 4),
+                };
+                Controls.Add(lbl);
+                return lbl;
+            }
+
+            // Display Name (centered, tự xuống dòng nếu tên dài)
+            var lblName = AddCenteredLabel(displayName, TG.FontSemiBold(18f), TG.TextPrimary, y);
             y += lblName.Height + 4;
 
             // Username (centered)
-            var lblUsername = new Label
-            {
-                Text = $"@{username}",
-                Font = TG.FontRegular(13f),
-                ForeColor = TG.TextSecondary,
-                TextAlign = ContentAlignment.MiddleCenter,
-                AutoSize = true,
-                MaximumSize = new Size(ClientSize.Width - 40, 0),
-                BackColor = Color.Transparent,
-            };
-            if (lblUsername.Height < 20) lblUsername.Height = 20;
-            lblUsername.Location = new Point((ClientSize.Width - lblUsername.Width) / 2, y);
-            Controls.Add(lblUsername);
+            var lblUsername = AddCenteredLabel($"@{username}", TG.FontRegular(13f), TG.TextSecondary, y);
             y += lblUsername.Height + 6;
 
             // Presence status (centered)
@@ -92,18 +90,8 @@ namespace SecureChat.Client.Forms.Chat
             else
                 presenceText = "offline";
 
-            var lblStatus = new Label
-            {
-                Text = presenceText,
-                Font = TG.FontRegular(11f),
-                ForeColor = presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary,
-                TextAlign = ContentAlignment.MiddleCenter,
-                AutoSize = true,
-                MaximumSize = new Size(ClientSize.Width - 40, 0),
-                BackColor = Color.Transparent,
-            };
-            lblStatus.Location = new Point((ClientSize.Width - lblStatus.Width) / 2, y);
-            Controls.Add(lblStatus);
+            var lblStatus = AddCenteredLabel(presenceText, TG.FontRegular(11f),
+                presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary, y);
             y += lblStatus.Height + 18;
 
             // Divider
