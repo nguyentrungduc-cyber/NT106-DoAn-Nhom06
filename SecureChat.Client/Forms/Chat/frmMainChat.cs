@@ -4074,7 +4074,7 @@ namespace SecureChat.Client
                 var rowPanel = new Panel
                 {
                     Width  = body.ClientSize.Width > 0 ? body.ClientSize.Width : 340,
-                    Height = 56,
+                    Height = 100,
                     Location = new Point(0, y),
                     BackColor = Color.Transparent
                 };
@@ -4083,7 +4083,7 @@ namespace SecureChat.Client
                 {
                     Dock = DockStyle.None,
                     Width = rowPanel.Width - (canManage ? 32 : 0),
-                    Height = 56,
+                    Height = 100,
                     Location = Point.Empty,
                     BackColor = Color.Transparent
                 };
@@ -4111,7 +4111,7 @@ namespace SecureChat.Client
                         Text      = "⋮",
                         FlatStyle = FlatStyle.Flat,
                         Size      = new Size(28, 28),
-                        Location  = new Point(rowPanel.Width - 30, (56 - 28) / 2),
+                        Location  = new Point(rowPanel.Width - 30, (rowPanel.Height - 28) / 2),
                         Cursor    = Cursors.Hand,
                         Font      = TG.FontSemiBold(13f),
                         ForeColor = TG.TextSecondary,
