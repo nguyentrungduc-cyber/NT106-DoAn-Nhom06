@@ -112,6 +112,7 @@ namespace SecureChat.Client.Components.Group
                 ForeColor = C_TEXT,
                 Text = "Name",
                 BackColor = Color.Transparent,
+                AutoEllipsis = true,
             };
 
             _lblStatus = new Label
@@ -159,6 +160,16 @@ namespace SecureChat.Client.Components.Group
         {
             int textWidth = Width - TEXT_LEFT - RIGHT_PAD;
             if (textWidth < 80) textWidth = 80;
+
+            // Nếu badge đang hiện, nhường chỗ cho badge (badge nằm bên phải)
+            bool hasRole = !string.IsNullOrWhiteSpace(_lblRole?.Text);
+            if (hasRole && _badge != null)
+            {
+                var textSize = TextRenderer.MeasureText(_lblRole.Text, _lblRole.Font);
+                int badgeW = textSize.Width + _badge.Padding.Horizontal + 8; // +8 gap
+                textWidth = Math.Max(40, textWidth - badgeW);
+            }
+
             _lblName.Width = textWidth;
             _lblStatus.Width = textWidth;
             UpdateBadgeLayout();
