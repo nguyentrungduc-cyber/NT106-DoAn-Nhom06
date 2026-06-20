@@ -405,102 +405,92 @@ namespace SecureChat.Controllers
 		}
 
 		[HttpPost("{conversationID}/leave")]
-		public async Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
+		public Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
 		{
-			const int maxRetries = 3;
-
-			for (int attempt = 1; attempt <= maxRetries; attempt++)
+			var strategy = conversations.DbContext.Database.CreateExecutionStrategy();
+			return strategy.ExecuteAsync<IActionResult>(async () =>
 			{
-				// 1. Acquire per-group lock to serialize operations on this conversation
-				using var lockHandle = await groupLock.AcquireAsync(conversationID);
+				const int maxRetries = 3;
 
-				// 2. Begin serializable transaction — prevents phantom reads on member count
-				await using var tx = await conversations.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
-
-				try
+				for (int attempt = 1; attempt <= maxRetries; attempt++)
 				{
-					// 3. Reload conversation WITH members INSIDE the transaction (no stale reads)
-					var conv = await conversations.GetByIdWithMembersAsync(conversationID);
-					if (conv is null)
-						return NotFound();
-					if (conv.Type == ConversationType.SavedMessages)
-						return Forbid();
+					using var lockHandle = await groupLock.AcquireAsync(conversationID);
 
-					// 4. Reload member fresh inside transaction
-					var member = conv.Members.FirstOrDefault(m => m.UserID == Me && m.LeftAt == null);
-					if (member is null)
-						return NotFound();
-
-					// 5. Count active members inside the transaction
-					var activeMembers = conv.Members.Where(m => m.LeftAt == null).ToList();
-					int activeCount = activeMembers.Count;
-
-					// 6. Idempotency: if already left, return success
-					if (member.LeftAt is not null)
-						return NoContent();
-
-					// 7. CASE B: Only one active member (the requesting user) — leave + auto-delete
-					if (activeCount == 1)
+					try
 					{
+						await using var tx = await conversations.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
+
+						var conv = await conversations.GetByIdWithMembersAsync(conversationID);
+						if (conv is null)
+							return NotFound();
+						if (conv.Type == ConversationType.SavedMessages)
+							return Forbid();
+
+						var member = conv.Members.FirstOrDefault(m => m.UserID == Me && m.LeftAt == null);
+						if (member is null)
+							return NotFound();
+
+						var activeMembers = conv.Members.Where(m => m.LeftAt == null).ToList();
+						int activeCount = activeMembers.Count;
+
+						if (member.LeftAt is not null)
+							return NoContent();
+
+						if (activeCount == 1)
+						{
+							member.LeftAt = DateTime.UtcNow;
+							await conversations.DbContext.SaveChangesAsync();
+
+							await conversations.HardDeleteConversationAsync(conv.ConversationID);
+
+							tx.Commit();
+
+							await NotifyGroupDeletedAsync(Me, conversationID);
+							return NoContent();
+						}
+
+						if (member.Role == MemberRole.Owner)
+						{
+							if (req is null || string.IsNullOrWhiteSpace(req.NewOwnerMemberId))
+								return BadRequest(new { error = "Owner must appoint a new admin before leaving." });
+
+							var target = activeMembers.FirstOrDefault(m =>
+								m.MemberID == req.NewOwnerMemberId && m.MemberID != member.MemberID);
+
+							if (target is null)
+								return BadRequest(new { error = "Selected member not found or is the current owner." });
+
+							target.Role = MemberRole.Owner;
+							member.LeftAt = DateTime.UtcNow;
+							await conversations.DbContext.SaveChangesAsync();
+
+							tx.Commit();
+
+							await NotifyOwnerLeftAsync(conversationID, Me, target.UserID, member.User?.DisplayName ?? "A member");
+							return NoContent();
+						}
+
 						member.LeftAt = DateTime.UtcNow;
 						await conversations.DbContext.SaveChangesAsync();
 
-						await conversations.HardDeleteConversationAsync(conv.ConversationID);
-
 						tx.Commit();
 
-						await NotifyGroupDeletedAsync(Me, conversationID);
+						await NotifyMemberLeftAsync(conversationID, Me, member.User?.DisplayName ?? "A member");
 						return NoContent();
 					}
-
-					// 8. CASE A: Owner leaving with multiple members — must appoint successor
-					if (member.Role == MemberRole.Owner)
+					catch (DbUpdateConcurrencyException) when (attempt < maxRetries)
 					{
-						if (req is null || string.IsNullOrWhiteSpace(req.NewOwnerMemberId))
-						{
-							return BadRequest(new { error = "Owner must appoint a new admin before leaving." });
-						}
-
-						var target = activeMembers.FirstOrDefault(m =>
-							m.MemberID == req.NewOwnerMemberId && m.MemberID != member.MemberID);
-
-						if (target is null)
-						{
-							return BadRequest(new { error = "Selected member not found or is the current owner." });
-						}
-
-						target.Role = MemberRole.Owner;
-						member.LeftAt = DateTime.UtcNow;
-						await conversations.DbContext.SaveChangesAsync();
-
-						tx.Commit();
-
-						await NotifyOwnerLeftAsync(conversationID, Me, target.UserID, member.User?.DisplayName ?? "A member");
-						return NoContent();
+						await Task.Delay(100 * attempt);
+						continue;
 					}
-
-					// 9. CASE C: Non-owner leaving
-					member.LeftAt = DateTime.UtcNow;
-					await conversations.DbContext.SaveChangesAsync();
-
-					tx.Commit();
-
-					await NotifyMemberLeftAsync(conversationID, Me, member.User?.DisplayName ?? "A member");
-					return NoContent();
+					catch (DbUpdateConcurrencyException)
+					{
+						return Conflict(new { error = "The group was modified concurrently. Please try again." });
+					}
 				}
-				catch (DbUpdateConcurrencyException) when (attempt < maxRetries)
-				{
-					// Optimistic concurrency failure — retry
-					await Task.Delay(100 * attempt);
-					continue;
-				}
-				catch (DbUpdateConcurrencyException)
-				{
-					return Conflict(new { error = "The group was modified concurrently. Please try again." });
-				}
-			}
 
-			return StatusCode(StatusCodes.Status500InternalServerError);
+				return StatusCode(StatusCodes.Status500InternalServerError);
+			});
 		}
 
 		// ─── SignalR notification helpers (called after commit) ─────────
