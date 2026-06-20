@@ -65,6 +65,39 @@ namespace SecureChat.Controllers
 			return Ok(result);
 		}
 
+		/// <summary>
+		/// Endpoint nhẹ chỉ trả Delivery status mới nhất cho các tin nhắn DO CHÍNH MÌNH
+		/// gửi trong conversation này. Dùng để refresh tick Sent/Delivered/Read mỗi lần
+		/// mở lại conversation đã sync trước đó (không cần re-fetch toàn bộ history).
+		/// Không có bước này, _syncedConversations chặn re-fetch full GetMessages
+		/// nên tick bị "đứng" ở trạng thái cũ cho tới khi người gửi online lúc đối
+		/// phương đọc tin (nhận realtime push qua SignalR).
+		/// </summary>
+		[HttpGet("delivery-status")]
+		public async Task<IActionResult> GetDeliveryStatuses(string conversationID)
+		{
+			var member = await GetActiveMember(conversationID);
+			if (member is null) return Forbid();
+
+			var list = await messages.GetByConversationAsync(conversationID, limit: 200);
+			var myMessages = list.Where(m => m.SenderID == member.MemberID).ToList();
+
+			var result = new List<object>();
+			foreach (var msg in myMessages)
+			{
+				var statuses = await messages.GetStatusesByMessageAsync(msg.MessageID);
+				DeliveryStatus delivery = DeliveryStatus.Sent;
+				if (statuses.Any(s => s.ReadAt.HasValue))
+					delivery = DeliveryStatus.Read;
+				else if (statuses.Any(s => s.DeliveredAt.HasValue))
+					delivery = DeliveryStatus.Delivered;
+
+				result.Add(new { messageID = msg.MessageID, delivery = delivery.ToString() });
+			}
+
+			return Ok(result);
+		}
+
 		[HttpPost("{messageID}/delivered")]
 		public async Task<IActionResult> MarkDelivered(string conversationID, string messageID)
 		{

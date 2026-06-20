@@ -3779,6 +3779,55 @@ namespace SecureChat.Client
                 }
                 catch { }
             });
+
+            // Refresh tick Sent/Delivered/Read cho các tin MÌNH đã gửi trong conv này.
+            // Cần làm RIÊNG biệt khỏi SyncMessagesForActiveConversationAsync vì hàm đó
+            // bị chặn bởi _syncedConversations (chỉ chạy 1 lần/session) — nếu không có
+            // bước này, tick sẽ "đứng" ở trạng thái cũ cho tới khi người gửi (mình) đang
+            // online đúng lúc đối phương đọc tin (nhận được SignalR push realtime).
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.GetAsync($"api/conversations/{convId}/messages/delivery-status");
+                    if (!res.IsSuccessStatusCode) return;
+
+                    var json = await res.Content.ReadAsStringAsync();
+                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var entries = System.Text.Json.JsonSerializer.Deserialize<List<DeliveryStatusEntry>>(json, opts);
+                    if (entries is null || entries.Count == 0) return;
+
+                    bool anyChanged = false;
+                    foreach (var entry in entries)
+                    {
+                        var newStatus = entry.Delivery switch
+                        {
+                            "Read"      => SecureChat.DTOs.DeliveryStatus.Read,
+                            "Delivered" => SecureChat.DTOs.DeliveryStatus.Delivered,
+                            _           => SecureChat.DTOs.DeliveryStatus.Sent,
+                        };
+
+                        _msgDelivery.AddOrUpdate(entry.MessageID,
+                            addValueFactory:    _ => { anyChanged = true; return newStatus; },
+                            updateValueFactory: (_, cur) =>
+                            {
+                                if (cur != newStatus) { anyChanged = true; return newStatus; }
+                                return cur;
+                            });
+                    }
+
+                    if (anyChanged && convId == _activeConvId)
+                        BeginInvoke(new Action(() => BuildMessages()));
+                }
+                catch { }
+            });
+        }
+
+        private sealed class DeliveryStatusEntry
+        {
+            public string MessageID { get; set; } = "";
+            public string Delivery { get; set; } = "";
         }
 
         // ════════════════════════════════════════════
