@@ -103,8 +103,13 @@ namespace SecureChat.Client
 
         private static void LogException(Exception ex)
         {
-            // Tại đây bạn có thể ghi lỗi vào file log hoặc dùng Serilog
-            Console.WriteLine($"[ERROR] {DateTime.Now}: {ex.Message}");
+            // In đầy đủ message + stack trace ra Debug Output và Console để dễ truy lỗi
+            string fullLog = $"[ERROR] {DateTime.Now}: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
+            if (ex.InnerException is not null)
+                fullLog += $"\n--- Inner Exception ---\n{ex.InnerException.GetType().Name}: {ex.InnerException.Message}\n{ex.InnerException.StackTrace}";
+
+            Console.WriteLine(fullLog);
+            try { System.Diagnostics.Debug.WriteLine(fullLog); } catch { }
         }
     }
 }
