@@ -15,7 +15,7 @@ namespace SecureChat.Client.Forms.Chat
         private System.Windows.Forms.Timer _fadeTimer;
         private TextBox _txtSearch;
         private Panel _pnlList;
-        private List<MemberItemData> _allMembers;
+        private List<MemberItemData> _allMembers = new();
 
         public IReadOnlyList<MemberItemData> Members => _allMembers;
 
