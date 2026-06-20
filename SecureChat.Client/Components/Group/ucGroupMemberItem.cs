@@ -124,6 +124,7 @@ namespace SecureChat.Client.Components.Group
                 ForeColor = C_SUBTEXT,
                 Text = "last seen...",
                 BackColor = Color.Transparent,
+                AutoEllipsis = true,
             };
 
             _badge = new Panel
@@ -158,20 +159,23 @@ namespace SecureChat.Client.Components.Group
 
         private void LayoutDynamic()
         {
-            int textWidth = Width - TEXT_LEFT - RIGHT_PAD;
-            if (textWidth < 80) textWidth = 80;
+            int fullWidth = Width - TEXT_LEFT - RIGHT_PAD;
+            if (fullWidth < 80) fullWidth = 80;
 
-            // Nếu badge đang hiện, nhường chỗ cho badge (badge nằm bên phải)
+            int nameWidth = fullWidth;
+
+            // Badge nằm cùng dòng với TÊN (không phải dòng status, status ở dòng dưới)
+            // -> chỉ tên cần nhường chỗ, status dùng full width.
             bool hasRole = !string.IsNullOrWhiteSpace(_lblRole?.Text);
             if (hasRole && _badge != null)
             {
                 var textSize = TextRenderer.MeasureText(_lblRole.Text, _lblRole.Font);
-                int badgeW = textSize.Width + _badge.Padding.Horizontal + 24; // +24 gap, tách rõ tên và badge
-                textWidth = Math.Max(40, textWidth - badgeW);
+                int badgeW = textSize.Width + _badge.Padding.Horizontal + 12; // gap tách tên và badge
+                nameWidth = Math.Max(40, fullWidth - badgeW);
             }
 
-            _lblName.Width = textWidth;
-            _lblStatus.Width = textWidth;
+            _lblName.Width = nameWidth;
+            _lblStatus.Width = fullWidth;
             UpdateBadgeLayout();
         }
 
