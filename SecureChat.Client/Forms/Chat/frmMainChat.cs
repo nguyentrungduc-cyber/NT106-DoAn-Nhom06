@@ -606,7 +606,7 @@ namespace SecureChat.Client
         {
             int sw = 300;                        // Sidebar Width
             int smw = 260;                       // Settings Menu Width
-            int rsw = _isSidebarOpen ? 300 : 0;  // Right Sidebar Width
+            int rsw = _isSidebarOpen ? 340 : 0;  // Right Sidebar Width
 
             _pnlSidebar.SetBounds(0, 0, sw, ClientSize.Height);
             _pnlChat.SetBounds(sw, 0, ClientSize.Width - sw - rsw, ClientSize.Height);
@@ -614,7 +614,7 @@ namespace SecureChat.Client
             if (_isSidebarOpen)
             {
                 _pnlRightSidebar.SetBounds(
-                    ClientSize.Width - 300, 0, 300, ClientSize.Height);
+                    ClientSize.Width - 340, 0, 340, ClientSize.Height);
                 _pnlRightSidebar.Visible = true;
             }
             else
@@ -1275,7 +1275,7 @@ namespace SecureChat.Client
             _pnlChat.Controls.Add(_pnlChatHeader);
 
             // ── Right Sidebar (profile / group info) ────────
-            _pnlRightSidebar = new Panel { Width = 300, BackColor = Color.White, Visible = false };
+            _pnlRightSidebar = new Panel { Width = 340, BackColor = Color.White, Visible = false };
 
             var sbHeader = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = Color.White };
             sbHeader.Paint += (_, e) => e.Graphics.DrawLine(new Pen(TG.Divider), 0, 51, sbHeader.Width, 51);
@@ -1290,7 +1290,7 @@ namespace SecureChat.Client
                 ForeColor = TG.TextSecondary,
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Location = new Point(252, 8)
+                Location = new Point(292, 8)
             };
             sbClose.FlatAppearance.BorderSize = 0;
             sbClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 0, 0, 0);
@@ -3841,6 +3841,55 @@ namespace SecureChat.Client
                 }
                 catch { }
             });
+
+            // Refresh tick Sent/Delivered/Read cho các tin MÌNH đã gửi trong conv này.
+            // Cần làm RIÊNG biệt khỏi SyncMessagesForActiveConversationAsync vì hàm đó
+            // bị chặn bởi _syncedConversations (chỉ chạy 1 lần/session) — nếu không có
+            // bước này, tick sẽ "đứng" ở trạng thái cũ cho tới khi người gửi (mình) đang
+            // online đúng lúc đối phương đọc tin (nhận được SignalR push realtime).
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.GetAsync($"api/conversations/{convId}/messages/delivery-status");
+                    if (!res.IsSuccessStatusCode) return;
+
+                    var json = await res.Content.ReadAsStringAsync();
+                    var opts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var entries = System.Text.Json.JsonSerializer.Deserialize<List<DeliveryStatusEntry>>(json, opts);
+                    if (entries is null || entries.Count == 0) return;
+
+                    bool anyChanged = false;
+                    foreach (var entry in entries)
+                    {
+                        var newStatus = entry.Delivery switch
+                        {
+                            "Read"      => SecureChat.DTOs.DeliveryStatus.Read,
+                            "Delivered" => SecureChat.DTOs.DeliveryStatus.Delivered,
+                            _           => SecureChat.DTOs.DeliveryStatus.Sent,
+                        };
+
+                        _msgDelivery.AddOrUpdate(entry.MessageID,
+                            addValueFactory:    _ => { anyChanged = true; return newStatus; },
+                            updateValueFactory: (_, cur) =>
+                            {
+                                if (cur != newStatus) { anyChanged = true; return newStatus; }
+                                return cur;
+                            });
+                    }
+
+                    if (anyChanged && convId == _activeConvId)
+                        BeginInvoke(new Action(() => BuildMessages()));
+                }
+                catch { }
+            });
+        }
+
+        private sealed class DeliveryStatusEntry
+        {
+            public string MessageID { get; set; } = "";
+            public string Delivery { get; set; } = "";
         }
 
         // ════════════════════════════════════════════
@@ -3914,7 +3963,7 @@ namespace SecureChat.Client
             var avatar = new AvatarControl
             {
                 Size = new Size(100, 100),
-                Location = new Point(100, y)
+                Location = new Point((body.ClientSize.Width - 100) / 2, y)
             };
             avatar.SetName(other.DisplayName ?? other.Username);
             body.Controls.Add(avatar);
@@ -3968,7 +4017,7 @@ namespace SecureChat.Client
             var avatar = new AvatarControl
             {
                 Size = new Size(100, 100),
-                Location = new Point(100, y)
+                Location = new Point((body.ClientSize.Width - 100) / 2, y)
             };
             avatar.SetName(conv.Name);
             body.Controls.Add(avatar);
@@ -3995,10 +4044,11 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9f),
                 ForeColor = TG.TextSecondary,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Size = new Size(260, 14),
+                AutoSize = false,
+                Size = new Size(260, 20), // 14px trước đó quá thấp cho font 9pt, cắt mất đáy chữ "E"
                 Location = new Point(20, y)
             });
-            y += 22;
+            y += 26;
 
             // Lấy role của mình để quyết định có hiện menu admin không
             var myMember = members.FirstOrDefault(m => m.User?.UserID == _currentUserId);
@@ -4023,7 +4073,7 @@ namespace SecureChat.Client
                 // Wrapper panel để chứa item + nút ⋮
                 var rowPanel = new Panel
                 {
-                    Width  = body.ClientSize.Width > 0 ? body.ClientSize.Width : 300,
+                    Width  = body.ClientSize.Width > 0 ? body.ClientSize.Width : 340,
                     Height = 56,
                     Location = new Point(0, y),
                     BackColor = Color.Transparent
@@ -4235,19 +4285,20 @@ namespace SecureChat.Client
 
         private static void AppendCenteredLabel(Panel body, string text, Font font, Color color, ref int y)
         {
+            int maxW = Math.Max(200, body.ClientSize.Width - 40);
             var lbl = new Label
             {
                 Text = text,
                 Font = font,
                 ForeColor = color,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(280, 0),
+                Size = new Size(maxW, 0),
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                MaximumSize = new Size(280, 0)
+                MaximumSize = new Size(maxW, 0)
             };
             if (lbl.Height < 24) lbl.Height = 24;
-            lbl.Location = new Point(10, y);
+            lbl.Location = new Point((body.ClientSize.Width - lbl.Width) / 2, y);
             body.Controls.Add(lbl);
             y += lbl.Height;
         }
@@ -4257,7 +4308,7 @@ namespace SecureChat.Client
             body.Controls.Add(new Panel
             {
                 Height = 1,
-                Width = 260,
+                Width = Math.Max(200, body.ClientSize.Width - 40),
                 BackColor = TG.Divider,
                 Location = new Point(20, y)
             });
@@ -4272,7 +4323,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(11f),
                 ForeColor = TG.TextPrimary,
                 AutoSize = true,
-                MaximumSize = new Size(260, 0),
+                MaximumSize = new Size(Math.Max(200, body.ClientSize.Width - 48), 0),
                 BackColor = Color.Transparent,
                 Location = new Point(24, y)
             };
@@ -4985,7 +5036,7 @@ namespace SecureChat.Client
                         Array.Empty<byte>(), Array.Empty<byte>(), durationSec, isOut);
                 }
 
-                const int rightMargin = 10; // khớp với text bubble: x = ClientSize.Width - bw - 10
+                const int rightMargin = 30; // tăng để bubble voice lùi sang trái
                 int voiceLeftOffset = (!isOut && isGroup) ? 44 : 10;
                 const int voiceBubbleW = 300; // cố định, KHÔNG co giãn theo panel.Width
 

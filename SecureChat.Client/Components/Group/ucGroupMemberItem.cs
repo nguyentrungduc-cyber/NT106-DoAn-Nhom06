@@ -5,8 +5,8 @@ namespace SecureChat.Client.Components.Group
     public class ucGroupMemberItem : UserControl
     {
         private const int AVATAR_SIZE = 48;
-        private const int LEFT_PAD = 18;
-        private const int RIGHT_PAD = 18;
+        private const int LEFT_PAD = 12;
+        private const int RIGHT_PAD = 10;
         private const int TEXT_LEFT = LEFT_PAD + AVATAR_SIZE + 12;
         private const int ITEM_HEIGHT = 78;
         private static readonly Color C_BG_HOVER = Color.FromArgb(0xF4, 0xF7, 0xFB);
@@ -39,7 +39,7 @@ namespace SecureChat.Client.Components.Group
             set
             {
                 _lblRole.Text = value;
-                UpdateBadgeLayout();
+                LayoutDynamic(); // phải co lại Width của tên, không chỉ định vị lại badge
                 Invalidate();
             }
         }
@@ -119,11 +119,12 @@ namespace SecureChat.Client.Components.Group
             {
                 AutoSize = false,
                 Location = new Point(TEXT_LEFT, 40),
-                Size = new Size(240, 24),
+                Size = new Size(240, 30), // 24 vẫn sát quá, bị cắt nhẹ đáy chữ - tăng lên 30
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = C_SUBTEXT,
                 Text = "last seen...",
                 BackColor = Color.Transparent,
+                AutoEllipsis = true,
             };
 
             _badge = new Panel
@@ -158,20 +159,23 @@ namespace SecureChat.Client.Components.Group
 
         private void LayoutDynamic()
         {
-            int textWidth = Width - TEXT_LEFT - RIGHT_PAD;
-            if (textWidth < 80) textWidth = 80;
+            int fullWidth = Width - TEXT_LEFT - RIGHT_PAD;
+            if (fullWidth < 80) fullWidth = 80;
 
-            // Nếu badge đang hiện, nhường chỗ cho badge (badge nằm bên phải)
+            int nameWidth = fullWidth;
+
+            // Badge nằm cùng dòng với TÊN (không phải dòng status, status ở dòng dưới)
+            // -> chỉ tên cần nhường chỗ, status dùng full width.
             bool hasRole = !string.IsNullOrWhiteSpace(_lblRole?.Text);
             if (hasRole && _badge != null)
             {
                 var textSize = TextRenderer.MeasureText(_lblRole.Text, _lblRole.Font);
-                int badgeW = textSize.Width + _badge.Padding.Horizontal + 8; // +8 gap
-                textWidth = Math.Max(40, textWidth - badgeW);
+                int badgeW = textSize.Width + _badge.Padding.Horizontal + 8; // gap tách tên và badge
+                nameWidth = Math.Max(40, fullWidth - badgeW);
             }
 
-            _lblName.Width = textWidth;
-            _lblStatus.Width = textWidth;
+            _lblName.Width = nameWidth;
+            _lblStatus.Width = fullWidth;
             UpdateBadgeLayout();
         }
 
@@ -196,6 +200,13 @@ namespace SecureChat.Client.Components.Group
         {
             _lblInitial.Text = text;
         }
+
+        /// <summary>
+        /// Force tính lại layout (Width tên/status co theo badge). Gọi method này
+        /// sau khi đã set xong Role + Width thật, để không phụ thuộc vào việc event
+        /// Resize có fire đúng thứ tự hay không.
+        /// </summary>
+        public void RefreshLayout() => LayoutDynamic();
 
         private static void ClipCircle(PictureBox pb)
         {

@@ -189,8 +189,10 @@ namespace SecureChat.Client.Forms.Chat
                 Text = "2 MEMBERS",
                 Font = new Font("Segoe UI Semibold", 11f),
                 ForeColor = C_TEXT,
-                AutoSize = true,
-                Location = new Point(SECTION_PAD + 34, 14),
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Location = new Point(SECTION_PAD + 34, 10),
+                Size = new Size(220, 28), // cao dư hẳn ra, không phụ thuộc AutoSize đo khít sát đáy chữ
                 BackColor = Color.Transparent
             };
 
@@ -485,6 +487,7 @@ namespace SecureChat.Client.Forms.Chat
                 {
                     item.Width = available;
                     item.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+                    item.RefreshLayout();
                 }
             }
         }
