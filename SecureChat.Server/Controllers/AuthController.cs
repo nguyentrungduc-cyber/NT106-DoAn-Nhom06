@@ -10,13 +10,14 @@ using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Security;
+using SecureChat.Server.Services;
 using SecureChat.Services;
 
 namespace SecureChat.Controllers
 {
 	[ApiController]
 	[Route("api/auth")]
-  public class AuthController(UserRepository users, JwtTokenService tokens, IConfiguration config, ForgotPasswordService forgotPasswordService, OtpService otpService, EmailService emailService, ILogger<AuthController> logger, ConversationRepository conversations) : BaseController
+  public class AuthController(UserRepository users, JwtTokenService tokens, IConfiguration config, ForgotPasswordService forgotPasswordService, OtpService otpService, EmailService emailService, ILogger<AuthController> logger, ConversationRepository conversations, UserPresenceService presence) : BaseController
 	{
 		[HttpPost("register")]
 		public async Task<IActionResult> Register([FromBody] RegisterRequest req)
@@ -283,12 +284,18 @@ namespace SecureChat.Controllers
 		}
 
 		[Authorize]
-		[HttpDelete("logout")]
+		[HttpPost("logout")]
 		public async Task<IActionResult> Logout()
 		{
+			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 			var jti = User.FindFirstValue(JwtRegisteredClaimNames.Jti);
+
 			if (jti is not null)
 				await users.DeleteSessionAsync(jti);
+
+			if (!string.IsNullOrWhiteSpace(userId))
+				await presence.ForceOfflineAsync(userId);
+
 			return NoContent();
 		}
 
