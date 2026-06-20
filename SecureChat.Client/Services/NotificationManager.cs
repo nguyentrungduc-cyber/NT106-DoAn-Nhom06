@@ -1,3 +1,4 @@
+using SecureChat.Client.Resources.Themes;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -267,7 +268,7 @@ namespace SecureChat.Client.Services
                 TopMost = true;
                 Width = PopupWidth;
                 Height = PopupHeight;
-                BackColor = Color.White;
+                BackColor = TG.WindowBg;
                 Opacity = 0;
 
                 _popupFont = new Font("Segoe UI", 9f, FontStyle.Regular);
