@@ -5,8 +5,8 @@ namespace SecureChat.Client.Components.Group
     public class ucGroupMemberItem : UserControl
     {
         private const int AVATAR_SIZE = 48;
-        private const int LEFT_PAD = 18;
-        private const int RIGHT_PAD = 18;
+        private const int LEFT_PAD = 12;
+        private const int RIGHT_PAD = 10;
         private const int TEXT_LEFT = LEFT_PAD + AVATAR_SIZE + 12;
         private const int ITEM_HEIGHT = 78;
         private static readonly Color C_BG_HOVER = Color.FromArgb(0xF4, 0xF7, 0xFB);
@@ -170,7 +170,7 @@ namespace SecureChat.Client.Components.Group
             if (hasRole && _badge != null)
             {
                 var textSize = TextRenderer.MeasureText(_lblRole.Text, _lblRole.Font);
-                int badgeW = textSize.Width + _badge.Padding.Horizontal + 12; // gap tách tên và badge
+                int badgeW = textSize.Width + _badge.Padding.Horizontal + 8; // gap tách tên và badge
                 nameWidth = Math.Max(40, fullWidth - badgeW);
             }
 
