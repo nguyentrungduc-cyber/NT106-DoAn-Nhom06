@@ -101,23 +101,11 @@
         {
             try
             {
-                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
-                var res = await http.GetAsync($"api/conversations/{_conversationId}/members");
-                if (!res.IsSuccessStatusCode) return;
+                var (ok, view, _) = await SecureChat.Client.Services.ApiClient.Instance
+                    .GetAsync<SecureChat.DTOs.ConversationViewResponse>($"api/conversations/{_conversationId}/view");
+                if (!ok || view?.Admins == null) return;
 
-                var json = await res.Content.ReadAsStringAsync();
-                var opts = new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
-                };
-                var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(json, opts);
-                if (list == null) return;
-
-                var admins = list.Where(m =>
-    m.Role == SecureChat.Models.MemberRole.Owner ||
-    m.Role == SecureChat.Models.MemberRole.Moderator).ToList();
-
+                var admins = view.Admins;
                 _adminsCount = admins.Count;
 
                 BeginInvoke(new Action(() =>

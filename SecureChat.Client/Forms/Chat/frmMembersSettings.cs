@@ -335,34 +335,7 @@ namespace SecureChat.Client.Forms.Chat
 
         private async System.Threading.Tasks.Task RefreshMembersAsync()
         {
-            var (ok, res, err) = await ApiClient.Instance
-                .GetAsync<List<MemberResponse>>($"api/conversations/{_conversationId}/members");
-
-            if (ok && res != null)
-            {
-                _existingUserIds = res
-                    .Where(m => m.LeftAt == null)
-                    .Select(m => m.UserID)
-                    .ToHashSet();
-
-                _allMembers = res.Select(m =>
-                {
-                    var status = (m.User?.ShowOnlineStatus == true)
-                        ? Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User?.LastSeenUtc)
-                        : "offline";
-                    return new MemberItemData(
-                        m.User?.DisplayName ?? m.Nickname ?? "Unknown",
-                        status,
-                        m.Role.ToString(),
-                        Color.FromArgb(0x5C, 0xA5, 0xEC),
-                        (m.User?.DisplayName ?? "U").Length > 0
-                            ? m.User!.DisplayName[..1].ToUpper()
-                            : "U"
-                    );
-                }).ToList();
-
-                BuildMemberRows(_txtSearch.Text.Trim());
-            }
+            await LoadMembersAsync();
         }
 
         private static Button BuildBottomButton(string text, Color color, bool bold, int width)
@@ -390,17 +363,16 @@ namespace SecureChat.Client.Forms.Chat
 
         private async Task LoadMembersAsync()
         {
-            var (ok, res, err) = await SecureChat.Client.Services.ApiClient.Instance
-                .GetAsync<List<MemberResponse>>($"api/conversations/{_conversationId}/members");
+            var (ok, view, err) = await SecureChat.Client.Services.ApiClient.Instance
+                .GetAsync<ConversationViewResponse>($"api/conversations/{_conversationId}/view");
 
-            if (ok && res != null)
+            if (ok && view?.Members != null)
             {
-                _existingUserIds = res
-                    .Where(m => m.LeftAt == null)
+                _existingUserIds = view.Members
                     .Select(m => m.UserID)
                     .ToHashSet();
 
-                _allMembers = res.Select(m =>
+                _allMembers = view.Members.Select(m =>
                 {
                     var status = (m.User?.ShowOnlineStatus == true)
                         ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User?.LastSeenUtc)

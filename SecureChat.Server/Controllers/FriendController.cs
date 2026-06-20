@@ -11,7 +11,7 @@ namespace SecureChat.Controllers
 	[Authorize]
 	[ApiController]
 	[Route("api/friends")]
-	public class FriendController(FriendRepository friends, UserRepository users, PresenceTracker presence) : BaseController
+	public class FriendController(FriendRepository friends, UserRepository users, UserPresenceService presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 

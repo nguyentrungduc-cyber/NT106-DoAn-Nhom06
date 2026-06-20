@@ -111,6 +111,7 @@ namespace SecureChat.Client
         private string _currentDisplayName = string.Empty;
         private string _currentUsername = string.Empty;
         private string _currentEmail = string.Empty;
+        private bool _isLoggingOut;
         private string _currentAvatarUrl = string.Empty;
 
         private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new();
@@ -120,6 +121,8 @@ namespace SecureChat.Client
         private readonly Dictionary<string, Image> _convAvatarCache = new();
 
         private readonly Dictionary<string, string> _convOtherUserId = new();
+
+        private readonly Dictionary<string, int> _convVersions = new();
 
         private readonly ConcurrentDictionary<string, (bool IsOnline, DateTime? LastSeenUtc)> _userPresence = new();
 
@@ -1532,62 +1535,50 @@ namespace SecureChat.Client
             var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
             var members = new List<SecureChat.Client.Forms.Chat.MemberModel>();
             Image? avatarImage = null;
+            string? convDescription = null;
             try
             {
-                var opts = new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
-                };
+                var (ok, view, _) = await SecureChat.Client.Services.ApiClient.Instance
+                    .GetAsync<SecureChat.DTOs.ConversationViewResponse>($"api/conversations/{_activeConvId}/view");
+                if (!ok || view?.Metadata == null) return;
 
-                // Lấy thông tin conversation (bao gồm AvatarURL)
-                var convRes = await http.GetAsync($"api/conversations/{_activeConvId}");
-                if (convRes.IsSuccessStatusCode)
+                var meta = view.Metadata;
+                convDescription = meta.Description;
+
+                if (!string.IsNullOrWhiteSpace(meta.AvatarURL))
                 {
-                    var convJson = await convRes.Content.ReadAsStringAsync();
-                    var conv = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.ConversationResponse>(convJson, opts);
-                    if (conv != null && !string.IsNullOrWhiteSpace(conv.AvatarURL))
+                    try
                     {
-                        try
+                        var imgRes = await http.GetAsync(meta.AvatarURL);
+                        if (imgRes.IsSuccessStatusCode)
                         {
-                            var imgRes = await http.GetAsync(conv.AvatarURL);
-                            if (imgRes.IsSuccessStatusCode)
-                            {
-                                using var imgStream = await imgRes.Content.ReadAsStreamAsync();
-                                avatarImage = new Bitmap(imgStream);
-                            }
+                            using var imgStream = await imgRes.Content.ReadAsStreamAsync();
+                            avatarImage = new Bitmap(imgStream);
                         }
-                        catch { }
                     }
+                    catch { }
                 }
 
-                var res = await http.GetAsync($"api/conversations/{_activeConvId}/members");
-                if (res.IsSuccessStatusCode)
-                {
-                    var json = await res.Content.ReadAsStringAsync();
-                    var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(json, opts);
-                    if (list != null)
-                        members = list.Select(m => new SecureChat.Client.Forms.Chat.MemberModel(
-    m.User?.DisplayName ?? m.Nickname ?? "Unknown",
-    m.User != null && m.User.ShowOnlineStatus
-        ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User.LastSeenUtc)
-        : "offline",
-    m.Role switch
-    {
-        SecureChat.Models.MemberRole.Owner => "Admin",
-        SecureChat.Models.MemberRole.Moderator => "Moderator",
-        _ => "Member"
-    },
-    null,
-    TG.GetAvatarColor(m.User?.DisplayName ?? "?"),
-    m.MemberID
-)).ToList();
-                }
+                members = view.Members.Select(m => new SecureChat.Client.Forms.Chat.MemberModel(
+                    m.User?.DisplayName ?? m.Nickname ?? "Unknown",
+                    m.User != null && m.User.ShowOnlineStatus
+                        ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User.LastSeenUtc)
+                        : "offline",
+                    m.Role switch
+                    {
+                        SecureChat.Models.MemberRole.Owner => "Admin",
+                        SecureChat.Models.MemberRole.Moderator => "Moderator",
+                        _ => "Member"
+                    },
+                    null,
+                    TG.GetAvatarColor(m.User?.DisplayName ?? "?"),
+                    m.MemberID
+                )).ToList();
             }
             catch { }
 
             using var dlg = new SecureChat.Client.Forms.Chat.frmGroupInfo();
-            dlg.LoadGroup(_lblChatName.Text, avatarImage, members);
+            dlg.LoadGroup(_lblChatName.Text, convDescription, avatarImage, members);
             dlg.SetContext(_activeConvId, _currentDisplayName);
             dlg.StartPosition = FormStartPosition.CenterParent;
             dlg.AddMemberRequested += () =>
@@ -1634,7 +1625,10 @@ namespace SecureChat.Client
             var updatePayload = new
             {
                 Name = dlg.GroupName,
-                AvatarUrl = avatarUrl
+                AvatarUrl = avatarUrl,
+                Description = dlg.DescriptionText,
+                GroupType = dlg.GroupType == "Public" ? (int)SecureChat.Models.GroupVisibility.Public : (int)SecureChat.Models.GroupVisibility.Private,
+                ChatHistoryMode = dlg.ChatHistoryMode == "Visible" ? (int)SecureChat.Models.HistoryMode.Visible : (int)SecureChat.Models.HistoryMode.Hidden
             };
             var updateJson = System.Text.Json.JsonSerializer.Serialize(updatePayload);
             var updateRes = await http.PatchAsync(
@@ -3418,14 +3412,62 @@ namespace SecureChat.Client
                                 catch { }
                             }
 
-                            // Build Members payload expected by server: list of { UserID, EncryptedKey }
-                            var members = new List<object>();
-                            foreach (var id in dlg.ResultMemberIds)
-                                members.Add(new { UserID = id, EncryptedKey = "TBD" });
+                            // E2EE: Generate AES-256 key upfront for the group
+                            byte[] groupAesKey = new byte[SecureChat.Shared.Security.AesEncryption.KeySize];
+                            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+                                rng.GetBytes(groupAesKey);
 
-                            // Ensure current user is included as a member
-                            if (!string.IsNullOrWhiteSpace(_currentUserId) && !dlg.ResultMemberIds.Contains(_currentUserId))
-                                members.Insert(0, new { UserID = _currentUserId, EncryptedKey = "TBD" });
+                            // Build Members payload: list of { UserID, EncryptedKey }
+                            var allUserIds = new List<string>(dlg.ResultMemberIds);
+                            if (!string.IsNullOrWhiteSpace(_currentUserId) && !allUserIds.Contains(_currentUserId))
+                                allUserIds.Insert(0, _currentUserId);
+
+                            var members = new List<object>();
+                            foreach (var uid in allUserIds)
+                            {
+                                string publicKey;
+                                if (uid == _currentUserId)
+                                {
+                                    var (pubKey, _) = SecureChat.Shared.Security.KeyManager.GetKeyPair();
+                                    publicKey = pubKey ?? string.Empty;
+                                }
+                                else
+                                {
+                                    publicKey = string.Empty;
+                                    try
+                                    {
+                                        var userRes = await http.GetAsync($"api/users/{uid}");
+                                        if (userRes.IsSuccessStatusCode)
+                                        {
+                                            var userJson = await userRes.Content.ReadAsStringAsync();
+                                            var userData = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.UserResponse>(userJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                                            if (userData is not null)
+                                                publicKey = userData.PublicKey;
+                                        }
+                                    }
+                                    catch { }
+                                }
+
+                                string encryptedKeyB64;
+                                if (!string.IsNullOrWhiteSpace(publicKey))
+                                {
+                                    try
+                                    {
+                                        byte[] enc = SecureChat.Shared.Security.RSAEncryption.Encrypt(groupAesKey, publicKey);
+                                        encryptedKeyB64 = Convert.ToBase64String(enc);
+                                    }
+                                    catch
+                                    {
+                                        encryptedKeyB64 = "TBD";
+                                    }
+                                }
+                                else
+                                {
+                                    encryptedKeyB64 = "TBD";
+                                }
+
+                                members.Add(new { UserID = uid, EncryptedKey = encryptedKeyB64 });
+                            }
 
                             var payload = new
                             {
@@ -3481,6 +3523,10 @@ namespace SecureChat.Client
                                 }
                                 catch { }
                             }
+
+                            // Warm the key cache so the first message can be decrypted immediately
+                            if (!string.IsNullOrWhiteSpace(newConvId))
+                                _ = _decryptor.EnsureConversationKeyAsync(newConvId);
 
                             // success — refresh conversations
                             await SyncConversationsAsync();
@@ -3561,7 +3607,23 @@ namespace SecureChat.Client
                             }
                             else if (dr == DialogResult.No)
                             {
-                                // 1. Xóa Access Token để không gọi API được nữa
+                                // 1. Call logout API to set Offline immediately
+                                try
+                                {
+                                    var http = ApiClient.Instance.GetHttpClient();
+                                    await http.PostAsync("api/auth/logout", null);
+                                }
+                                catch { }
+
+                                // 2. Stop SignalR so OnDisconnectedAsync does NOT double-broadcast
+                                _isLoggingOut = true;
+                                if (_signalRClient != null)
+                                {
+                                    try { await _signalRClient.StopAsync(); }
+                                    catch { }
+                                }
+
+                                // 3. Xóa Access Token để không gọi API được nữa
                                 ApiClient.Instance.SetAccessToken(null);
                                 SecureChat.Shared.Security.KeyManager.Clear();
                                 lock (_processedMessageIdsLock)
@@ -3569,7 +3631,7 @@ namespace SecureChat.Client
                                     _processedMessageIds.Clear();
                                 }
 
-                                // 2. Tìm login form cũ đang ẩn và hiện lại
+                                // 4. Tìm login form cũ đang ẩn và hiện lại
                                 var oldLogin = Application.OpenForms.OfType<frmLoginRegister>().FirstOrDefault();
                                 if (oldLogin != null)
                                 {
@@ -3581,7 +3643,7 @@ namespace SecureChat.Client
                                     loginForm.Show();
                                 }
 
-                                // 3. Ẩn Form Main thay vì đóng để không kích hoạt FormClosed cascade
+                                // 5. Ẩn Form Main thay vì đóng để không kích hoạt FormClosed cascade
                                 this.Hide();
                             }
                         }
@@ -3852,24 +3914,13 @@ namespace SecureChat.Client
 
             try
             {
-                var http = ApiClient.Instance.GetHttpClient();
-                var response = await http.GetAsync($"api/conversations/{_activeConvId}/members");
-
-                if (!response.IsSuccessStatusCode)
-                    return;
-
-                var json = await response.Content.ReadAsStringAsync();
-                var options = new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
-                };
-                var members = System.Text.Json.JsonSerializer.Deserialize<List<MemberResponse>>(json, options);
-
-                if (members == null || members.Count == 0)
+                var (ok, view, _) = await ApiClient.Instance
+                    .GetAsync<ConversationViewResponse>($"api/conversations/{_activeConvId}/view");
+                if (!ok || view?.Members == null || view.Members.Count == 0)
                     return;
 
                 var isGroup = conv.IsGroup;
+                var members = view.Members;
 
                 // Populate _senderAvatarMap for all members
                 foreach (var m in members)
@@ -6534,8 +6585,12 @@ namespace SecureChat.Client
                     }
                 }));
             };
-            _signalRClient.ConversationUpdated += async convId =>
+            _signalRClient.ConversationUpdated += async (convId, version) =>
             {
+                if (_convVersions.TryGetValue(convId, out var localV) && version < localV)
+                    return;
+                _convVersions[convId] = version;
+
                 var (ok, conv, _) = await _messageService.GetConversationAsync(convId);
                 if (!ok || conv is null) return;
                 BeginInvoke(new Action(() =>
@@ -6549,13 +6604,11 @@ namespace SecureChat.Client
                     if (!old.IsGroup && !string.IsNullOrWhiteSpace(conv.OtherUserId))
                         _convOtherUserId[convId] = conv.OtherUserId;
 
-                    // Always refresh avatar URL for all conversations (both active and inactive)
                     if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
                     {
                         _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
                     }
 
-                    // Update chat header if active
                     if (_activeConvId == convId)
                     {
                         _lblChatName.Text = display;
@@ -6563,6 +6616,26 @@ namespace SecureChat.Client
                         if (!old.IsGroup && _convOtherUserId.TryGetValue(_activeConvId, out var otherId))
                             _ = _signalRClient?.QueryUserPresenceAsync(otherId);
                     }
+                    BuildConvList();
+                }));
+            };
+            _signalRClient.GroupSettingsUpdated += async (convId, version) =>
+            {
+                if (_convVersions.TryGetValue(convId, out var localV) && version < localV)
+                    return;
+                _convVersions[convId] = version;
+
+                var (ok, conv, _) = await _messageService.GetConversationAsync(convId);
+                if (!ok || conv is null) return;
+                BeginInvoke(new Action(() =>
+                {
+                    var idx = _convs.FindIndex(c => c.Id == convId);
+                    if (idx < 0) return;
+                    var old = _convs[idx];
+                    string display = !string.IsNullOrWhiteSpace(conv.Name) ? conv.Name! : (old.IsGroup ? "Group" : "Conversation");
+                    _convs[idx] = (convId, display, old.Preview, old.Time, old.Unread, old.IsGroup);
+                    if (_activeConvId == convId)
+                        _lblChatName.Text = display;
                     BuildConvList();
                 }));
             };
@@ -6629,9 +6702,9 @@ namespace SecureChat.Client
                         _ = LoadRightSidebarContentAsync();
                 }));
             };
-            _signalRClient.UserPresenceChanged += async (userId, isOnline, lastSeenUtc) =>
+            _signalRClient.UserStatusChanged += async (userId, status, lastSeenUtc) =>
             {
-                _userPresence[userId] = (isOnline, lastSeenUtc);
+                _userPresence[userId] = (status == "Online", lastSeenUtc);
 
                 BeginInvoke(new Action(() =>
                 {
@@ -6700,6 +6773,7 @@ namespace SecureChat.Client
             };
             _signalRClient.Closed += async _ =>
             {
+                if (_isLoggingOut) return;
                 BeginInvoke(new Action(() =>
                 {
                     MessageBox.Show(this, "Connection to server lost. Please re-login.", "Disconnected",

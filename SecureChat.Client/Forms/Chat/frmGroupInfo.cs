@@ -25,6 +25,7 @@ namespace SecureChat.Client.Forms.Chat
         private Panel _pnlList = null!;
         private PictureBox _pbAvatar = null!;
         private Label _lblName = null!;
+        private Label _lblDescription = null!;
         private Label _lblCount = null!;
         private Label _lblMembersTitle = null!;
 
@@ -103,6 +104,18 @@ namespace SecureChat.Client.Forms.Chat
                 BackColor = Color.Transparent
             };
 
+            _lblDescription = new Label
+            {
+                Text = string.Empty,
+                Font = new Font("Segoe UI", 10.5f),
+                ForeColor = C_SUBTEXT,
+                AutoSize = false,
+                Size = new Size(FORM_WIDTH - 40, 20),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(20, 164),
+                BackColor = Color.Transparent
+            };
+
             _lblCount = new Label
             {
                 Text = "2 members",
@@ -111,11 +124,11 @@ namespace SecureChat.Client.Forms.Chat
                 AutoSize = false,
                 Size = new Size(FORM_WIDTH, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
-                Location = new Point(0, 166),
+                Location = new Point(0, 184),
                 BackColor = Color.Transparent
             };
 
-            pnl.Controls.AddRange(new Control[] { btnClose, _pbAvatar, _lblName, _lblCount });
+            pnl.Controls.AddRange(new Control[] { btnClose, _pbAvatar, _lblName, _lblDescription, _lblCount });
             Controls.Add(pnl);
         }
 
@@ -281,12 +294,41 @@ namespace SecureChat.Client.Forms.Chat
             _muteUntilUtc = f.MuteUntilUtc;
         }
 
-        private void OpenEditGroup()
+        private async void OpenEditGroup()
         {
             using var f = new frmEditGroup(_conversationId, _lblName.Text);
             if (f.ShowDialog(this) != DialogResult.OK) return;
 
-            _lblName.Text = f.GroupName;
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var payload = new
+                {
+                    Name = f.GroupName,
+                    Description = f.DescriptionText,
+                    GroupType = f.GroupType == "Public" ? (int)SecureChat.Models.GroupVisibility.Public : (int)SecureChat.Models.GroupVisibility.Private,
+                    ChatHistoryMode = f.ChatHistoryMode == "Visible" ? (int)SecureChat.Models.HistoryMode.Visible : (int)SecureChat.Models.HistoryMode.Hidden
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                var res = await http.PatchAsync(
+                    $"api/conversations/{_conversationId}",
+                    new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+                if (res.IsSuccessStatusCode)
+                {
+                    _lblName.Text = f.GroupName;
+                    _lblDescription.Text = f.DescriptionText;
+                    _lblDescription.Visible = !string.IsNullOrWhiteSpace(f.DescriptionText);
+                }
+                else
+                {
+                    var err = await res.Content.ReadAsStringAsync();
+                    MessageBox.Show(this, $"Cannot save: {err}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private async void OpenLeaveGroup()
@@ -380,9 +422,11 @@ namespace SecureChat.Client.Forms.Chat
             }
         }
 
-        public void LoadGroup(string name, Image? avatar, IReadOnlyList<MemberModel> members)
+        public void LoadGroup(string name, string? description, Image? avatar, IReadOnlyList<MemberModel> members)
         {
             _lblName.Text = name;
+            _lblDescription.Text = description ?? string.Empty;
+            _lblDescription.Visible = !string.IsNullOrWhiteSpace(description);
             _lblCount.Text = $"{members.Count} members";
             _lblMembersTitle.Text = $"{members.Count} MEMBERS";
 

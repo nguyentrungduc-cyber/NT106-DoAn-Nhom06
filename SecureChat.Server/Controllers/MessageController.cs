@@ -30,7 +30,12 @@ namespace SecureChat.Controllers
 			var member = await GetActiveMember(conversationID);
 			if (member is null) return Forbid();
 
-			var list = await messages.GetByConversationAsync(conversationID, limit, before);
+			// Apply HistoryMode filter: if conversation has Hidden history mode,
+			// only show messages sent after the member joined
+			var conv = await conversations.GetByIdAsync(conversationID);
+			DateTime? memberJoinedAt = conv?.HistoryMode == HistoryMode.Hidden ? member.JoinedAt : null;
+
+			var list = await messages.GetByConversationAsync(conversationID, limit, before, memberJoinedAt);
 
 			var result = new List<MessageResponse>();
 			foreach (var msg in list)
