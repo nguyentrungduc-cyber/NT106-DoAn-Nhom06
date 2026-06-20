@@ -39,6 +39,9 @@ namespace SecureChat.Models
 		Cancelled = 3   /* người gửi hủy yêu cầu */
 	}
 
+	public enum GroupVisibility : byte { Private = 0, Public = 1 }
+	public enum HistoryMode : byte { Visible = 0, Hidden = 1 }
+
 	public enum MemberRole : byte
 	{
 		Member = 0,
