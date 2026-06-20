@@ -39,7 +39,7 @@ namespace SecureChat.Client.Components.Group
             set
             {
                 _lblRole.Text = value;
-                UpdateBadgeLayout();
+                LayoutDynamic(); // phải co lại Width của tên, không chỉ định vị lại badge
                 Invalidate();
             }
         }
@@ -196,6 +196,13 @@ namespace SecureChat.Client.Components.Group
         {
             _lblInitial.Text = text;
         }
+
+        /// <summary>
+        /// Force tính lại layout (Width tên/status co theo badge). Gọi method này
+        /// sau khi đã set xong Role + Width thật, để không phụ thuộc vào việc event
+        /// Resize có fire đúng thứ tự hay không.
+        /// </summary>
+        public void RefreshLayout() => LayoutDynamic();
 
         private static void ClipCircle(PictureBox pb)
         {
