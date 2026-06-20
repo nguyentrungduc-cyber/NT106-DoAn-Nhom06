@@ -166,7 +166,7 @@ namespace SecureChat.Client.Components.Group
             if (hasRole && _badge != null)
             {
                 var textSize = TextRenderer.MeasureText(_lblRole.Text, _lblRole.Font);
-                int badgeW = textSize.Width + _badge.Padding.Horizontal + 8; // +8 gap
+                int badgeW = textSize.Width + _badge.Padding.Horizontal + 16; // +16 gap, tách rõ tên và badge
                 textWidth = Math.Max(40, textWidth - badgeW);
             }
 
