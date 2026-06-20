@@ -45,7 +45,7 @@ namespace SecureChat.Controllers
             return Ok(result);
         }
 
-	[HttpGet("{conversationID}")]
+		[HttpGet("{conversationID}")]
 		public async Task<IActionResult> GetConversation(string conversationID)
 		{
 			var conv = await conversations.GetByIdWithMembersAsync(conversationID);
@@ -69,6 +69,31 @@ namespace SecureChat.Controllers
 				}
 			}
 			return Ok(res);
+		}
+
+		[HttpGet("{conversationID}/view")]
+		public async Task<IActionResult> GetConversationView(string conversationID)
+		{
+			var conv = await conversations.GetByIdWithMembersAsync(conversationID);
+			if (conv is null)
+				return NotFound();
+			var member = conv.Members.FirstOrDefault(m => m.UserID == Me && m.LeftAt == null);
+			if (member is null)
+				return Forbid();
+
+			var metadata = ConversationResponse.From(conv);
+			var activeMembers = conv.Members
+				.Where(m => m.LeftAt == null)
+				.ToList();
+			var members = activeMembers
+				.Select(m => MemberResponse.From(m, presence.IsOnline(m.UserID)))
+				.ToList();
+			var admins = activeMembers
+				.Where(m => m.Role >= MemberRole.Moderator)
+				.Select(m => MemberResponse.From(m, presence.IsOnline(m.UserID)))
+				.ToList();
+
+			return Ok(new ConversationViewResponse(metadata, members, admins));
 		}
 
 		[HttpGet("saved")]
@@ -173,21 +198,37 @@ namespace SecureChat.Controllers
 				return Forbid();
 			if (member.Role < MemberRole.Moderator)
 				return Forbid();
+
+			bool settingsChanged = false;
+
+			// Name / Avatar (legacy settings)
 			if (req.Name is not null)
 				conv.Name = req.Name;
 			if (req.AvatarUrl is not null)
 				conv.AvatarURL = req.AvatarUrl;
 
-			await conversations.UpdateAsync(conv);
+			// Group settings (Description, GroupType, HistoryMode)
+			if (req.Description is not null || req.GroupType.HasValue || req.ChatHistoryMode.HasValue)
+			{
+				settingsChanged = true;
+				// Use the dedicated method to handle version conflict
+				conv = await conversations.UpdateGroupSettingsAsync(
+					conversationID, req.Description, req.GroupType, req.ChatHistoryMode);
+			}
+			else
+			{
+				await conversations.UpdateAsync(conv);
+			}
 
 			// Notify all active members about the update
 			try
 			{
+				var eventName = settingsChanged ? "GroupSettingsUpdated" : "ConversationUpdated";
 				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
 				foreach (var m in activeMembers)
 				{
 					if (m.UserID != Me)
-						await hubContext.Clients.User(m.UserID).SendAsync("ConversationUpdated", conversationID);
+						await hubContext.Clients.User(m.UserID).SendAsync(eventName, conversationID, conv.Version);
 				}
 			}
 			catch { /* best-effort */ }
@@ -286,12 +327,17 @@ namespace SecureChat.Controllers
 			if (existing is not null && existing.LeftAt is null)
 				return Conflict(new { error = "Người dùng đã là thành viên." });
 
+			// Cap role at adder's level — a Moderator cannot add an Owner
+			var assignedRole = req.Role;
+			if (myMember.Role < MemberRole.Owner && assignedRole >= MemberRole.Moderator)
+				assignedRole = MemberRole.Member;
+
 			var newMember = await conversations.AddMemberAsync(new ConversationMember {
 				MemberID       = NewID(),
 				ConversationID = conversationID,
 				UserID         = req.UserID,
 				EncryptedKey   = req.EncryptedKey,
-				Role           = req.Role
+				Role           = assignedRole
 			});
 
 			var loaded = await conversations.GetMemberByIdAsync(newMember.MemberID);
@@ -328,10 +374,26 @@ namespace SecureChat.Controllers
 			var target = await conversations.GetMemberByIdAsync(memberID);
 			if (target is null || target.ConversationID != conversationID)
 				return NotFound();
+
 			bool roleChanged = false;
-			if (req.Role.HasValue) {
+			if (req.Role.HasValue)
+			{
 				if (myMember.Role != MemberRole.Owner)
 					return Forbid();
+
+				// Prevent self-demotion if this is the last Owner
+				if (target.Role == MemberRole.Owner && target.UserID == Me)
+				{
+					var ownerCount = await conversations.GetActiveMembersAsync(conversationID);
+					if (ownerCount.Count(m => m.Role == MemberRole.Owner) <= 1)
+						return BadRequest(new { error = "Cannot demote yourself as the last owner. Use the leave flow to transfer ownership." });
+				}
+
+				// Prevent promoting anyone to Owner through this endpoint
+				// Ownership transfer must go through the /leave flow.
+				if (req.Role.Value == MemberRole.Owner)
+					return BadRequest(new { error = "Cannot promote to Owner. Use the leave flow to transfer ownership." });
+
 				await conversations.UpdateRoleAsync(memberID, req.Role.Value);
 				roleChanged = true;
 			}
@@ -378,6 +440,14 @@ namespace SecureChat.Controllers
 				return NotFound();
 			if (target.Role >= myMember.Role)
 				return Forbid();
+
+			// Prevent removing the last Owner
+			if (target.Role == MemberRole.Owner)
+			{
+				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+				if (activeMembers.Count(m => m.Role == MemberRole.Owner) <= 1)
+					return BadRequest(new { error = "Cannot remove the last owner." });
+			}
 
 			await conversations.RemoveMemberAsync(memberID);
 

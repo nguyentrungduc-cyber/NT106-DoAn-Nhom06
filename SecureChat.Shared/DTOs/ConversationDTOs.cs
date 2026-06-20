@@ -19,7 +19,10 @@ namespace SecureChat.DTOs
 
 	public record UpdateConversationRequest(
 		[MaxLength(64)] string? Name,
-		string? AvatarUrl
+		string? AvatarUrl,
+		[MaxLength(1024)] string? Description = null,
+		GroupVisibility? GroupType = null,
+		HistoryMode? ChatHistoryMode = null
 	);
 
 	public record AddMemberRequest(
@@ -50,6 +53,11 @@ namespace SecureChat.DTOs
 		DateTime? LastActivityAt,
 		DateTime CreatedAt,
 		int MemberCount,
+		int AdminCount,
+		int Version,
+		string? Description = null,
+		GroupVisibility? GroupType = null,
+		HistoryMode? ChatHistoryMode = null,
 		string? LastMessageContent = null,
 		string? LastMessageSenderName = null,
 		string? OtherUserId = null
@@ -59,9 +67,18 @@ namespace SecureChat.DTOs
 			c.ConversationID, c.Type, c.Name, c.AvatarURL,
 			c.CreatedBy, c.LastMessageID, c.LastActivityAt, c.CreatedAt,
 			c.Members.Count(m => m.LeftAt == null),
+			c.Members.Count(m => m.LeftAt == null && (m.Role == MemberRole.Owner || m.Role == MemberRole.Moderator)),
+			c.Version,
+			c.Description, c.GroupType, c.HistoryMode,
 			c.LastMessage?.Content,
 			c.LastMessage?.Sender?.User?.DisplayName);
 	}
+
+	public record ConversationViewResponse(
+		ConversationResponse Metadata,
+		List<MemberResponse> Members,
+		List<MemberResponse> Admins
+	);
 
 	public record MemberResponse(
 		string MemberID,

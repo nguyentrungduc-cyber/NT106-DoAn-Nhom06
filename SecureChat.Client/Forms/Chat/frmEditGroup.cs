@@ -9,15 +9,14 @@
         private readonly Label _lblDescPlaceholder;
         private readonly Label _lblGroupTypeValue;
         private readonly Label _lblChatHistoryValue;
-        private readonly Label _lblInviteLinksValue;
         private readonly Label _lblAdminsValue;
         private readonly Label _lblMembersValue;
 
         private readonly System.Windows.Forms.Timer _fadeTimer;
+        private bool _disposed;
 
         private string _groupType = "Private";
         private string _chatHistory = "Hidden";
-        private int _inviteLinksCount = 0;
         private int _adminsCount = 0;
         private int _membersCount = 0;
         private readonly string _conversationId; // Thêm biến lưu ID nhóm
@@ -27,7 +26,6 @@
         public string DescriptionText => _txtDescription.Text.Trim();
         public string GroupType => _groupType;
         public string ChatHistoryMode => _chatHistory;
-        public int InviteLinksCount => _inviteLinksCount;
         public int AdminsCount => _adminsCount;
         public int MembersCount => _membersCount;
         public Image? GroupAvatar => _avatar.Image;
@@ -171,19 +169,15 @@
             rowHistory.Location = new Point(0, 54);
             BindRowAction(rowHistory, OpenChatHistorySettings);
 
-            var rowInvite = BuildSettingsRow("\U0001F517  Invite links", _inviteLinksCount.ToString(), out _lblInviteLinksValue);
-            rowInvite.Location = new Point(0, 100);
-            BindRowAction(rowInvite, OpenInviteLinksSettings);
-
             var rowAdmins = BuildSettingsRow("\U0001F6E1\uFE0F  Administrators", _adminsCount.ToString(), out _lblAdminsValue);
-            rowAdmins.Location = new Point(0, 146);
+            rowAdmins.Location = new Point(0, 100);
             BindRowAction(rowAdmins, OpenAdministratorsSettings);
 
             var rowMembers = BuildSettingsRow("\U0001F465  Members", _membersCount.ToString(), out _lblMembersValue);
-            rowMembers.Location = new Point(0, 192);
+            rowMembers.Location = new Point(0, 146);
             BindRowAction(rowMembers, OpenMembersSettings);
 
-            section.Controls.AddRange(new Control[] { rowGroupType, rowHistory, rowInvite, rowAdmins, rowMembers });
+            section.Controls.AddRange(new Control[] { rowGroupType, rowHistory, rowAdmins, rowMembers });
 
             var btnCancel = BuildBottomButton("Cancel", Color.FromArgb(0x2A, 0xAB, 0xEE));
             btnCancel.Location = new Point(300, 676);
@@ -284,28 +278,19 @@
             _lblChatHistoryValue.Text = _chatHistory;
         }
 
-        private void OpenInviteLinksSettings()
-        {
-            using var dlg = new frmInviteLinksSettings(_inviteLinksCount);
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-
-            _inviteLinksCount = dlg.LinksCount;
-            _lblInviteLinksValue.Text = _inviteLinksCount.ToString();
-        }
-
         private void OpenAdministratorsSettings()
         {
             using var dlg = new frmAdministratorsSettings(_conversationId, _adminsCount);
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            dlg.ShowDialog(this);
 
-            _adminsCount = dlg.AdministratorsCount;
-            _lblAdminsValue.Text = _adminsCount.ToString();
+            _ = LoadGroupInfoAsync();
         }
         private void OpenMembersSettings()
         {
-            // Truyền _conversationId sang frmMembersSettings thay vì truyền mảng dữ liệu giả
             using var dlg = new frmMembersSettings(_conversationId);
             dlg.ShowDialog(this);
+
+            _ = LoadGroupInfoAsync();
         }
 
         private void PickAvatarImage()
@@ -351,6 +336,7 @@
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            _disposed = true;
             _fadeTimer.Stop();
             _fadeTimer.Dispose();
             _avatar.Image?.Dispose();
@@ -360,30 +346,69 @@
 
         private async Task LoadGroupInfoAsync()
         {
-            // Gọi API lấy danh sách thành viên của nhóm này
-            var (ok, members, err) = await SecureChat.Client.Services.ApiClient.Instance
-                .GetAsync<List<SecureChat.DTOs.MemberResponse>>($"api/conversations/{_conversationId}/members");
+            var (ok, view, err) = await SecureChat.Client.Services.ApiClient.Instance
+                .GetAsync<SecureChat.DTOs.ConversationViewResponse>($"api/conversations/{_conversationId}/view");
 
-            if (ok && members != null)
+            if (!ok || view?.Metadata == null || !this.IsHandleCreated)
+                return;
+
+            var meta = view.Metadata;
+            this.Invoke(new Action(() =>
             {
-                // 1. Cập nhật tổng số thành viên thật
-                _membersCount = members.Count;
+                if (_disposed) return;
 
-                // Đoạn này dùng Invoke để đảm bảo an toàn khi cập nhật Giao diện (UI) từ luồng bất đồng bộ (Task)
-                if (this.IsHandleCreated)
+                if (!string.IsNullOrWhiteSpace(meta.Description))
                 {
-                    this.Invoke(new Action(() =>
-                    {
-                        _lblMembersValue.Text = _membersCount.ToString();
-
-                        // 2. Đếm số Owner (Admin)
-                        _adminsCount = members.Count(m =>
-                            m.Role == SecureChat.Models.MemberRole.Owner);
-
-                        _lblAdminsValue.Text = _adminsCount.ToString();
-                    }));
+                    _txtDescription.Text = meta.Description;
+                    _lblDescPlaceholder.Visible = false;
                 }
+
+                if (meta.GroupType.HasValue)
+                {
+                    _groupType = meta.GroupType.Value == SecureChat.Models.GroupVisibility.Public ? "Public" : "Private";
+                    _lblGroupTypeValue.Text = _groupType;
+                }
+
+                if (meta.ChatHistoryMode.HasValue)
+                {
+                    _chatHistory = meta.ChatHistoryMode.Value == SecureChat.Models.HistoryMode.Visible ? "Visible" : "Hidden";
+                    _lblChatHistoryValue.Text = _chatHistory;
+                }
+
+                _membersCount = meta.MemberCount;
+                _lblMembersValue.Text = _membersCount.ToString();
+                _adminsCount = meta.AdminCount;
+                _lblAdminsValue.Text = _adminsCount.ToString();
+
+                if (!string.IsNullOrWhiteSpace(meta.AvatarURL))
+                {
+                    _ = LoadAvatarAsync(meta.AvatarURL);
+                }
+            }));
+        }
+
+        private async Task LoadAvatarAsync(string avatarUrl)
+        {
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var resolvedUrl = avatarUrl.StartsWith("http")
+                    ? avatarUrl
+                    : $"{SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl()}/{avatarUrl.TrimStart('/')}";
+                var imgRes = await http.GetAsync(resolvedUrl);
+                if (!imgRes.IsSuccessStatusCode || _disposed) return;
+                using var imgStream = await imgRes.Content.ReadAsStreamAsync();
+                var img = new System.Drawing.Bitmap(imgStream);
+                if (_disposed) { img.Dispose(); return; }
+                this.Invoke(new Action(() =>
+                {
+                    if (_disposed) { img.Dispose(); return; }
+                    _avatar.Image?.Dispose();
+                    _avatar.Image = img;
+                    _avatar.Invalidate();
+                }));
             }
+            catch { }
         }
     }
 

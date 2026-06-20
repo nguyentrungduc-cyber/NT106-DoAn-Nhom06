@@ -12,7 +12,7 @@ namespace SecureChat.Client.Forms.Chat
     public sealed class frmSelectFriend : Form
     {
         private readonly HashSet<string> _excludeUserIds;
-        private List<UserResponse> _allFriends = new();
+        private List<FriendResponse> _allFriends = new();
         private Panel _pnlList = null!;
         private TextBox _txtSearch;
         private System.Windows.Forms.Timer _fadeTimer;
@@ -135,11 +135,11 @@ namespace SecureChat.Client.Forms.Chat
 
         private async System.Threading.Tasks.Task LoadFriendsAsync()
         {
-            var (ok, res, err) = await ApiClient.Instance.GetAsync<List<UserResponse>>("api/friends");
+            var (ok, res, err) = await ApiClient.Instance.GetAsync<List<FriendResponse>>("api/friends");
             if (ok && res != null)
             {
                 _allFriends = res
-                    .Where(f => !_excludeUserIds.Contains(f.UserID))
+                    .Where(f => f.Friend != null && !_excludeUserIds.Contains(f.Friend.UserID))
                     .ToList();
                 BuildFriendList();
             }
@@ -168,13 +168,15 @@ namespace SecureChat.Client.Forms.Chat
             if (!string.IsNullOrWhiteSpace(keyword) && _txtSearch.ForeColor != Color.FromArgb(0x7F, 0x8D, 0x9A))
             {
                 query = query.Where(f =>
-                    f.DisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
-                    f.Username.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+                    f.Friend != null && (
+                    f.Friend.DisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                    f.Friend.Username.Contains(keyword, StringComparison.OrdinalIgnoreCase)));
             }
 
             int top = 8;
             foreach (var friend in query)
             {
+                if (friend?.Friend == null) continue;
                 var row = BuildFriendRow(friend);
                 row.Location = new Point(0, top);
                 _pnlList.Controls.Add(row);
@@ -197,7 +199,7 @@ namespace SecureChat.Client.Forms.Chat
             _pnlList.ResumeLayout();
         }
 
-        private Panel BuildFriendRow(UserResponse friend)
+        private Panel BuildFriendRow(FriendResponse friend)
         {
             var row = new Panel
             {
@@ -206,10 +208,11 @@ namespace SecureChat.Client.Forms.Chat
                 Cursor = Cursors.Hand
             };
 
-            string initials = friend.DisplayName?.Length > 0
-                ? friend.DisplayName[..1].ToUpperInvariant()
+            var f = friend.Friend;
+            string initials = f.DisplayName?.Length > 0
+                ? f.DisplayName[..1].ToUpperInvariant()
                 : "?";
-            var avatarColor = TG.GetAvatarColor(friend.DisplayName ?? "?");
+            var avatarColor = TG.GetAvatarColor(f.DisplayName ?? "?");
 
             var avatar = new Panel
             {
@@ -236,7 +239,7 @@ namespace SecureChat.Client.Forms.Chat
 
             var lblName = new Label
             {
-                Text = friend.DisplayName ?? friend.Username ?? "Unknown",
+                Text = f.DisplayName ?? f.Username ?? "Unknown",
                 Font = new Font("Segoe UI Semibold", 14f),
                 ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
                 Location = new Point(84, 14),
@@ -245,7 +248,7 @@ namespace SecureChat.Client.Forms.Chat
 
             var lblUsername = new Label
             {
-                Text = $"@{friend.Username}",
+                Text = $"@{f.Username}",
                 Font = new Font("Segoe UI", 11f),
                 ForeColor = Color.FromArgb(0x8A, 0x98, 0xA6),
                 Location = new Point(84, 40),
@@ -268,11 +271,12 @@ namespace SecureChat.Client.Forms.Chat
             return row;
         }
 
-        private void SelectFriend(UserResponse friend)
+        private void SelectFriend(FriendResponse friend)
         {
-            SelectedUserId = friend.UserID;
-            SelectedUserPublicKey = friend.PublicKey;
-            SelectedDisplayName = friend.DisplayName ?? friend.Username;
+            var f = friend.Friend;
+            SelectedUserId = f.UserID;
+            SelectedUserPublicKey = f.PublicKey;
+            SelectedDisplayName = f.DisplayName ?? f.Username;
             DialogResult = DialogResult.OK;
         }
 
