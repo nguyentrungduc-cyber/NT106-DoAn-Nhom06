@@ -4,11 +4,11 @@ namespace SecureChat.Client.Components.Group
 {
     public class ucGroupMemberItem : UserControl
     {
-        private const int AVATAR_SIZE = 48;
+        private const int AVATAR_SIZE = 56;
         private const int LEFT_PAD = 18;
         private const int RIGHT_PAD = 18;
         private const int TEXT_LEFT = LEFT_PAD + AVATAR_SIZE + 12;
-        private const int ITEM_HEIGHT = 78;
+        private const int ITEM_HEIGHT = 100;
         private static readonly Color C_BG_HOVER = Color.FromArgb(0xF4, 0xF7, 0xFB);
         private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
         private static readonly Color C_SUBTEXT = Color.FromArgb(0x8A, 0x98, 0xA6);
@@ -85,12 +85,12 @@ namespace SecureChat.Client.Components.Group
             _avatar = new PictureBox
             {
                 Size = new Size(AVATAR_SIZE, AVATAR_SIZE),
-                Location = new Point(LEFT_PAD, 14),
+                Location = new Point(LEFT_PAD, 20),
                 BackColor = _avatarColor,
                 SizeMode = PictureBoxSizeMode.Zoom,
             };
             _avatar.SizeChanged += (_, __) => ClipCircle(_avatar);
-            _avatar.Paint += (_, __) => ClipCircle(_avatar);
+            ClipCircle(_avatar);
 
             _lblInitial = new Label
             {
@@ -98,7 +98,7 @@ namespace SecureChat.Client.Components.Group
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 16f),
+                Font = new Font("Segoe UI Semibold", 18f),
                 BackColor = Color.Transparent,
             };
             _avatar.Controls.Add(_lblInitial);
@@ -106,9 +106,9 @@ namespace SecureChat.Client.Components.Group
             _lblName = new Label
             {
                 AutoSize = false,
-                Location = new Point(TEXT_LEFT, 14),
-                Size = new Size(240, 26),
-                Font = new Font("Segoe UI Semibold", 11f),
+                Location = new Point(TEXT_LEFT, 18),
+                Size = new Size(280, 32),
+                Font = new Font("Segoe UI Semibold", 12f),
                 ForeColor = C_TEXT,
                 Text = "Name",
                 BackColor = Color.Transparent,
@@ -118,9 +118,9 @@ namespace SecureChat.Client.Components.Group
             _lblStatus = new Label
             {
                 AutoSize = false,
-                Location = new Point(TEXT_LEFT, 40),
-                Size = new Size(240, 24),
-                Font = new Font("Segoe UI", 9.5f),
+                Location = new Point(TEXT_LEFT, 54),
+                Size = new Size(280, 28),
+                Font = new Font("Segoe UI", 10f),
                 ForeColor = C_SUBTEXT,
                 Text = "last seen...",
                 BackColor = Color.Transparent,
@@ -134,7 +134,6 @@ namespace SecureChat.Client.Components.Group
                 Padding = new Padding(0),
                 Visible = false,
             };
-            _badge.Paint += (_, __) => { /* no background */ };
 
             _lblRole = new Label
             {
@@ -202,23 +201,6 @@ namespace SecureChat.Client.Components.Group
             using var path = new GraphicsPath();
             path.AddEllipse(0, 0, pb.Width, pb.Height);
             pb.Region = new Region(path);
-        }
-
-        private static void DrawBadge(Graphics g, Rectangle bounds)
-        {
-            // No background drawing; role is plain text now
-        }
-
-        private static GraphicsPath RoundedRect(Rectangle r, int radius)
-        {
-            int d = radius * 2;
-            var p = new GraphicsPath();
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
-            return p;
         }
     }
 }
