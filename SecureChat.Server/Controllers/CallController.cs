@@ -16,6 +16,7 @@ namespace SecureChat.Controllers
 		CallRepository calls,
 		ConversationRepository conversations,
 		MessageRepository messages,
+		PrivacyRepository privacy,
 		IHubContext<ChatHub> hubContext) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
@@ -85,6 +86,14 @@ namespace SecureChat.Controllers
 			});
 
 			var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+
+			// Respect CallsPrivacy — skip members who don't want calls from this caller
+			var callerUserID = Me;
+			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID).ToList())
+			{
+				if (!await privacy.CanStartCallAsync(callerUserID, m.UserID))
+					activeMembers.Remove(m);
+			}
 
 			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID))
 				await calls.AddParticipantAsync(new CallParticipant {

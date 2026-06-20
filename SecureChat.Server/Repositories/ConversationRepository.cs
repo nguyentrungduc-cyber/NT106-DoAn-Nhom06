@@ -218,6 +218,45 @@ namespace SecureChat.Repositories
 			await db.SaveChangesAsync();
 		}
 
+		public async Task<Conversation> GetOrCreateSavedMessagesConversationAsync(string userID)
+		{
+			var existing = await db.Conversations
+				.Include(c => c.Members)
+				.Include(c => c.LastMessage)
+				.Where(c => c.Type == ConversationType.SavedMessages
+					&& c.Members.Any(m => m.UserID == userID && m.LeftAt == null))
+				.FirstOrDefaultAsync();
+			if (existing is not null)
+				return existing;
+
+			var conv = new Conversation
+			{
+				ConversationID = Guid.NewGuid().ToString("N")[..8],
+				Type = ConversationType.SavedMessages,
+				Name = "Saved Messages",
+				CreatedBy = userID,
+				CreatedAt = DateTime.UtcNow
+			};
+			db.Conversations.Add(conv);
+
+			db.ConversationMembers.Add(new ConversationMember
+			{
+				MemberID     = Guid.NewGuid().ToString("N")[..8],
+				ConversationID = conv.ConversationID,
+				UserID       = userID,
+				EncryptedKey = "",
+				Role         = MemberRole.Owner,
+				JoinedAt     = DateTime.UtcNow
+			});
+
+			await db.SaveChangesAsync();
+
+			return (await db.Conversations
+				.Include(c => c.Members)
+				.Include(c => c.LastMessage)
+				.FirstAsync(c => c.ConversationID == conv.ConversationID))!;
+		}
+
 		public async Task<ConversationMember> UpdateEncryptedKeyAsync(string memberID, string encryptedKey)
 		{
 			var member = await db.ConversationMembers.FindAsync(memberID)

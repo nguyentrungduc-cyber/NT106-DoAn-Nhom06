@@ -13,7 +13,7 @@ namespace SecureChat.Controllers
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations")]
-	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
+	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, PrivacyRepository privacy, IHubContext<ChatHub> hubContext, PresenceTracker presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -70,12 +70,30 @@ namespace SecureChat.Controllers
 			return Ok(res);
 		}
 
+		[HttpGet("saved")]
+		public async Task<IActionResult> GetSavedMessages()
+		{
+			var conv = await conversations.GetOrCreateSavedMessagesConversationAsync(Me);
+			return Ok(ConversationResponse.From(conv));
+		}
+
 		[HttpPost]
 		public async Task<IActionResult> CreateConversation([FromBody] CreateConversationRequest req)
 		{
+			if (req.Type == ConversationType.SavedMessages)
+				return BadRequest(new { error = "Cannot create Saved Messages through this endpoint." });
+
 			foreach (var entry in req.Members)
 				if (!await users.ExistsByIdAsync(entry.UserID))
 					return BadRequest(new { error = $"User '{entry.UserID}' không tồn tại." });
+
+			// Respect MessagesPrivacy for direct conversations
+			if (req.Type == ConversationType.Direct)
+			{
+				var otherID = req.Members.FirstOrDefault(m => m.UserID != Me)?.UserID;
+				if (otherID is not null && !await privacy.CanSendMessageAsync(Me, otherID))
+					return Forbid();
+			}
 
 			if (req.Type == ConversationType.Direct)
 			{
@@ -146,6 +164,8 @@ namespace SecureChat.Controllers
 			var conv = await conversations.GetByIdAsync(conversationID);
 			if (conv is null)
 				return NotFound();
+			if (conv.Type == ConversationType.SavedMessages)
+				return Forbid();
 
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
@@ -180,6 +200,8 @@ namespace SecureChat.Controllers
 			var conv = await conversations.GetByIdAsync(conversationID);
 			if (conv is null)
 				return NotFound();
+			if (conv.Type == ConversationType.SavedMessages)
+				return Forbid();
 
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
@@ -220,12 +242,31 @@ namespace SecureChat.Controllers
 		[HttpPost("{conversationID}/clear")]
 		public async Task<IActionResult> ClearConversationMessages(string conversationID)
 		{
+			var conv = await conversations.GetByIdAsync(conversationID);
+			if (conv is null)
+				return NotFound();
+
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return Forbid();
 
+			// Reset last-read pointer before deleting messages
+			member.LastReadMsgID = null;
+
 			await messages.DeleteAllByConversationAsync(conversationID);
 			await conversations.ClearLastMessageAsync(conversationID);
+
+			// Notify all active members that messages were cleared
+			var members = await conversations.GetActiveMembersAsync(conversationID);
+			foreach (var m in members)
+			{
+				try
+				{
+					await hubContext.Clients.User(m.UserID).SendAsync("MessagesCleared", conversationID);
+				}
+				catch { /* per-user best-effort */ }
+			}
+
 			return NoContent();
 		}
 
@@ -365,6 +406,12 @@ namespace SecureChat.Controllers
 		[HttpPost("{conversationID}/leave")]
 		public async Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
 		{
+			var conv = await conversations.GetByIdAsync(conversationID);
+			if (conv is null)
+				return NotFound();
+			if (conv.Type == ConversationType.SavedMessages)
+				return Forbid();
+
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return NotFound();

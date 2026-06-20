@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureChat.Models;
 
@@ -11,9 +12,11 @@ using SecureChat.Models;
 namespace SecureChat.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260619103208_AddUserPrivacySettings")]
+    partial class AddUserPrivacySettings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -205,7 +208,7 @@ namespace SecureChat.Server.Migrations
 
                     b.ToTable("Conversations", t =>
                         {
-                            t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1, 2)");
+                            t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1)");
                         });
                 });
 

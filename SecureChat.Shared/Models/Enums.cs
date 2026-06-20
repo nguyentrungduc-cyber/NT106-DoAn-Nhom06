@@ -27,7 +27,8 @@ namespace SecureChat.Models
 	public enum ConversationType : byte
 	{
 		Direct = 0,
-		Group = 1
+		Group = 1,
+		SavedMessages = 2
 	}
 
 	public enum FriendRequestStatus : byte
@@ -62,5 +63,20 @@ namespace SecureChat.Models
 		Off = 0,
 		MentionsOnly = 1,
 		All = 2
+	}
+
+	public enum PrivacyLevel : byte
+	{
+		Everybody = 0,
+		Contacts = 1,
+		Nobody = 2
+	}
+
+	public enum AutoDeleteMode : byte
+	{
+		Off = 0,
+		TwentyFourHours = 1,
+		SevenDays = 2,
+		ThirtyDays = 3
 	}
 }
