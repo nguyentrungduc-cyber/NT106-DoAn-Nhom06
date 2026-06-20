@@ -4044,10 +4044,11 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9f),
                 ForeColor = TG.TextSecondary,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Size = new Size(260, 14),
+                AutoSize = false,
+                Size = new Size(260, 20), // 14px trước đó quá thấp cho font 9pt, cắt mất đáy chữ "E"
                 Location = new Point(20, y)
             });
-            y += 22;
+            y += 26;
 
             // Lấy role của mình để quyết định có hiện menu admin không
             var myMember = members.FirstOrDefault(m => m.User?.UserID == _currentUserId);
