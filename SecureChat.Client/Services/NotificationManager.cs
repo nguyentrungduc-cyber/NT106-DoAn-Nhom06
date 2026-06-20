@@ -187,6 +187,12 @@ namespace SecureChat.Client.Services
                 }
             };
 
+            // Show() TRƯỚC khi add vào _activePopups/Reposition — Form cần có
+            // Handle (window handle) đã tạo thì BeginInvoke mới hoạt động được.
+            // Gọi sau cùng từng gây InvalidOperationException khi tạo nhiều
+            // popup liên tiếp (vd nhiều thông báo realtime khi tạo nhóm mới).
+            popup.Show();
+
             lock (_popupLock)
             {
                 _activePopups.Add(popup);
@@ -198,8 +204,6 @@ namespace SecureChat.Client.Services
                 }
                 RepositionPopups();
             }
-
-            popup.Show();
         }
 
         private static void RepositionPopups()
@@ -211,6 +215,7 @@ namespace SecureChat.Client.Services
             for (int i = 0; i < _activePopups.Count; i++)
             {
                 var p = _activePopups[i];
+                if (!p.IsHandleCreated) continue; // tránh InvalidOperationException nếu Form chưa tạo handle
                 int offset = (_activePopups.Count - 1 - i) * (PopupHeight + PopupSpacing);
                 p.BeginInvoke(new Action(() =>
                 {
