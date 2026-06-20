@@ -17,7 +17,7 @@ namespace SecureChat.Client.Forms.Chat
             MinimizeBox = false;
             HelpButton = false;
             ControlBox = false;
-            ClientSize = new Size(400, 400);
+            ClientSize = new Size(440, 400);
             BackColor = Color.White;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
@@ -61,7 +61,7 @@ namespace SecureChat.Client.Forms.Chat
                 ForeColor = TG.TextPrimary,
                 TextAlign = ContentAlignment.MiddleCenter,
                 AutoSize = true,
-                MaximumSize = new Size(360, 0),
+                MaximumSize = new Size(ClientSize.Width - 40, 0),
                 BackColor = Color.Transparent,
             };
             if (lblName.Height < 28) lblName.Height = 28;
@@ -77,7 +77,7 @@ namespace SecureChat.Client.Forms.Chat
                 ForeColor = TG.TextSecondary,
                 TextAlign = ContentAlignment.MiddleCenter,
                 AutoSize = true,
-                MaximumSize = new Size(360, 0),
+                MaximumSize = new Size(ClientSize.Width - 40, 0),
                 BackColor = Color.Transparent,
             };
             if (lblUsername.Height < 20) lblUsername.Height = 20;
@@ -99,7 +99,7 @@ namespace SecureChat.Client.Forms.Chat
                 ForeColor = presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary,
                 TextAlign = ContentAlignment.MiddleCenter,
                 AutoSize = true,
-                MaximumSize = new Size(360, 0),
+                MaximumSize = new Size(ClientSize.Width - 40, 0),
                 BackColor = Color.Transparent,
             };
             lblStatus.Location = new Point((ClientSize.Width - lblStatus.Width) / 2, y);
@@ -125,6 +125,9 @@ namespace SecureChat.Client.Forms.Chat
                 y += 4;
                 AppendInfoField("Bio", bio, ref y);
             }
+
+            // Co lại đúng theo nội dung thật (tránh bị clip khi tên/email/bio dài), nhưng vẫn giữ tối thiểu cho thoáng
+            ClientSize = new Size(ClientSize.Width, Math.Max(380, y + 12));
         }
 
         private void AppendInfoField(string label, string value, ref int y)
