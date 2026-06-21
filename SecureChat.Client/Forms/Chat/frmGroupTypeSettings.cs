@@ -1,3 +1,4 @@
+using SecureChat.Client.Services;
 namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmGroupTypeSettings : Form
@@ -173,7 +174,7 @@ namespace SecureChat.Client.Forms.Chat
             if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
             BackColor = TG.WindowBg;
             Invalidate(true);
-            ApplyThemeToControls(Controls);
+            ThemeRefreshHelper.ApplyTo(this);
         }
 
     }
