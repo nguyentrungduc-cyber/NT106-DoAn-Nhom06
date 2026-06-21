@@ -205,17 +205,17 @@ namespace SecureChat.Client.Forms.Chat
             base.OnFormClosed(e);
         }
         private void OnThemeChanged()
-        {{
-            if (InvokeRequired) {{ Invoke(new Action(OnThemeChanged)); return; }}
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
             BackColor = TG.WindowBg;
             Invalidate(true);
             ApplyThemeToControls(Controls);
-        }}
+        }
 
         private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
-        {{
+        {
             foreach (Control c in controls)
-            {{
+            {
                 if (c.BackColor != Color.Transparent &&
                     c.BackColor != TG.Blue &&
                     c.BackColor != TG.SidebarActive &&
@@ -226,8 +226,8 @@ namespace SecureChat.Client.Forms.Chat
                     c.ForeColor = TG.TextPrimary;
                 c.Invalidate();
                 ApplyThemeToControls(c.Controls);
-            }}
-        }}
+            }
+        }
 
     }
 }

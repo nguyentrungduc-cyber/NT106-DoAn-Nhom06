@@ -428,17 +428,17 @@ namespace SecureChat.Client
         private void ShowError(string msg) { _lblError.Text = msg; _lblError.Visible = true; }
         private void HideError() => _lblError.Visible = false;
         private void OnThemeChanged()
-        {{
-            if (InvokeRequired) {{ Invoke(new Action(OnThemeChanged)); return; }}
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
             BackColor = TG.WindowBg;
             Invalidate(true);
             ApplyThemeToControls(Controls);
-        }}
+        }
 
         private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
-        {{
+        {
             foreach (Control c in controls)
-            {{
+            {
                 if (c.BackColor != Color.Transparent &&
                     c.BackColor != TG.Blue &&
                     c.BackColor != TG.SidebarActive &&
@@ -452,8 +452,8 @@ namespace SecureChat.Client
 
                 c.Invalidate();
                 ApplyThemeToControls(c.Controls);
-            }}
-        }}
+            }
+        }
 
     }
 }
