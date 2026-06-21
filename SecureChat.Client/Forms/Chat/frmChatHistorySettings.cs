@@ -104,5 +104,3 @@ namespace SecureChat.Client.Forms.Chat
         }
     }
 }
-using SecureChat.Client.Services;
-using System.Drawing;
