@@ -106,7 +106,7 @@ namespace SecureChat.Client.Forms.Chat
             _pnlList = new Panel
             {
                 Location = new Point(0, 114),
-                Size = new Size(500, 560),
+                Size = new Size(500, ClientSize.Height - 114 - 66),
                 AutoScroll = true,
                 BackColor = Color.White
             };
@@ -154,16 +154,23 @@ namespace SecureChat.Client.Forms.Chat
 
         private Panel BuildMemberRow(MemberItemData m)
         {
+            const int rowWidth = 500;
+            const int rightMargin = 20;
+            const int badgeWidth = 90;
+            const int badgeX = rowWidth - rightMargin - badgeWidth;
+            const int nameX = 92;
+            const int nameWidth = badgeX - nameX - 8;
+
             var row = new Panel
             {
-                Size = new Size(500, 84),
+                Size = new Size(rowWidth, 96),
                 BackColor = Color.White
             };
 
             var avatar = new Panel
             {
-                Location = new Point(20, 14),
-                Size = new Size(52, 52),
+                Location = new Point(20, 20),
+                Size = new Size(56, 56),
                 BackColor = m.AvatarColor
             };
             avatar.Paint += (_, e) =>
@@ -188,8 +195,9 @@ namespace SecureChat.Client.Forms.Chat
                 Text = m.Name,
                 Font = new Font("Segoe UI Semibold", 16f),
                 ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
-                Location = new Point(92, 16),
-                Size = new Size(240, 30)
+                Location = new Point(nameX, 16),
+                Size = new Size(nameWidth, 34),
+                AutoEllipsis = true
             };
 
             var lblStatus = new Label
@@ -199,8 +207,9 @@ namespace SecureChat.Client.Forms.Chat
                 ForeColor = string.Equals(m.Status, "online", StringComparison.OrdinalIgnoreCase)
                     ? Color.FromArgb(0x2A, 0xAB, 0xEE)
                     : Color.FromArgb(0x8A, 0x98, 0xA6),
-                Location = new Point(92, 46),
-                Size = new Size(230, 24)
+                Location = new Point(nameX, 52),
+                Size = new Size(nameWidth, 26),
+                AutoEllipsis = true
             };
 
             row.Controls.AddRange(new Control[] { avatar, lblName, lblStatus });
@@ -214,8 +223,8 @@ namespace SecureChat.Client.Forms.Chat
                     ForeColor = Color.FromArgb(0x9A, 0x77, 0xD5),
                     BackColor = Color.FromArgb(0xEF, 0xE8, 0xFF),
                     TextAlign = ContentAlignment.MiddleCenter,
-                    Location = new Point(420, 30),
-                    Size = new Size(64, 28)
+                    Location = new Point(badgeX, 34),
+                    Size = new Size(badgeWidth, 28)
                 };
                 badge.Paint += (_, e) =>
                 {

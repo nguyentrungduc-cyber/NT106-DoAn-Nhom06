@@ -4074,7 +4074,7 @@ namespace SecureChat.Client
                 var rowPanel = new Panel
                 {
                     Width  = body.ClientSize.Width > 0 ? body.ClientSize.Width : 340,
-                    Height = ucGroupMemberItem.ITEM_HEIGHT, // PHẢI khớp ITEM_HEIGHT thật (78) - trước để 56 nên avatar/status bị cắt cụt ở đáy
+                    Height = ucGroupMemberItem.ITEM_HEIGHT, // dùng đúng hằng số thật, tránh lệch lại như trước (56 vs 78/100)
                     Location = new Point(0, y),
                     BackColor = Color.Transparent
                 };
@@ -4111,7 +4111,7 @@ namespace SecureChat.Client
                         Text      = "⋮",
                         FlatStyle = FlatStyle.Flat,
                         Size      = new Size(28, 28),
-                        Location  = new Point(rowPanel.Width - 30, 16), // căn theo dòng tên (avatar+tên ở y~14), không phải giữa cả khối 78px
+                        Location  = new Point(rowPanel.Width - 30, (rowPanel.Height - 28) / 2),
                         Cursor    = Cursors.Hand,
                         Font      = TG.FontSemiBold(13f),
                         ForeColor = TG.TextSecondary,
