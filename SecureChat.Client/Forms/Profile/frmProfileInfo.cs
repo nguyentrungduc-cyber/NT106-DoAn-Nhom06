@@ -36,9 +36,7 @@ namespace SecureChat.Client.Forms.Profile
             _profile = profile ?? throw new ArgumentNullException(nameof(profile));
             InitializeComponent();
             BuildUI();
-            // Refresh theme nếu Night Mode toggle khi form đang mở
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             LoadProfile(profile);
             Resize += (_, __) => LayoutDynamic();
             LayoutDynamic();

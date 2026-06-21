@@ -43,9 +43,7 @@ namespace SecureChat.Client.Forms.Chat
         {
             InitializeComponent();
             BuildUI();
-            // Refresh theme nếu Night Mode toggle khi form đang mở
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             // Dữ liệu nhóm sẽ được load từ bên ngoài qua LoadGroup(...)
         }
 

@@ -32,9 +32,7 @@ namespace SecureChat.Client.Forms.Settings
         public frmLanguage()
         {
             InitializeComponent();
-            // Night mode: refresh khi toggle
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             BuildUI();
             Load += (_, __) => LoadFromSettings();
             Resize += (_, __) => Relayout();
@@ -434,35 +432,6 @@ namespace SecureChat.Client.Forms.Settings
             int thumbX = active ? rect.Right - rect.Height + 2 : rect.Left + 2;
             g.FillEllipse(thumbBrush, thumbX, rect.Top + 2, rect.Height - 4, rect.Height - 4);
         }
-
-        private void OnThemeChanged()
-        {
-            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            BackColor = TG.WindowBg;
-            Invalidate(true);
-            ApplyThemeToControls(Controls);
-        }
-
-        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
-        {
-            foreach (Control c in controls)
-            {
-                if (c.BackColor != Color.Transparent &&
-                    c.BackColor != TG.Blue &&
-                    c.BackColor != TG.SidebarActive &&
-                    c.BackColor != TG.TitleBarBg &&
-                    c.Tag as string != "accent")
-                    c.BackColor = TG.WindowBg;
-
-                if (c.ForeColor != Color.White &&
-                    c.Tag as string != "white-fg")
-                    c.ForeColor = TG.TextPrimary;
-
-                c.Invalidate();
-                ApplyThemeToControls(c.Controls);
-            }
-        }
-
     }
 
     internal class frmDoNotTranslate : Form

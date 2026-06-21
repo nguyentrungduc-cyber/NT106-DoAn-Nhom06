@@ -38,9 +38,7 @@ namespace SecureChat.Client.Forms.Settings
         {
             InitializeComponent();
             BuildUI();
-            // Refresh theme nếu Night Mode toggle khi form đang mở
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             Load += async (_, __) => await LoadSettingsAsync();
         }
 
