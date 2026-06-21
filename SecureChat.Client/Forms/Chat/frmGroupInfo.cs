@@ -23,7 +23,8 @@ namespace SecureChat.Client.Forms.Chat
         private static readonly Color C_DANGER = Color.FromArgb(0xE2, 0x4B, 0x4A);
 
         private Panel _pnlList = null!;
-        private PictureBox _pbAvatar = null!;
+        private Panel _pbAvatar = null!;
+        private Image? _pbAvatarImage = null;
         private Label _lblName = null!;
         private Label _lblDescription = null!;
         private Label _lblCount = null!;
@@ -82,17 +83,19 @@ namespace SecureChat.Client.Forms.Chat
             btnClose.Location = new Point(FORM_WIDTH - 46, 14);
             btnClose.Click += (_, __) => Close();
 
-            _pbAvatar = new PictureBox
+            _pbAvatar = new Panel
             {
                 Size = new Size(110, 110),
                 Location = new Point((FORM_WIDTH - 110) / 2, 34),
                 BackColor = Color.Transparent,
-                SizeMode = PictureBoxSizeMode.Zoom
             };
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_pbAvatar, true);
             _pbAvatar.Paint += (_, pe) =>
             {
                 var rect = new Rectangle(0, 0, _pbAvatar.Width, _pbAvatar.Height);
-                TG.DrawCircleAvatar(pe.Graphics, rect, _pbAvatar.Image, _lblName?.Text ?? "",
+                TG.DrawCircleAvatar(pe.Graphics, rect, _pbAvatarImage, _lblName?.Text ?? "",
                     Color.FromArgb(0xF4, 0xA4, 0x44));
             };
 
@@ -436,10 +439,10 @@ namespace SecureChat.Client.Forms.Chat
             _lblCount.Text = $"{members.Count} members";
             _lblMembersTitle.Text = $"{members.Count} MEMBERS";
 
-            var oldAvatar = _pbAvatar.Image;
-            _pbAvatar.Image = avatar;
+            var oldAvatar = _pbAvatarImage;
+            _pbAvatarImage = avatar != null ? new Bitmap(avatar) : null;
             oldAvatar?.Dispose();
-            _pbAvatar.BackColor = avatar == null ? Color.FromArgb(0xF4, 0xA4, 0x44) : Color.Transparent;
+            _pbAvatar.Invalidate();
 
             _pnlList.SuspendLayout();
             DisposeOldMemberItems();

@@ -124,8 +124,12 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Size = new Size(AVATAR_SIZE, AVATAR_SIZE),
                 Location = new Point(HEADER_PADDING_X, 56),
-                BackColor = TG.GetAvatarColor(_profile.FullName)
+                BackColor = Color.Transparent
             };
+            // Enable DoubleBuffer để tránh flicker và artifact hình vuông
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_avatarPanel, true);
             _avatarPanel.Paint += (_, e) =>
             {
                 var rect = new Rectangle(0, 0, _avatarPanel.Width, _avatarPanel.Height);
