@@ -1,4 +1,3 @@
-using SecureChat.Client.Resources.Themes;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
