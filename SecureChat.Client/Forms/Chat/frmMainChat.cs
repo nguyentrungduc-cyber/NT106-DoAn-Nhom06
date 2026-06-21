@@ -49,6 +49,8 @@ namespace SecureChat.Client
         private readonly VoicePlaybackService _voicePlaybackService = new(); // shared singleton – passed into each ucAudioBubble
 
         private Panel _pnlInputBar; // thanh nhập tin nhắn bên dưới
+        private Panel _pnlSidebarHeader; // header trên cùng của sidebar trái (hamburger + "SecureChat")
+        private Panel _sbHeader; // header của right sidebar (group/user info panel)
         private TelegramTextBox _tbMessage; // TextBox gõ tin nhắn
         private Label _lblChatName, _lblChatStatus; // tên và trạng thái người nhận
         private AvatarControl _chatAvatar; //  avatar tròn người nhận
@@ -636,7 +638,7 @@ namespace SecureChat.Client
             _pnlSidebar = new Panel { BackColor = TG.SidebarBg };
 
             // ── Header xanh ──────────────────────────
-            var pnlHeader = new Panel { Height = 52, BackColor = TG.TitleBarBg, Dock = DockStyle.Top };
+            _pnlSidebarHeader = new Panel { Height = 52, BackColor = TG.TitleBarBg, Dock = DockStyle.Top };
             // Gắn chặt panel này vào mép trên cùng của sidebar.
 
             _btnHamburger = new Button
@@ -680,13 +682,13 @@ namespace SecureChat.Client
             };
             btnEdit.FlatAppearance.BorderSize = 0;
 
-            // pnlHeader.Controls.AddRange(new Control[] { _btnHamburger, lblTitle, btnEdit });
-            pnlHeader.Controls.AddRange(new Control[] { _btnHamburger, lblTitle });
+            // _pnlSidebarHeader.Controls.AddRange(new Control[] { _btnHamburger, lblTitle, btnEdit });
+            _pnlSidebarHeader.Controls.AddRange(new Control[] { _btnHamburger, lblTitle });
 
-            pnlHeader.Resize += (s, e) =>
+            _pnlSidebarHeader.Resize += (s, e) =>
             {
-                lblTitle.Width = pnlHeader.Width - 96;
-                btnEdit.Location = new Point(pnlHeader.Width - 42, 0);
+                lblTitle.Width = _pnlSidebarHeader.Width - 96;
+                btnEdit.Location = new Point(_pnlSidebarHeader.Width - 42, 0);
             };
 
             // ── Search ────────────────────────────────
@@ -738,7 +740,7 @@ namespace SecureChat.Client
             _pnlSidebar.Controls.Add(_pnlEmptyState);
             _pnlSidebar.Controls.Add(_pnlConvList);
             _pnlSidebar.Controls.Add(pnlSearch);
-            _pnlSidebar.Controls.Add(pnlHeader);
+            _pnlSidebar.Controls.Add(_pnlSidebarHeader);
 
             UpdateEmptyStateUI();
         }
@@ -1277,8 +1279,8 @@ namespace SecureChat.Client
             // ── Right Sidebar (profile / group info) ────────
             _pnlRightSidebar = new Panel { Width = 300, BackColor = TG.SidebarBg, Visible = false };
 
-            var sbHeader = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = TG.SidebarBg };
-            sbHeader.Paint += (_, e) => e.Graphics.DrawLine(new Pen(TG.Divider), 0, 51, sbHeader.Width, 51);
+            _sbHeader = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = TG.SidebarBg };
+            _sbHeader.Paint += (_, e) => e.Graphics.DrawLine(new Pen(TG.Divider), 0, 51, _sbHeader.Width, 51);
 
             var sbClose = new Button
             {
@@ -1297,7 +1299,7 @@ namespace SecureChat.Client
             sbClose.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 0, 0, 0);
             sbClose.Click += (_, _) => { _isSidebarOpen = false; _btnToggleSidebar.Text = "⏪"; AdjustLayout(); };
 
-            sbHeader.Controls.Add(new Label
+            _sbHeader.Controls.Add(new Label
             {
                 Text = "Info",
                 Font = TG.FontSemiBold(10f),
@@ -1308,12 +1310,12 @@ namespace SecureChat.Client
                 Location = new Point(12, 14),
                 BackColor = Color.Transparent
             });
-            sbHeader.Controls.Add(sbClose);
+            _sbHeader.Controls.Add(sbClose);
 
             _sbBody = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.SidebarBg };
 
             _pnlRightSidebar.Controls.Add(_sbBody);
-            _pnlRightSidebar.Controls.Add(sbHeader);
+            _pnlRightSidebar.Controls.Add(_sbHeader);
 
             // _pnlMessages.Resize += (s, e) => _pnlMessages.Invalidate(); // bỏ vì đã có PaintChatBackground tự xử lý.
             _pnlMessages.Resize += (s, e) => UpdateCachedBackground();
@@ -3637,7 +3639,7 @@ namespace SecureChat.Client
             }
 
             // Input bar
-            if (_pnlInput != null) _pnlInput.BackColor = TG.WindowBg;
+            if (_pnlInputBar != null) _pnlInputBar.BackColor = TG.WindowBg;
             if (_tbMessage != null)
             {
                 _tbMessage.BackColor = TG.InputBg;
