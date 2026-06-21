@@ -8,7 +8,7 @@ namespace SecureChat.Client.Components.Group
         private const int LEFT_PAD = 12;
         private const int RIGHT_PAD = 10;
         private const int TEXT_LEFT = LEFT_PAD + AVATAR_SIZE + 12;
-        private const int ITEM_HEIGHT = 78;
+        public const int ITEM_HEIGHT = 78;
         private static readonly Color C_BG_HOVER = Color.FromArgb(0xF4, 0xF7, 0xFB);
         private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
         private static readonly Color C_SUBTEXT = Color.FromArgb(0x8A, 0x98, 0xA6);
