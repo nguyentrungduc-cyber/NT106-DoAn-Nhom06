@@ -81,5 +81,58 @@ namespace SecureChat.Client
             if (string.IsNullOrEmpty(name)) return AvatarColors[0];
             return AvatarColors[Math.Abs(name.GetHashCode()) % AvatarColors.Length];
         }
+
+        // === Helper: vẽ avatar tròn chuẩn (antialiased) lên Graphics ===
+        // Dùng trong Paint handler của Panel/Control thay thế ClipCircle + Region
+        public static void DrawCircleAvatar(
+            Graphics g,
+            Rectangle rect,
+            Image? photo,
+            string displayName,
+            Color? bgColor = null)
+        {
+            g.SmoothingMode      = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.InterpolationMode  = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode    = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+
+            // Shrink 1px mỗi chiều để vòng tròn không bị cắt ở mép
+            var r = new Rectangle(rect.X + 1, rect.Y + 1, rect.Width - 2, rect.Height - 2);
+
+            using var path = new System.Drawing.Drawing2D.GraphicsPath();
+            path.AddEllipse(r);
+
+            if (photo != null)
+            {
+                var oldClip = g.Clip;
+                g.SetClip(path);
+                g.DrawImage(photo, r);
+                g.Clip = oldClip;
+            }
+            else
+            {
+                var color = bgColor ?? GetAvatarColor(displayName);
+                using var fill = new SolidBrush(color);
+                g.FillEllipse(fill, r);
+
+                // Initials
+                string initials = GetInitials(displayName);
+                float fontSize = Math.Max(10f, r.Width * 0.34f);
+                using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
+                TextRenderer.DrawText(g, initials, font, r, Color.White,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
+        }
+
+        private static string GetInitials(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "?";
+            var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+                return (parts[0][0].ToString() + parts[^1][0].ToString()).ToUpperInvariant();
+            var s = parts[0];
+            return (s.Length >= 2 ? s[..2] : s).ToUpperInvariant();
+        }
     }
 }

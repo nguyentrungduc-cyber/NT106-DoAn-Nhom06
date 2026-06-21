@@ -86,11 +86,15 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Size = new Size(110, 110),
                 Location = new Point((FORM_WIDTH - 110) / 2, 34),
-                BackColor = Color.FromArgb(0xF4, 0xA4, 0x44),
+                BackColor = Color.Transparent,
                 SizeMode = PictureBoxSizeMode.Zoom
             };
-            _pbAvatar.SizeChanged += (_, __) => ClipCircle(_pbAvatar);
-            ClipCircle(_pbAvatar);
+            _pbAvatar.Paint += (_, pe) =>
+            {
+                var rect = new Rectangle(0, 0, _pbAvatar.Width, _pbAvatar.Height);
+                TG.DrawCircleAvatar(pe.Graphics, rect, _pbAvatar.Image, _lblName?.Text ?? "",
+                    Color.FromArgb(0xF4, 0xA4, 0x44));
+            };
 
             _lblName = new Label
             {

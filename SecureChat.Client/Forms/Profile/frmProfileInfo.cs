@@ -71,10 +71,15 @@ namespace SecureChat.Client.Forms.Profile
             _avatar = new PictureBox
             {
                 Size = new Size(120, 120),
-                BackColor = TG.GetAvatarColor(_profile.FullName),
+                BackColor = Color.Transparent,
                 SizeMode = PictureBoxSizeMode.Zoom,
             };
-            _avatar.Paint += (_, __) => ClipCircle(_avatar);
+            _avatar.Paint += (_, pe) =>
+            {
+                var rect = new Rectangle(0, 0, _avatar.Width, _avatar.Height);
+                TG.DrawCircleAvatar(pe.Graphics, rect, _avatar.Image, _profile.FullName,
+                    TG.GetAvatarColor(_profile.FullName));
+            };
 
             _lblInitial = new Label
             {
