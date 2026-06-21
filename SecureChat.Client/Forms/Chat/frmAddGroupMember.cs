@@ -1,4 +1,5 @@
 using System;
+using SecureChat.Client.Services;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -33,6 +34,8 @@ namespace SecureChat.Client.Forms.Chat
         /// <param name="existingMemberUserIds">UserID của các thành viên đã có trong nhóm (sẽ bị loại khỏi danh sách chọn)</param>
         public frmAddGroupMember(IEnumerable<string> existingMemberUserIds)
         {
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             _existingMemberIds = new HashSet<string>(existingMemberUserIds);
             Text = "Thêm thành viên";
             Size = new Size(420, 560);
@@ -200,5 +203,30 @@ namespace SecureChat.Client.Forms.Chat
             }
             _flpList.ResumeLayout();
         }
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {
+            foreach (Control c in controls)
+            {
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+                if (c.ForeColor != Color.White && c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }
+        }
+
     }
 }
