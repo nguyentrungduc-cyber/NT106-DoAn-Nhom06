@@ -391,15 +391,12 @@ namespace SecureChat.Client.Forms.Chat
                 }
             }
         }
-    }
 
 
         private void OnThemeChanged()
         {
             if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            BackColor = TG.WindowBg;
-            Invalidate(true);
-            ApplyThemeToControls(Controls);
+            ThemeRefreshHelper.ApplyTo(this);  // ← delegate hết cho helper
         }
-
+    }
 }

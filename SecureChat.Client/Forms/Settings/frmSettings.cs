@@ -145,7 +145,7 @@ namespace SecureChat.Client.Forms.Settings
                 var initials = GetInitials(_profile.FullName);
                 var sz = e.Graphics.MeasureString(initials, f);
                 e.Graphics.DrawString(initials, f, Brushes.White,
-                    (_avatarPanel.Width - sz.Width) / 2,    
+                    (_avatarPanel.Width - sz.Width) / 2,
                     (_avatarPanel.Height - sz.Height) / 2);
             };
 
@@ -214,7 +214,7 @@ namespace SecureChat.Client.Forms.Settings
             panel.Click += (_, __) => onClick();
 
             int labelX = 20; // Default position if no icon
-            
+
             // Only add icon if iconFile is not empty
             if (!string.IsNullOrEmpty(iconFile))
             {
@@ -542,15 +542,13 @@ namespace SecureChat.Client.Forms.Settings
                 y += ITEM_HEIGHT;
             }
         }
-    }
+
 
 
         private void OnThemeChanged()
         {
             if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            BackColor = TG.WindowBg;
-            Invalidate(true);
-            ApplyThemeToControls(Controls);
+            ThemeRefreshHelper.ApplyTo(this);  // ← delegate hết cho helper
         }
-
+    }
 }

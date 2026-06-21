@@ -1,3 +1,6 @@
+using System.Drawing;
+using SecureChat.Client.Services;
+
 namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmAdministratorsSettings : Form
@@ -160,8 +163,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 using var path = new System.Drawing.Drawing2D.GraphicsPath();
-using System.Drawing;
-using SecureChat.Client.Services;
+
                 path.AddEllipse(0, 0, avatar.Width, avatar.Height);
                 avatar.Region = new Region(path);
             };
@@ -244,9 +246,7 @@ using SecureChat.Client.Services;
         private void OnThemeChanged()
         {
             if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            BackColor = TG.WindowBg;
-            Invalidate(true);
-            ApplyThemeToControls(Controls);
+            ThemeRefreshHelper.ApplyTo(this);  // ← delegate hết cho helper
         }
 
     }
