@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 using SecureChat.Client.Helpers;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Shared
 {
