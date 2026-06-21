@@ -171,68 +171,63 @@ namespace SecureChat.Client
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var g = e.Graphics;
+            g.SmoothingMode       = SmoothingMode.AntiAlias;
+            g.InterpolationMode   = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode     = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            g.CompositingQuality  = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
 
-
-            // --- DÒNG FIX QUAN TRỌNG ---
-            if (this.Parent != null)
+            // Xóa nền bằng màu parent để tránh artifact viền răng cưa
+            if (Parent != null)
             {
-                using var parentBrush = new SolidBrush(this.Parent.BackColor);
-                e.Graphics.FillRectangle(parentBrush, this.ClientRectangle);
+                using var parentBrush = new SolidBrush(Parent.BackColor);
+                g.FillRectangle(parentBrush, ClientRectangle);
             }
 
-
-
             int size = Math.Min(Width, Height);
-            var rect = new Rectangle(0, 0, size - 1, size - 1);
+            // Shrink 1px để tránh vòng tròn bị cắt ở mép control
+            var rect = new Rectangle(1, 1, size - 2, size - 2);
 
             if (Photo != null)
             {
-                using var path = new GraphicsPath();
+                // Clip hình tròn cho ảnh
+                using var path = new System.Drawing.Drawing2D.GraphicsPath();
                 path.AddEllipse(rect);
-                e.Graphics.SetClip(path);
-                e.Graphics.DrawImage(Photo, rect);
-                e.Graphics.ResetClip();
+                var oldClip = g.Clip;
+                g.SetClip(path);
+                g.DrawImage(Photo, rect);
+                g.Clip = oldClip;
             }
             else
             {
-                e.Graphics.FillEllipse(new SolidBrush(_avatarColor == default ? TG.Blue : _avatarColor), rect);
+                // Vẽ nền tròn màu
+                using var fill = new SolidBrush(_avatarColor == default ? TG.Blue : _avatarColor);
+                g.FillEllipse(fill, rect);
+
+                // Vẽ chữ initials — dùng GraphicsUnit.Pixel để size nhất quán
                 string initials = GetInitials(DisplayName);
-
-                using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                /*
-                float fontSizee = size * 0.32f;
-
-                // e.Graphics.DrawString(initials, TG.FontSemiBold(fontSize), Brushes.White, rect, sf);
-                // TẠO RECT RIÊNG CHO CHỮ: Đẩy Y xuống 2 pixel để bù trừ độ lệch của Font
-                RectangleF textRect = new RectangleF(rect.X, rect.Y + 2, rect.Width, rect.Height);
-
-                e.Graphics.DrawString(initials, TG.FontSemiBold(fontSizee), Brushes.White, textRect, sf);
-                */
-
-                // Draw initials as strict single-line text to avoid wrap/clipping artifacts.
                 float fontSize = Math.Max(10f, size * 0.34f);
                 using var textFont = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
                 TextRenderer.DrawText(
-                    e.Graphics,
-                    initials,
-                    textFont,
-                    rect,
-                    Color.White,
+                    g, initials, textFont, rect, Color.White,
                     TextFormatFlags.HorizontalCenter |
-                    TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.SingleLine |
-                    TextFormatFlags.NoPadding |
-                    TextFormatFlags.EndEllipsis);
+                    TextFormatFlags.VerticalCenter   |
+                    TextFormatFlags.SingleLine       |
+                    TextFormatFlags.NoPadding);
             }
 
+            // Dot online
             if (ShowOnline)
             {
                 int dotSize = Math.Max(8, size / 5);
-                int dotX = size - dotSize;
-                int dotY = size - dotSize;
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0xFF, 0xFF, 0xFF)), dotX - 1, dotY - 1, dotSize + 2, dotSize + 2);
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0x4D, 0xD9, 0x64)), dotX, dotY, dotSize, dotSize);
+                int dotX = rect.Right - dotSize + 1;
+                int dotY = rect.Bottom - dotSize + 1;
+                // Viền trắng
+                using var whiteBrush = new SolidBrush(Color.White);
+                g.FillEllipse(whiteBrush, dotX - 2, dotY - 2, dotSize + 4, dotSize + 4);
+                // Chấm xanh
+                using var greenBrush = new SolidBrush(Color.FromArgb(0x4D, 0xD9, 0x64));
+                g.FillEllipse(greenBrush, dotX, dotY, dotSize, dotSize);
             }
         }
 
