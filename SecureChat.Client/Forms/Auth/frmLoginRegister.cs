@@ -193,7 +193,7 @@ namespace SecureChat.Client
             Text = text,
             Font = TG.FontRegular(8.5f),
             ForeColor = TG.Blue,
-            Height = 18,
+            Height = 22, // +4px an toàn hơn cho font 8.5pt, tránh clip đáy chữ
             BackColor = Color.Transparent
         };
 

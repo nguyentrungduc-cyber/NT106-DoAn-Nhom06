@@ -110,7 +110,7 @@ namespace SecureChat.Client.Components.Chat
             _lblTitle = new Label
             {
                 Location  = new Point(60, 10),
-                Size      = new Size(228, 18),
+                Size      = new Size(228, 20), // +2px an toàn hơn, vẫn cách seek track ở y=32
                 Font      = new Font("Segoe UI", 8.5f, FontStyle.Bold),
                 ForeColor = TextDark,
                 Text      = "Voice message",
@@ -156,7 +156,7 @@ namespace SecureChat.Client.Components.Chat
             _lblTime = new Label
             {
                 Location  = new Point(60, 42),
-                Size      = new Size(228, 16),
+                Size      = new Size(228, 20), // +4px an toàn hơn, vẫn nằm trong H=64
                 Font      = new Font("Segoe UI", 7.5f),
                 ForeColor = TextGray,
                 Text      = "0:00 / 0:00",

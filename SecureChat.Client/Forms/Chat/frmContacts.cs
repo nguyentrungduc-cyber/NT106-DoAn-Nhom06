@@ -596,7 +596,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 22,
+                Height = 26, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(62, 12),
                 BackColor = Color.Transparent,
                 AutoEllipsis = true // Tự động thêm "..." nếu tên quá dài
@@ -608,7 +608,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
-                Height = 20,
+                Height = 24, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(62, 32),
                 BackColor = Color.Transparent,
                 AutoEllipsis = true
@@ -928,7 +928,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 20,
+                Height = 24, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(62, 12),
                 Width = initialWidth - 80,
                 BackColor = Color.Transparent,
@@ -940,7 +940,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
-                Height = 18,
+                Height = 22, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(62, 32),
                 Width = initialWidth - 112,
                 BackColor = Color.Transparent,
@@ -1115,7 +1115,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 20,
+                Height = 24, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(64, 12),
                 Width = initialWidth - 76,
                 BackColor = Color.Transparent,
@@ -1127,7 +1127,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
-                Height = 22,
+                Height = 26, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(64, 32),
                 Width = initialWidth - 76,
                 BackColor = Color.Transparent,
@@ -1376,7 +1376,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 20,
+                Height = 24, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(58, 10),
                 Width = initialWidth - 158,
                 BackColor = Color.Transparent,
@@ -1388,7 +1388,7 @@ namespace SecureChat.Client
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextBlue,
                 AutoSize = false,
-                Height = 20,
+                Height = 24, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(58, 30),
                 Width = initialWidth - 158,
                 BackColor = Color.Transparent,
@@ -1569,7 +1569,7 @@ namespace SecureChat.Client
                 Font = TG.FontSemiBold(9.5f),
                 ForeColor = TG.TextName,
                 AutoSize = false,
-                Height = 20,
+                Height = 24, // +4px an toan hon cho font - tranh clip day chu
                 Location = new Point(nameLeft, 20),
                 Width = Math.Max(0, initialWidth - nameLeft - btnW - rightMargin - gap),
                 BackColor = Color.Transparent,
