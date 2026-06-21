@@ -1,3 +1,5 @@
+using SecureChat.Client.Services;
+
 namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmInviteLinksSettings : Form
