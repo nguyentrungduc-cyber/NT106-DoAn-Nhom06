@@ -77,6 +77,7 @@ namespace SecureChat.Client.Forms.Settings
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 740);
             BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = TG.FontRegular(10.5f);
             DoubleBuffered = true;
 

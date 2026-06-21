@@ -44,6 +44,7 @@ namespace SecureChat.Client.Forms.Chat
             MinimizeBox = false;
             ControlBox = false;
             BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(454, 740);
             Opacity = 0;

@@ -48,6 +48,7 @@ namespace SecureChat.Client.Forms.Profile
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 480);
             BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f, GraphicsUnit.Point);
             DoubleBuffered = true;
 

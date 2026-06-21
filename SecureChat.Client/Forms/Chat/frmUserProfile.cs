@@ -20,6 +20,7 @@ namespace SecureChat.Client.Forms.Chat
             ControlBox = false;
             ClientSize = new Size(400, 400);
             BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
