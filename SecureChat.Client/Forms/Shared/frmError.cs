@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 using SecureChat.Client.Helpers;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Shared
 {
@@ -38,6 +39,8 @@ namespace SecureChat.Client.Forms.Shared
             _title = string.IsNullOrWhiteSpace(title) ? "Thông báo" : title;
             _message = message ?? string.Empty;
             BuildUi();
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
         }
 
         // ── Static helpers ─────────────────────────────────────────────
@@ -77,7 +80,7 @@ namespace SecureChat.Client.Forms.Shared
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = TG.FontRegular(9.5f);
             DoubleBuffered = true;
             Size = new Size(420, 240);
@@ -150,7 +153,7 @@ namespace SecureChat.Client.Forms.Shared
                 Font = TG.FontRegular(10f),
                 ForeColor = TG.TextPrimary,
                 AutoSize = false,
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Padding = new Padding(24, 12, 24, 12),
                 Dock = DockStyle.Fill,
@@ -161,7 +164,7 @@ namespace SecureChat.Client.Forms.Shared
             {
                 Height = 64,
                 Dock = DockStyle.Bottom,
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Padding = new Padding(20, 8, 20, 16),
             };
             var btnOk = new TelegramButton
@@ -211,5 +214,12 @@ namespace SecureChat.Client.Forms.Shared
         // P/Invoke để bo tròn cho FormBorderStyle.None
         [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
         private static extern IntPtr NativeRoundRect(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect, int nWidthEllipse, int nHeightEllipse);
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+        }
+
     }
 }

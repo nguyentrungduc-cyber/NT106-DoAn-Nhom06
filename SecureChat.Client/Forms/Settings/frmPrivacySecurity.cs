@@ -12,13 +12,7 @@ namespace SecureChat.Client.Forms.Settings
 {
     public class frmPrivacySecurity : Form
     {
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x7A, 0x8A, 0x99);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x33, 0x99, 0xFF);
-        private static readonly Color C_HOVER = Color.FromArgb(0xF2, 0xF5, 0xF9);
-        private static readonly Color C_STATUS_ON = Color.FromArgb(0x33, 0x99, 0xFF);
-        private static readonly Color C_BORDER = Color.FromArgb(0xE8, 0xEC, 0xF1);
+        // Colors read from TG at paint time
 
         private TableLayoutPanel _table = null!;
         private Label _lblAutoDeleteStatus = null!;
@@ -44,6 +38,7 @@ namespace SecureChat.Client.Forms.Settings
         {
             InitializeComponent();
             BuildUI();
+            ThemeRefreshHelper.Hook(this);
             Load += async (_, __) => await LoadSettingsAsync();
         }
 
@@ -76,7 +71,7 @@ namespace SecureChat.Client.Forms.Settings
                     foreach (Control child in p.Controls)
                     {
                         if (child is Label l && l.TextAlign == ContentAlignment.MiddleLeft) textLbl = l;
-                        if (child is Label l2 && l2.ForeColor == C_ACCENT) statusLbl = l2;
+                        if (child is Label l2 && l2.ForeColor == TG.CAccent) statusLbl = l2;
                     }
                     if (textLbl != null && statusLbl != null && PrivacyKeyMap.TryGetValue(textLbl.Text, out var prop))
                     {
@@ -111,7 +106,7 @@ namespace SecureChat.Client.Forms.Settings
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(560, 780);
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
@@ -119,7 +114,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Padding = new Padding(12, 8, 12, 12)
             };
             Controls.Add(scroll);
@@ -130,7 +125,7 @@ namespace SecureChat.Client.Forms.Settings
                 Dock = DockStyle.Top,
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
             };
             _table.RowStyles.Clear();
             scroll.Controls.Add(_table);
@@ -160,13 +155,13 @@ namespace SecureChat.Client.Forms.Settings
             var lbl = new Label
             {
                 Text = text,
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI Semibold", 11f),
                 AutoSize = true,
                 Dock = DockStyle.Fill,
                 Padding = new Padding(0, 6, 0, 4)
             };
-            var row = new Panel { Dock = DockStyle.Top, Height = lbl.PreferredHeight + 8, BackColor = C_BG, Padding = new Padding(0, 2, 0, 2) };
+            var row = new Panel { Dock = DockStyle.Top, Height = lbl.PreferredHeight + 8, BackColor = TG.WindowBg, Padding = new Padding(0, 2, 0, 2) };
             row.Controls.Add(lbl);
             _table.Controls.Add(row);
         }
@@ -201,7 +196,7 @@ namespace SecureChat.Client.Forms.Settings
             var title = new Label
             {
                 Text = "Privacy and Security",
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI Semibold", 13f),
                 AutoSize = true,
                 Dock = DockStyle.Fill,
@@ -214,7 +209,7 @@ namespace SecureChat.Client.Forms.Settings
                 AutoSize = true,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 Margin = new Padding(0, 0, 0, 0),
                 Padding = new Padding(6, 2, 6, 2),
@@ -261,7 +256,7 @@ namespace SecureChat.Client.Forms.Settings
             var lblText = new Label
             {
                 Text = text,
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 10.5f),
                 AutoSize = true,
                 Dock = DockStyle.Fill,
@@ -271,7 +266,7 @@ namespace SecureChat.Client.Forms.Settings
             var lblStatus = new Label
             {
                 Text = status,
-                ForeColor = C_ACCENT,
+                ForeColor = TG.CAccent,
                 Font = new Font("Segoe UI", 10.5f),
                 AutoSize = true,
                 Dock = DockStyle.Fill,
@@ -283,11 +278,11 @@ namespace SecureChat.Client.Forms.Settings
             foreach (Control c in new Control[] { icon, lblText, lblStatus })
             {
                 c.Click += (_, __) => onClick();
-                c.MouseEnter += (_, __) => row.BackColor = C_HOVER;
+                c.MouseEnter += (_, __) => row.BackColor = TG.SidebarHover;
                 c.MouseLeave += (_, __) => row.BackColor = Color.Transparent;
             }
             row.Click += (_, __) => onClick();
-            row.MouseEnter += (_, __) => row.BackColor = C_HOVER;
+            row.MouseEnter += (_, __) => row.BackColor = TG.SidebarHover;
             row.MouseLeave += (_, __) => row.BackColor = Color.Transparent;
 
             row.Controls.Add(icon, 0, 0);
@@ -303,7 +298,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Height = 1,
                 Dock = DockStyle.Top,
-                BackColor = C_BORDER,
+                BackColor = TG.Divider,
                 Margin = new Padding(0, 4, 0, 8)
             };
             _table.Controls.Add(sep);
@@ -325,7 +320,7 @@ namespace SecureChat.Client.Forms.Settings
                     foreach (Control child in p.Controls)
                     {
                         if (child is Label l && l.TextAlign == ContentAlignment.MiddleLeft) textLbl = l;
-                        if (child is Label l2 && l2.ForeColor == C_ACCENT) statusLbl = l2;
+                        if (child is Label l2 && l2.ForeColor == TG.CAccent) statusLbl = l2;
                     }
                     if (textLbl != null && statusLbl != null && textLbl.Text == key)
                     {
@@ -334,24 +329,24 @@ namespace SecureChat.Client.Forms.Settings
                             Text = key,
                             Size = new Size(260, 200),
                             StartPosition = FormStartPosition.CenterParent,
-                            BackColor = C_BG,
-                            ForeColor = C_TEXT,
+                            BackColor = TG.WindowBg,
+                            ForeColor = TG.TextPrimary,
                             FormBorderStyle = FormBorderStyle.FixedDialog
                         };
                         var radios = new[] { "Everybody", "Contacts", "Nobody" };
                         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(12, 12, 12, 12) };
                         foreach (var r in radios)
                         {
-                            var rb = new RadioButton { Text = r, ForeColor = C_TEXT, BackColor = C_BG, AutoSize = true, Checked = statusLbl.Text == r };
+                            var rb = new RadioButton { Text = r, ForeColor = TG.TextPrimary, BackColor = TG.WindowBg, AutoSize = true, Checked = statusLbl.Text == r };
                             panel.Controls.Add(rb);
                         }
                         var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = false, Width = 80, Height = 30, Padding = new Padding(6, 2, 6, 2) };
                         btnOk.FlatStyle = FlatStyle.Flat;
                         btnOk.FlatAppearance.BorderSize = 0;
-                        btnOk.BackColor = C_ACCENT;
+                        btnOk.BackColor = TG.CAccent;
                         btnOk.ForeColor = Color.White;
                         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(0, 6, 12, 6) };
-                        bottom.BackColor = C_BG;
+                        bottom.BackColor = TG.WindowBg;
                         bottom.Controls.Add(btnOk);
                         btnOk.Location = new Point(bottom.Width - btnOk.Width, 6);
                         bottom.Resize += (_, __) => btnOk.Location = new Point(bottom.Width - btnOk.Width, 6);
@@ -407,15 +402,15 @@ namespace SecureChat.Client.Forms.Settings
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 StartPosition = FormStartPosition.CenterParent,
                 Size = new Size(240, 220),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Font = new Font("Segoe UI", 10f),
-                ForeColor = C_TEXT
+                ForeColor = TG.TextPrimary
             };
             var list = new ListBox
             {
                 Dock = DockStyle.Fill,
-                BackColor = C_BG,
-                ForeColor = C_TEXT,
+                BackColor = TG.WindowBg,
+                ForeColor = TG.TextPrimary,
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 10.5f),
                 IntegralHeight = false,
@@ -472,16 +467,16 @@ namespace SecureChat.Client.Forms.Settings
                 Text = "Blocked Users",
                 Size = new Size(400, 350),
                 StartPosition = FormStartPosition.CenterParent,
-                BackColor = C_BG,
-                ForeColor = C_TEXT,
+                BackColor = TG.WindowBg,
+                ForeColor = TG.TextPrimary,
                 FormBorderStyle = FormBorderStyle.FixedDialog
             };
 
             var listBox = new ListBox
             {
                 Dock = DockStyle.Fill,
-                BackColor = C_BG,
-                ForeColor = C_TEXT,
+                BackColor = TG.WindowBg,
+                ForeColor = TG.TextPrimary,
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 10.5f),
                 DisplayMember = "DisplayName"
@@ -548,5 +543,27 @@ namespace SecureChat.Client.Forms.Settings
             "ThirtyDays" => "After 1 month",
             _ => "Off"
         };
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            this.Invalidate(true);
+            foreach (Control c in this.Controls)
+                ApplyThemeRecursive(c);
+        }
+
+        private static void ApplyThemeRecursive(Control c)
+        {
+            if (c.BackColor != Color.Transparent &&
+                c.BackColor != TG.Blue &&
+                c.BackColor != TG.SidebarActive)
+                c.BackColor = TG.WindowBg;
+            if (c.Tag is string t && t == "secondary-text")
+                c.ForeColor = TG.TextSecondary;
+            c.Invalidate();
+            foreach (Control child in c.Controls)
+                ApplyThemeRecursive(child);
+        }
+
     }
 }

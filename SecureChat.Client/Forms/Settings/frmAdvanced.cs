@@ -1,18 +1,14 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
 using SecureChat.Client.Settings;
 
 namespace SecureChat.Client.Forms.Settings
 {
     public class frmAdvanced : Form
     {
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x7A, 0x8A, 0x99);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x33, 0x99, 0xFF);
-        private static readonly Color C_DIVIDER = Color.FromArgb(0xE8, 0xEC, 0xF1);
-        private static readonly Color C_HOVER = Color.FromArgb(0xF2, 0xF5, 0xF9);
+        // Colors read from TG at paint time
 
         private Panel _content = null!;
 
@@ -38,6 +34,8 @@ namespace SecureChat.Client.Forms.Settings
 
         public frmAdvanced()
         {
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             InitializeComponent();
             BuildUI();
             Load += (_, __) => LoadSettings();
@@ -55,14 +53,15 @@ namespace SecureChat.Client.Forms.Settings
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 760);
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
             var scroll = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 AutoScroll = true
             };
             Controls.Add(scroll);
@@ -71,7 +70,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Dock = DockStyle.Top,
                 Height = 900,
-                BackColor = C_BG
+                BackColor = TG.WindowBg
             };
             scroll.Controls.Add(_content);
 
@@ -83,14 +82,14 @@ namespace SecureChat.Client.Forms.Settings
             _divider1 = CreateSectionDivider();
 
             _secWindowTitle = CreateSectionLabel("Window title bar");
-            _chkShowChatName = new ToggleCheckRow("Show chat name", true, C_BG, C_TEXT, C_ACCENT, C_DIVIDER);
-            _chkTotalUnreadCount = new ToggleCheckRow("Total unread count", true, C_BG, C_TEXT, C_ACCENT, C_DIVIDER);
-            _chkUseSystemWindowFrame = new ToggleCheckRow("Use system window frame", false, C_BG, C_TEXT, C_ACCENT, C_DIVIDER);
+            _chkShowChatName = new ToggleCheckRow("Show chat name", true, TG.WindowBg, TG.TextPrimary, TG.CAccent, TG.Divider);
+            _chkTotalUnreadCount = new ToggleCheckRow("Total unread count", true, TG.WindowBg, TG.TextPrimary, TG.CAccent, TG.Divider);
+            _chkUseSystemWindowFrame = new ToggleCheckRow("Use system window frame", false, TG.WindowBg, TG.TextPrimary, TG.CAccent, TG.Divider);
             _divider2 = CreateSectionDivider();
 
             _secSystem = CreateSectionLabel("System integration");
-            _chkShowTaskbarIcon = new ToggleCheckRow("Show taskbar icon", true, C_BG, C_TEXT, C_ACCENT, C_DIVIDER);
-            _chkUseMonochromeIcon = new ToggleCheckRow("Use monochrome icon", true, C_BG, C_TEXT, C_ACCENT, C_DIVIDER);
+            _chkShowTaskbarIcon = new ToggleCheckRow("Show taskbar icon", true, TG.WindowBg, TG.TextPrimary, TG.CAccent, TG.Divider);
+            _chkUseMonochromeIcon = new ToggleCheckRow("Use monochrome icon", true, TG.WindowBg, TG.TextPrimary, TG.CAccent, TG.Divider);
 
             _content.Controls.AddRange(new Control[]
             {
@@ -171,7 +170,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private Panel CreateHeaderRow()
         {
-            var header = new Panel { BackColor = C_BG };
+            var header = new Panel { BackColor = TG.WindowBg };
 
             var back = new PictureBox
             {
@@ -188,7 +187,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = "Advanced",
                 Font = new Font("Segoe UI Semibold", 13f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 AutoSize = true,
                 Location = new Point(46, 20),
                 BackColor = Color.Transparent
@@ -200,7 +199,7 @@ namespace SecureChat.Client.Forms.Settings
                 AutoSize = true,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 TabStop = false,
                 Padding = new Padding(6, 2, 6, 2)
@@ -209,7 +208,7 @@ namespace SecureChat.Client.Forms.Settings
             close.Click += (_, __) => Close();
             header.Resize += (_, __) => close.Location = new Point(header.Width - close.Width - 14, 16);
 
-            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = C_DIVIDER };
+            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
 
             header.Controls.Add(back);
             header.Controls.Add(title);
@@ -224,21 +223,21 @@ namespace SecureChat.Client.Forms.Settings
             return new Label
             {
                 Text = text,
-                ForeColor = C_ACCENT,
+                ForeColor = TG.CAccent,
                 Font = new Font("Segoe UI Semibold", 11f),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Padding = new Padding(28, 10, 0, 0)
             };
         }
 
         private static Panel CreateSectionDivider()
         {
-            return new Panel { BackColor = Color.FromArgb(0xF4, 0xF6, 0xF9) };
+            return new Panel { BackColor = TG.Divider };
         }
 
         private Panel CreateActionRow(string text, string iconFile, Action onClick, out Label trailingLabel, string trailing = "")
         {
-            var row = new Panel { BackColor = C_BG, Cursor = Cursors.Hand };
+            var row = new Panel { BackColor = TG.WindowBg, Cursor = Cursors.Hand };
 
             var icon = new PictureBox
             {
@@ -254,7 +253,7 @@ namespace SecureChat.Client.Forms.Settings
                 Text = text,
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Location = new Point(70, 14),
                 BackColor = Color.Transparent
             };
@@ -263,7 +262,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = trailing,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = C_ACCENT,
+                ForeColor = TG.CAccent,
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleRight,
                 AutoEllipsis = true,
@@ -277,13 +276,13 @@ namespace SecureChat.Client.Forms.Settings
                 right.SetBounds(row.Width - rw - 18, 12, rw, 24);
             };
 
-            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = C_DIVIDER };
+            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
 
             foreach (Control c in new Control[] { row, icon, lbl, right })
             {
                 c.Click += (_, __) => onClick();
-                c.MouseEnter += (_, __) => row.BackColor = C_HOVER;
-                c.MouseLeave += (_, __) => row.BackColor = C_BG;
+                c.MouseEnter += (_, __) => row.BackColor = TG.SidebarHover;
+                c.MouseLeave += (_, __) => row.BackColor = TG.WindowBg;
             }
 
             row.Controls.Add(icon);
@@ -295,14 +294,14 @@ namespace SecureChat.Client.Forms.Settings
 
         private Panel CreateAskDownloadToggleRow(out CheckBox toggle)
         {
-            var row = new Panel { BackColor = C_BG };
+            var row = new Panel { BackColor = TG.WindowBg };
 
             var lbl = new Label
             {
                 Text = "Ask download path for each file",
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 16),
                 BackColor = Color.Transparent
             };
@@ -322,7 +321,7 @@ namespace SecureChat.Client.Forms.Settings
             t.Paint += (_, e) => DrawToggle(t, e.Graphics);
             row.Resize += (_, __) => t.Location = new Point(row.Width - t.Width - 24, (row.Height - t.Height) / 2);
 
-            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = C_DIVIDER };
+            var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
 
             row.Controls.Add(lbl);
             row.Controls.Add(t);
@@ -335,10 +334,10 @@ namespace SecureChat.Client.Forms.Settings
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             var rect = new Rectangle(0, 0, chk.Width - 1, chk.Height - 1);
             int r = rect.Height / 2;
-            var track = chk.Checked ? C_ACCENT : Color.FromArgb(0xC7, 0xD2, 0xDE);
+            var track = chk.Checked ? TG.CAccent : Color.FromArgb(0xC7, 0xD2, 0xDE);
 
             using var trackBrush = new SolidBrush(track);
-            using var thumbBrush = new SolidBrush(Color.White);
+            using var thumbBrush = new SolidBrush(TG.WindowBg);
 
             g.FillEllipse(trackBrush, rect.Left, rect.Top, rect.Height, rect.Height);
             g.FillEllipse(trackBrush, rect.Right - rect.Height, rect.Top, rect.Height, rect.Height);
@@ -370,7 +369,7 @@ namespace SecureChat.Client.Forms.Settings
                 ShowIcon = false,
                 ShowInTaskbar = false,
                 ClientSize = new Size(520, 280),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Font = new Font("Segoe UI", 10.5f)
             };
 
@@ -378,7 +377,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = "Choose download path",
                 Font = new Font("Segoe UI Semibold", 17f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 AutoSize = true,
                 Location = new Point(28, 22),
                 BackColor = Color.Transparent
@@ -393,9 +392,9 @@ namespace SecureChat.Client.Forms.Settings
                 Text = "Cancel",
                 AutoSize = true,
                 LinkBehavior = LinkBehavior.NeverUnderline,
-                LinkColor = C_ACCENT,
-                ActiveLinkColor = C_ACCENT,
-                VisitedLinkColor = C_ACCENT,
+                LinkColor = TG.CAccent,
+                ActiveLinkColor = TG.CAccent,
+                VisitedLinkColor = TG.CAccent,
                 Font = new Font("Segoe UI Semibold", 10.8f),
                 Location = new Point(352, 236),
                 BackColor = Color.Transparent
@@ -407,9 +406,9 @@ namespace SecureChat.Client.Forms.Settings
                 Text = "Save",
                 AutoSize = true,
                 LinkBehavior = LinkBehavior.NeverUnderline,
-                LinkColor = C_ACCENT,
-                ActiveLinkColor = C_ACCENT,
-                VisitedLinkColor = C_ACCENT,
+                LinkColor = TG.CAccent,
+                ActiveLinkColor = TG.CAccent,
+                VisitedLinkColor = TG.CAccent,
                 Font = new Font("Segoe UI Semibold", 10.8f),
                 Location = new Point(448, 236),
                 BackColor = Color.Transparent
@@ -454,8 +453,8 @@ namespace SecureChat.Client.Forms.Settings
                 Text = text,
                 AutoSize = true,
                 Location = location,
-                ForeColor = C_TEXT,
-                BackColor = C_BG,
+                ForeColor = TG.TextPrimary,
+                BackColor = TG.WindowBg,
                 Font = new Font("Segoe UI", 11f),
                 Checked = isChecked
             };
@@ -591,5 +590,30 @@ namespace SecureChat.Client.Forms.Settings
         }
 
         // AdvancedSettings is now in SecureChat.Client.Settings namespace
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {
+            foreach (Control c in controls)
+            {
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+                if (c.ForeColor != Color.White && c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }
+        }
+
     }
 }

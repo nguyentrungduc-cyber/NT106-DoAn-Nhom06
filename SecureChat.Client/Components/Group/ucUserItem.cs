@@ -1,5 +1,6 @@
 ﻿using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Components.Group
 {
@@ -16,17 +17,7 @@ namespace SecureChat.Client.Components.Group
     /// </summary>
     public partial class ucUserItem : UserControl
     {
-        // ═══════════════════════════════════════════════════
-        //  TELEGRAM LIGHT PALETTE
-        // ═══════════════════════════════════════════════════
-        private static readonly Color C_BG_NORMAL = Color.White;
-        private static readonly Color C_BG_HOVER = Color.FromArgb(0xF4, 0xF7, 0xFB);
-        private static readonly Color C_BG_PRESSED = Color.FromArgb(0xE8, 0xEE, 0xF5);
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUBTEXT = Color.FromArgb(0x8A, 0x98, 0xA6);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x2A, 0xAB, 0xEE);
-        private static readonly Color C_SEPARATOR = Color.FromArgb(0xE8, 0xEC, 0xF1);
-        private static readonly Color C_CHECK_EMPTY = Color.FromArgb(0xAA, 0xB4, 0xBE);
+        // Colors read from TG at paint time
 
         // ═══════════════════════════════════════════════════
         //  STATE
@@ -98,7 +89,7 @@ namespace SecureChat.Client.Components.Group
                 ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.ResizeRedraw, true);
 
-            BackColor = C_BG_NORMAL;
+            BackColor = TG.SidebarBg;
             Height = 64;
             Cursor = Cursors.Hand;
 
@@ -173,9 +164,9 @@ namespace SecureChat.Client.Components.Group
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
             // ── Background ────────────────────────────────
-            Color bg = _pressed ? C_BG_PRESSED
-                     : _hovered ? C_BG_HOVER
-                     : C_BG_NORMAL;
+            Color bg = _pressed ? TG.SidebarHover
+                     : _hovered ? TG.SidebarHover
+                     : TG.SidebarBg;
             g.Clear(bg);
 
             // ── Layout constants ──────────────────────────
@@ -214,20 +205,20 @@ namespace SecureChat.Client.Components.Group
 
             // Tên người dùng
             using var fntName = new Font("Segoe UI", 14f, FontStyle.Regular, GraphicsUnit.Pixel);
-            using var nameBrush = new SolidBrush(C_TEXT);
+            using var nameBrush = new SolidBrush(TG.TextPrimary);
             g.DrawString(_displayName, fntName, nameBrush,
                 new RectangleF(textX, 12f, textW, 22f), sfTrim);
 
             // Trạng thái
             using var fntSub = new Font("Segoe UI", 12f, FontStyle.Regular, GraphicsUnit.Pixel);
-            using var subBrush = new SolidBrush(C_SUBTEXT);
+            using var subBrush = new SolidBrush(TG.TextSecondary);
             g.DrawString(_subText, fntSub, subBrush,
                 new RectangleF(textX, 37f, textW, 18f), sfTrim);
 
             // ── Ripple effect ─────────────────────────────
             if (_rippleAlpha > 0)
             {
-                using var rippleBrush = new SolidBrush(Color.FromArgb(_rippleAlpha, C_ACCENT));
+                using var rippleBrush = new SolidBrush(Color.FromArgb(_rippleAlpha, TG.CAccent));
                 g.FillEllipse(rippleBrush,
                     _rippleCenter.X - _rippleRadius,
                     _rippleCenter.Y - _rippleRadius,
@@ -242,7 +233,7 @@ namespace SecureChat.Client.Components.Group
             if (_isChecked)
             {
                 // Circle accent fill
-                using var ckFill = new SolidBrush(C_ACCENT);
+                using var ckFill = new SolidBrush(TG.CAccent);
                 g.FillEllipse(ckFill, cbRect);
 
                 // Checkmark ✓
@@ -262,12 +253,12 @@ namespace SecureChat.Client.Components.Group
             else
             {
                 // Empty circle border
-                using var emptyPen = new Pen(C_CHECK_EMPTY, 1.8f);
+                using var emptyPen = new Pen(TG.TextSecondary, 1.8f);
                 g.DrawEllipse(emptyPen, cbRect);
             }
 
             // ── Separator ─────────────────────────────────
-            using var sepPen = new Pen(C_SEPARATOR, 1f);
+            using var sepPen = new Pen(TG.Divider, 1f);
             g.DrawLine(sepPen, textX, Height - 1, Width, Height - 1);
         }
     }

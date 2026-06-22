@@ -1,5 +1,6 @@
 ﻿using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Components.Group
 {
@@ -15,10 +16,7 @@ namespace SecureChat.Client.Components.Group
     /// </summary>
     public partial class ucSelectedUser : UserControl
     {
-        // ── Palette ───────────────────────────────────────
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_BTN_NORMAL = Color.FromArgb(0xC8, 0xCC, 0xD4);
+        // ── Colors (paint-time from TG) ───────────────────
         private static readonly Color C_BTN_HOVER = Color.FromArgb(0xFF, 0x50, 0x50);
 
         // ── State ─────────────────────────────────────────
@@ -64,7 +62,7 @@ namespace SecureChat.Client.Components.Group
                 ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.ResizeRedraw, true);
 
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
             Size = new Size(66, 76);
             Cursor = Cursors.Hand;
             Margin = new Padding(2, 4, 2, 4);
@@ -107,7 +105,7 @@ namespace SecureChat.Client.Components.Group
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-            g.Clear(C_BG);
+            g.Clear(TG.WindowBg);
 
             int avaL = AvaLeft;
 
@@ -129,11 +127,11 @@ namespace SecureChat.Client.Components.Group
 
             // ── X button ─────────────────────────────────
             var xR = XBtnRect;
-            using (var btnBrush = new SolidBrush(_xHovered ? C_BTN_HOVER : C_BTN_NORMAL))
+            using (var btnBrush = new SolidBrush(_xHovered ? C_BTN_HOVER : TG.TextSecondary))
                 g.FillEllipse(btnBrush, xR);
 
             // Viền trắng để tách khỏi avatar
-            using (var borderPen = new Pen(C_BG, 2f))
+            using (var borderPen = new Pen(TG.WindowBg, 2f))
                 g.DrawEllipse(borderPen, xR);
 
             // Dấu X
@@ -144,7 +142,7 @@ namespace SecureChat.Client.Components.Group
 
             // ── Name ─────────────────────────────────────
             using var fntName = new Font("Segoe UI", 11f, FontStyle.Regular, GraphicsUnit.Pixel);
-            using var nameBrush = new SolidBrush(C_TEXT);
+            using var nameBrush = new SolidBrush(TG.TextPrimary);
             g.DrawString(_displayName, fntName, nameBrush,
                 new RectangleF(0f, AVA_TOP + AVA_SZ + 5f, Width, 18f),
                 new StringFormat

@@ -231,7 +231,9 @@ namespace SecureChat.Client
                 int dotSize = Math.Max(8, size / 5);
                 int dotX = size - dotSize;
                 int dotY = size - dotSize;
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0xFF, 0xFF, 0xFF)), dotX - 1, dotY - 1, dotSize + 2, dotSize + 2);
+                // Border màu = parent background (không hardcode trắng)
+                var borderColor = Parent?.BackColor ?? TG.WindowBg;
+                e.Graphics.FillEllipse(new SolidBrush(borderColor), dotX - 1, dotY - 1, dotSize + 2, dotSize + 2);
                 e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0x4D, 0xD9, 0x64)), dotX, dotY, dotSize, dotSize);
             }
         }

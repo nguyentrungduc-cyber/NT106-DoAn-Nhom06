@@ -32,11 +32,7 @@ namespace SecureChat.Client.Components.Chat
 
         private readonly VoicePlaybackService _svc;
 
-        // ── Colors ────────────────────────────────────────────────────────────
-        private static readonly Color AccentGreen = Color.FromArgb(36, 170, 107);
-        private static readonly Color SeekBg      = Color.FromArgb(200, 200, 200);
-        private static readonly Color TextDark    = Color.FromArgb(30,  30,  30);
-        private static readonly Color TextGray    = Color.FromArgb(100, 100, 100);
+        // ── Colors (paint-time reads from TG) ─────────────────────────────────
 
         // ── Constructor ───────────────────────────────────────────────────────
         public ucAudioBubble(VoicePlaybackService svc)
@@ -69,6 +65,19 @@ namespace SecureChat.Client.Components.Chat
                 ResetSeek();
                 SetPlayPauseIcon(false);
                 _pnlBubble.Invalidate();
+            });
+        }
+
+        public void OnNightModeChanged()
+        {
+            SafeInvoke(() =>
+            {
+                _lblTitle.ForeColor = TG.TextPrimary;
+                _lblTime.ForeColor = TG.TextSecondary;
+                _pnlSeekTrack.BackColor = TG.SeekBg;
+                _pnlSeekFill.BackColor = TG.AccentGreen;
+                _pnlSeekThumb.BackColor = TG.WindowBg; // thumb màu nền để đồng bộ dark/light
+                Invalidate(true);
             });
         }
 
@@ -112,7 +121,7 @@ namespace SecureChat.Client.Components.Chat
                 Location  = new Point(60, 10),
                 Size      = new Size(228, 18),
                 Font      = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                ForeColor = TextDark,
+                ForeColor = TG.TextPrimary,
                 Text      = "Voice message",
                 BackColor = Color.Transparent,
             };
@@ -122,7 +131,7 @@ namespace SecureChat.Client.Components.Chat
             {
                 Location  = new Point(60, 32),
                 Size      = new Size(228, 6),
-                BackColor = SeekBg,
+                BackColor = TG.SeekBg,
                 Cursor    = Cursors.Hand,
             };
             _pnlSeekTrack.MouseDown += SeekTrack_MouseDown;
@@ -133,7 +142,7 @@ namespace SecureChat.Client.Components.Chat
             {
                 Location  = new Point(0, 0),
                 Size      = new Size(0, 6),
-                BackColor = AccentGreen,
+                BackColor = TG.AccentGreen,
             };
 
             // Seek thumb (chấm tròn trắng)
@@ -141,7 +150,7 @@ namespace SecureChat.Client.Components.Chat
             {
                 Size      = new Size(14, 14),
                 Location  = new Point(-7, -4),
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Cursor    = Cursors.Hand,
             };
             _pnlSeekThumb.Paint    += SeekThumb_Paint;
@@ -158,7 +167,7 @@ namespace SecureChat.Client.Components.Chat
                 Location  = new Point(60, 42),
                 Size      = new Size(228, 16),
                 Font      = new Font("Segoe UI", 7.5f),
-                ForeColor = TextGray,
+                ForeColor = TG.TextSecondary,
                 Text      = "0:00 / 0:00",
                 BackColor = Color.Transparent,
             };
@@ -178,10 +187,7 @@ namespace SecureChat.Client.Components.Chat
             var rect = new Rectangle(0, 0, _pnlBubble.Width - 1, _pnlBubble.Height - 1);
             using var path  = RoundedRect(rect, 14);
 
-            // Màu bubble khớp với bubble text: xanh lá nhạt (gửi) / trắng (nhận)
-            Color bg = IsOutgoing
-                ? Color.FromArgb(225, 245, 215)   // xanh lá nhạt — giống MsgOutBg
-                : Color.FromArgb(255, 255, 255);   // trắng — giống MsgInBg
+            Color bg = IsOutgoing ? TG.MsgOutBg : TG.MsgInBg;
 
             using var brush = new SolidBrush(bg);
             g.FillPath(brush, path);
@@ -198,7 +204,7 @@ namespace SecureChat.Client.Components.Chat
             var rect = new Rectangle(1, 1, _btnPlayPause.Width - 2, _btnPlayPause.Height - 2);
 
             // Circle fill
-            using var brush = new SolidBrush(AccentGreen);
+            using var brush = new SolidBrush(TG.AccentGreen);
             g.FillEllipse(brush, rect);
 
             // Icon ▶ hoặc ⏸
@@ -217,7 +223,7 @@ namespace SecureChat.Client.Components.Chat
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             var rect = new Rectangle(1, 1, _pnlSeekThumb.Width - 2, _pnlSeekThumb.Height - 2);
-            using var brush = new SolidBrush(AccentGreen);
+            using var brush = new SolidBrush(TG.AccentGreen);
             g.FillEllipse(brush, rect);
         }
 

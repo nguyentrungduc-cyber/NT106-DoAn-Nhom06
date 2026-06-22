@@ -30,6 +30,7 @@ namespace SecureChat.Client
             _identifier = identifier ?? string.Empty;
             InitializeComponent();
 
+            ThemeRefreshHelper.Hook(this);
             // vì khi biết email thì gửi Opt đầu tiên, lúc này bộ đếm sẽ chạy lần đầu tiên
             StartCountdown();
         }
@@ -49,7 +50,7 @@ namespace SecureChat.Client
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = TG.FontRegular(9.5f);
 
             // ── Header xanh ──────────────────────────
@@ -126,7 +127,7 @@ namespace SecureChat.Client
                 var wrap = new Panel
                 {
                     Size = new Size(62, 70),
-                    BackColor = Color.White,
+                    BackColor = TG.WindowBg,
                 };
 
                 // Sự kiện Paint: mỗi khi giao diện cần hiển thị lại (khi mở form, thay đổi kích thước, hoặc khi bạn gọi Invalidate()), các lệnh này sẽ thực thi để "vẽ" lên màn hình.
@@ -295,7 +296,7 @@ namespace SecureChat.Client
             };
 
             // Panel chứa toàn bộ nội dung bên dưới header, padding tăng lên để thoáng hơn
-            var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(40, 20, 40, 20) };
+            var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = TG.WindowBg, Padding = new Padding(40, 20, 40, 20) };
             pnlBody.Controls.AddRange(new Control[] { _lblDesc, pnlOtp, _lblError, _btnConfirm, _lblResend, lnkResend, _lblTimer });
 
             // Sắp xếp các control theo chiều dọc, tự tính lại khi form thay đổi kích thước. Biến y tích lũy vị trí từng control.

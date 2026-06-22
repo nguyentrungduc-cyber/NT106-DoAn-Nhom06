@@ -28,6 +28,7 @@ namespace SecureChat.Client
         private Panel _pnlSidebar = null!; // Panel trái rộng 280px chứa danh sách hội thoại
         private Panel _pnlChat; // Panel phải chiếm phần còn lại, hiển thị tin nhắn
         private Panel _pnlSettingsMenu;  // Menu trượt từ trái ra, đè lên chat area
+        private Panel _pnlSettingsMenuList; // Panel chứa các menu rows (để refresh theme)
         private bool _settingsVisible = false; // Trạng thái menu đang hiện hay ẩn, mặc định là ẩn
         private System.Windows.Forms.Timer _slideTimer; // Timer tạo hiệu ứng trượt (animation)
         private int _settingsTargetX;  // Tọa độ X đích khi animate menu
@@ -49,6 +50,8 @@ namespace SecureChat.Client
         private readonly VoicePlaybackService _voicePlaybackService = new(); // shared singleton – passed into each ucAudioBubble
 
         private Panel _pnlInputBar; // thanh nhập tin nhắn bên dưới
+        private Panel _pnlSidebarHeader; // header trên cùng của sidebar trái (hamburger + "SecureChat")
+        private Panel _sbHeader; // header của right sidebar (group/user info panel)
         private TelegramTextBox _tbMessage; // TextBox gõ tin nhắn
         private Label _lblChatName, _lblChatStatus; // tên và trạng thái người nhận
         private AvatarControl _chatAvatar; //  avatar tròn người nhận
@@ -217,6 +220,13 @@ namespace SecureChat.Client
 
         private async void FrmMainChat_Load(object? sender, EventArgs e)
         {
+            NightModeService.Initialize();
+            _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
+            // Áp dụng UI ngay nếu night mode đã được bật từ session trước
+            // (Initialize chỉ set TG.* static, không trigger OnNightModeChanged)
+            if (NightModeService.IsEnabled)
+                OnNightModeChanged();
+
             try
             {
                 var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -501,7 +511,7 @@ namespace SecureChat.Client
             ShowInTaskbar = adv.ShowTaskbarIcon;
             ApplyMonochromeIcon();
 
-            BackColor = Color.White;
+            BackColor = TG.SidebarBg;
             Font = TG.FontRegular(9.5f);
 
             BuildSidebar();
@@ -633,10 +643,10 @@ namespace SecureChat.Client
         // ════════════════════════════════════════════
         private void BuildSidebar()
         {
-            _pnlSidebar = new Panel { BackColor = Color.White };
+            _pnlSidebar = new Panel { BackColor = TG.SidebarBg };
 
             // ── Header xanh ──────────────────────────
-            var pnlHeader = new Panel { Height = 52, BackColor = TG.TitleBarBg, Dock = DockStyle.Top };
+            _pnlSidebarHeader = new Panel { Height = 52, BackColor = TG.TitleBarBg, Dock = DockStyle.Top };
             // Gắn chặt panel này vào mép trên cùng của sidebar.
 
             _btnHamburger = new Button
@@ -644,7 +654,7 @@ namespace SecureChat.Client
                 Text = "☰",
                 FlatStyle = FlatStyle.Flat, // Đặt kiểu hiển thị phẳng, không có hiệu ứng nổi 3D của Windows cổ điển.
                 Font = TG.FontRegular(14f),
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 Size = new Size(48, 52),
                 Location = new Point(0, 0), // Đặt nút ở góc trên cùng bên trái của header.
                 BackColor = Color.Transparent, // Nền trong suốt để lộ màu xanh của header.
@@ -672,7 +682,7 @@ namespace SecureChat.Client
                 Text = "✏",
                 FlatStyle = FlatStyle.Flat,
                 Font = TG.FontRegular(13f),
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 Size = new Size(40, 52),
                 BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
@@ -680,26 +690,26 @@ namespace SecureChat.Client
             };
             btnEdit.FlatAppearance.BorderSize = 0;
 
-            // pnlHeader.Controls.AddRange(new Control[] { _btnHamburger, lblTitle, btnEdit });
-            pnlHeader.Controls.AddRange(new Control[] { _btnHamburger, lblTitle });
+            // _pnlSidebarHeader.Controls.AddRange(new Control[] { _btnHamburger, lblTitle, btnEdit });
+            _pnlSidebarHeader.Controls.AddRange(new Control[] { _btnHamburger, lblTitle });
 
-            pnlHeader.Resize += (s, e) =>
+            _pnlSidebarHeader.Resize += (s, e) =>
             {
-                lblTitle.Width = pnlHeader.Width - 96;
-                btnEdit.Location = new Point(pnlHeader.Width - 42, 0);
+                lblTitle.Width = _pnlSidebarHeader.Width - 96;
+                btnEdit.Location = new Point(_pnlSidebarHeader.Width - 42, 0);
             };
 
             // ── Search ────────────────────────────────
-            var pnlSearch = new Panel { Height = 44, Dock = DockStyle.Top, BackColor = Color.White, Padding = new Padding(8, 6, 8, 4) };
+            var pnlSearch = new Panel { Height = 44, Dock = DockStyle.Top, BackColor = TG.SidebarBg, Padding = new Padding(8, 6, 8, 4) };
             _tbSearch = new TelegramTextBox { Height = 32, Dock = DockStyle.Fill };
             _tbSearch.SetPlaceholder("🔍  Search");
             _tbSearch.TextChanged += (_, __) => BuildConvList();
             pnlSearch.Controls.Add(_tbSearch);
 
             // ── Conversation list ─────────────────────
-            _pnlConvList = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+            _pnlConvList = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.SidebarBg };
 
-            _pnlEmptyState = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Visible = false };
+            _pnlEmptyState = new Panel { Dock = DockStyle.Fill, BackColor = TG.SidebarBg, Visible = false };
             _lblEmptyState = new Label
             {
                 Font = TG.FontSemiBold(10f),
@@ -738,7 +748,7 @@ namespace SecureChat.Client
             _pnlSidebar.Controls.Add(_pnlEmptyState);
             _pnlSidebar.Controls.Add(_pnlConvList);
             _pnlSidebar.Controls.Add(pnlSearch);
-            _pnlSidebar.Controls.Add(pnlHeader);
+            _pnlSidebar.Controls.Add(_pnlSidebarHeader);
 
             UpdateEmptyStateUI();
         }
@@ -855,7 +865,7 @@ namespace SecureChat.Client
             // Tạo một khung chứa có chiều cao cố định là 68px, màu nền trắng và đổi con trỏ chuột thành hình bàn tay (Cursors.Hand) khi rê vào.
             // Thuộc tính Tag được gán bằng id của cuộc trò chuyện để dễ dàng nhận diện.
             bool isSavedRow = !string.IsNullOrWhiteSpace(_savedMessagesConvId) && id == _savedMessagesConvId;
-            var pnl = new Panel { Height = 68, BackColor = isSavedRow ? Color.FromArgb(240, 248, 255) : Color.White, Tag = id, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 68, BackColor = isSavedRow ? TG.WindowBg : TG.SidebarBg, Tag = id, Cursor = Cursors.Hand };
 
             // Kiểm tra xem dòng chat này có đang được người dùng chọn (active) hay không bằng cách so sánh Tag với biến toàn cục _activeConvId.
             bool isActive() => (string)pnl.Tag == _activeConvId;
@@ -920,7 +930,7 @@ namespace SecureChat.Client
 
             // Khi rê chuột vào/ra khỏi tấm nền, nếu dòng chat này không ở trạng thái được chọn (!isActive()), nền sẽ đổi sang màu hover (TG.SidebarHover) và ngược lại.
             pnl.MouseEnter += (s, e) => { if (!isActive()) pnl.BackColor = TG.SidebarHover; };
-            pnl.MouseLeave += (s, e) => { if (!isActive()) pnl.BackColor = Color.White; };
+            pnl.MouseLeave += (s, e) => { if (!isActive()) pnl.BackColor = TG.SidebarBg; };
 
             // Resize child layout when row width changes
             pnl.Resize += (s, e) =>
@@ -933,13 +943,13 @@ namespace SecureChat.Client
                 if (isActive())
                 {
                     pnl.BackColor = TG.SidebarActive;
-                    lblName.ForeColor = Color.White;
-                    lblPreview.ForeColor = Color.FromArgb(220, 240, 255);
-                    lblTime.ForeColor = Color.FromArgb(200, 230, 255);
+                    lblName.ForeColor = TG.TitleBarFg;
+                    lblPreview.ForeColor = Color.FromArgb(220, TG.TitleBarFg.R, TG.TitleBarFg.G, TG.TitleBarFg.B);
+                    lblTime.ForeColor = Color.FromArgb(200, TG.TitleBarFg.R, TG.TitleBarFg.G, TG.TitleBarFg.B);
                 }
                 else
                 {
-                    pnl.BackColor = Color.White;
+                    pnl.BackColor = TG.SidebarBg;
                     lblName.ForeColor = TG.TextName;
                     lblPreview.ForeColor = TG.TextSecondary;
                     lblTime.ForeColor = TG.TextTime;
@@ -960,7 +970,7 @@ namespace SecureChat.Client
                 if (c == avatar) continue; // avatar wired already
                 c.Click += (s, e) => doClick();
                 c.MouseEnter += (s, e) => { if (!isActive()) pnl.BackColor = TG.SidebarHover; };
-                c.MouseLeave += (s, e) => { if (!isActive()) pnl.BackColor = Color.White; };
+                c.MouseLeave += (s, e) => { if (!isActive()) pnl.BackColor = TG.SidebarBg; };
             }
 
             pnl.Width = _pnlConvList?.ClientSize.Width ?? pnl.Width;
@@ -983,10 +993,10 @@ namespace SecureChat.Client
         private void BuildChatArea()
         {
             // chứa toàn bộ Header, danh sách tin nhắn và thanh nhập liệu.
-            _pnlChat = new Panel { BackColor = Color.White };
+            _pnlChat = new Panel { BackColor = TG.SidebarBg };
 
             // ── Chat Header ───────────────────────────
-            _pnlChatHeader = new Panel { Height = 52, BackColor = Color.White, Dock = DockStyle.Top };
+            _pnlChatHeader = new Panel { Height = 52, BackColor = TG.SidebarBg, Dock = DockStyle.Top };
             // vẽ một đường kẻ ngang màu xám/nhạt (TG.Divider) ở dưới cùng để ngăn cách header với vùng tin nhắn.
             _pnlChatHeader.Paint += (s, e) =>
                 e.Graphics.DrawLine(new Pen(TG.Divider), 0, 51, _pnlChatHeader.Width, 51);
@@ -1117,7 +1127,7 @@ namespace SecureChat.Client
                 Dock = DockStyle.Fill, // chiếm trọn phần diện tích còn lại
                 AutoScroll = true,
                 Padding = new Padding(12, 8, 12, 8),
-                BackColor = Color.FromArgb(0xDB, 0xE8, 0xD5), // Thêm dòng này
+                BackColor = TG.ChatBg,
             };
 
             _pnlChatEmpty = new Panel
@@ -1130,7 +1140,7 @@ namespace SecureChat.Client
             _lblChatEmpty = new Label
             {
                 AutoSize = true,
-                BackColor = Color.FromArgb(220, 255, 255, 255),
+                BackColor = Color.FromArgb(220, TG.WindowBg.R, TG.WindowBg.G, TG.WindowBg.B),
                 ForeColor = TG.TextSecondary,
                 Font = TG.FontSemiBold(9.5f),
                 Padding = new Padding(12, 6, 12, 6)
@@ -1175,7 +1185,7 @@ namespace SecureChat.Client
             {
                 Height = 28,
                 Dock = DockStyle.Top,
-                BackColor = Color.FromArgb(0xE8, 0xEA, 0xED),
+                BackColor = TG.Divider,
                 Visible = false,
                 Cursor = Cursors.Hand,
             };
@@ -1226,7 +1236,7 @@ namespace SecureChat.Client
             _pnlPinnedPopup = new Panel
             {
                 Dock = DockStyle.Top,
-                BackColor = Color.White,
+                BackColor = TG.SidebarBg,
                 Visible = false,
                 Height = 0,
             };
@@ -1249,7 +1259,7 @@ namespace SecureChat.Client
             {
                 Height = 24,
                 Dock = DockStyle.Bottom,
-                BackColor = Color.FromArgb(0xE8, 0xEA, 0xED),
+                BackColor = TG.Divider,
                 Visible = false,
                 Cursor = Cursors.Hand,
             };
@@ -1275,10 +1285,10 @@ namespace SecureChat.Client
             _pnlChat.Controls.Add(_pnlChatHeader);
 
             // ── Right Sidebar (profile / group info) ────────
-            _pnlRightSidebar = new Panel { Width = 340, BackColor = Color.White, Visible = false };
+            _pnlRightSidebar = new Panel { Width = 300, BackColor = TG.SidebarBg, Visible = false };
 
-            var sbHeader = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = Color.White };
-            sbHeader.Paint += (_, e) => e.Graphics.DrawLine(new Pen(TG.Divider), 0, 51, sbHeader.Width, 51);
+            _sbHeader = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = TG.SidebarBg };
+            _sbHeader.Paint += (_, e) => e.Graphics.DrawLine(new Pen(TG.Divider), 0, 51, _sbHeader.Width, 51);
 
             var sbClose = new Button
             {
@@ -1297,7 +1307,7 @@ namespace SecureChat.Client
             sbClose.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 0, 0, 0);
             sbClose.Click += (_, _) => { _isSidebarOpen = false; _btnToggleSidebar.Text = "⏪"; AdjustLayout(); };
 
-            sbHeader.Controls.Add(new Label
+            _sbHeader.Controls.Add(new Label
             {
                 Text = "Info",
                 Font = TG.FontSemiBold(10f),
@@ -1308,12 +1318,12 @@ namespace SecureChat.Client
                 Location = new Point(12, 14),
                 BackColor = Color.Transparent
             });
-            sbHeader.Controls.Add(sbClose);
+            _sbHeader.Controls.Add(sbClose);
 
-            _sbBody = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+            _sbBody = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.SidebarBg };
 
             _pnlRightSidebar.Controls.Add(_sbBody);
-            _pnlRightSidebar.Controls.Add(sbHeader);
+            _pnlRightSidebar.Controls.Add(_sbHeader);
 
             // _pnlMessages.Resize += (s, e) => _pnlMessages.Invalidate(); // bỏ vì đã có PaintChatBackground tự xử lý.
             _pnlMessages.Resize += (s, e) => UpdateCachedBackground();
@@ -1328,7 +1338,7 @@ namespace SecureChat.Client
                 _chatMoreMenu = new ContextMenuStrip
                 {
                     ShowImageMargin = false,
-                    BackColor = Color.White,
+                    BackColor = TG.SidebarBg,
                     ForeColor = TG.TextPrimary,
                     Font = new Font("Segoe UI", 10f),
                     Renderer = new ToolStripProfessionalRenderer(new ChatMenuColorTable())
@@ -2458,13 +2468,13 @@ namespace SecureChat.Client
 
         private void BuildInputBar()
         {
-            _pnlInputBar = new Panel { Height = 56, Dock = DockStyle.Bottom, BackColor = Color.White };
+            _pnlInputBar = new Panel { Height = 56, Dock = DockStyle.Bottom, BackColor = TG.SidebarBg };
             _pnlInputBar.Paint += (s, e) => e.Graphics.DrawLine(new Pen(TG.Divider), 0, 0, _pnlInputBar.Width, 0);
 
             // =========================================================
             // 1. TẠO PANEL REPLY (Bao gồm Icon, Đường viền, Tên, Text)
             // =========================================================
-            _pnlReplyContext = new Panel { Dock = DockStyle.Top, Height = 44, Visible = false, BackColor = Color.White };
+            _pnlReplyContext = new Panel { Dock = DockStyle.Top, Height = 44, Visible = false, BackColor = TG.SidebarBg };
 
             // Icon mũi tên quay lại
             var lblReplyIcon = new Label
@@ -3136,7 +3146,7 @@ namespace SecureChat.Client
             int smw = 260;
             _pnlSettingsMenu = new Panel
             {
-                BackColor = Color.White,
+                BackColor = TG.SidebarBg,
                 Visible = true,   // luôn visible, chỉ di chuyển X
                 Width = smw,
                 Left = -smw,      // bắt đầu ẩn ngoài màn hình bên trái
@@ -3180,7 +3190,7 @@ namespace SecureChat.Client
                 Text = "✕",
                 FlatStyle = FlatStyle.Flat,
                 Font = TG.FontRegular(12f),
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 Size = new Size(36, 36),
                 Location = new Point(8, 8),
                 BackColor = Color.Transparent,
@@ -3196,7 +3206,7 @@ namespace SecureChat.Client
             {
                 Text = _currentDisplayName,
                 Font = TG.FontSemiBold(11f),
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 AutoSize = false,
                 Height = 28,           // tăng từ 22 → 28 để chứa dấu tiếng Việt (ễ, ắ...)
                 Width = smw - 80 - 14, // smw - leftPos(80) - rightMargin(14)
@@ -3224,7 +3234,8 @@ namespace SecureChat.Client
     ("🌙", "Night Mode",      true),
 };
 
-            var pnlMenuList = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
+            var pnlMenuList = new Panel { Dock = DockStyle.Fill, BackColor = TG.SidebarBg };
+            _pnlSettingsMenuList = pnlMenuList;
             pnlMenuList.Resize += (s, e) =>
             {
                 foreach (Control c in pnlMenuList.Controls)
@@ -3267,7 +3278,7 @@ namespace SecureChat.Client
 
         private Panel BuildSettingsRow(string emoji, string label, bool hasToggle, bool initialOn, Action<bool>? onToggle = null)
         {
-            var pnl = new Panel { Height = 48, BackColor = Color.White, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 48, BackColor = TG.SidebarBg, Cursor = Cursors.Hand };
 
             var lblEmoji = new Label
             {
@@ -3314,8 +3325,8 @@ namespace SecureChat.Client
                     using var brush = new SolidBrush(on ? TG.Blue : Color.FromArgb(0xCC, 0xCC, 0xCC));
                     e.Graphics.FillPath(brush, RoundedPanel.GetRoundedPath(r, 10));
                     int cx = on ? 22 : 2;
-                    using var white = new SolidBrush(Color.White);
-                    e.Graphics.FillEllipse(white, cx, 4, 16, 16);
+                    using var thumbBrush = new SolidBrush(TG.TitleBarFg);
+                    e.Graphics.FillEllipse(thumbBrush, cx, 4, 16, 16);
                 };
                 toggle.Click += (s, e) =>
                 {
@@ -3653,7 +3664,195 @@ namespace SecureChat.Client
                         }
                         break;
                     }
+                case "Night Mode":
+                    {
+                        NightModeService.Toggle();
+                        break;
+                    }
             }
+        }
+
+        public void OnNightModeChanged()
+        {
+            // ── Sidebar ────────────────────────────────────────────────
+            _pnlConvList.BackColor = TG.SidebarBg;
+            _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
+
+            // Header bar (hamburger + title area)
+            if (_pnlSidebarHeader != null)
+            {
+                _pnlSidebarHeader.BackColor = TG.TitleBarBg;
+                foreach (Control c in _pnlSidebarHeader.Controls)
+                {
+                    if (c is Label lbl) { lbl.ForeColor = TG.TitleBarFg; lbl.BackColor = Color.Transparent; }
+                    else if (c is Button btn) btn.ForeColor = TG.TitleBarFg;
+                }
+            }
+
+            // Settings menu header
+            if (_pnlSettingsHeader != null)
+            {
+                _pnlSettingsHeader.BackColor = TG.TitleBarBg;
+                foreach (Control c in _pnlSettingsHeader.Controls)
+                {
+                    if (c is Label lbl) lbl.ForeColor = TG.TitleBarFg;
+                    else if (c is Button btn) btn.ForeColor = TG.TitleBarFg;
+                }
+            }
+            if (_lblSettingsUserName != null) _lblSettingsUserName.ForeColor = TG.TitleBarFg;
+
+            // Settings menu body
+            if (_pnlSettingsMenu != null) _pnlSettingsMenu.BackColor = TG.SidebarBg;
+
+            // Refresh toàn bộ settings menu rows (pnlMenuList + từng row + label)
+            if (_pnlSettingsMenuList != null)
+            {
+                _pnlSettingsMenuList.BackColor = TG.SidebarBg;
+                foreach (Control row in _pnlSettingsMenuList.Controls)
+                {
+                    row.BackColor = TG.SidebarBg;
+                    foreach (Control c in row.Controls)
+                    {
+                        if (c is Label lbl && lbl.BackColor != Color.Transparent)
+                            lbl.ForeColor = TG.TextPrimary;
+                        else if (c is Label lbl2)
+                            lbl2.ForeColor = TG.TextPrimary;
+                    }
+                    row.Invalidate();
+                }
+            }
+
+            // Context menu (chat header ⋮)
+            if (_chatMoreMenu != null)
+            {
+                _chatMoreMenu.BackColor = TG.SidebarBg;
+                _chatMoreMenu.ForeColor = TG.TextPrimary;
+                foreach (ToolStripItem item in _chatMoreMenu.Items)
+                {
+                    item.BackColor = TG.SidebarBg;
+                    item.ForeColor = TG.TextPrimary;
+                }
+            }
+                _lblChatEmpty.BackColor = Color.FromArgb(220, TG.WindowBg.R, TG.WindowBg.G, TG.WindowBg.B);
+
+            // Chat header (title bar top)
+            if (_pnlChatHeader != null)
+            {
+                _pnlChatHeader.BackColor = TG.TitleBarBg;
+                foreach (Control c in _pnlChatHeader.Controls)
+                {
+                    if (c is Label l) l.ForeColor = TG.TitleBarFg;
+                    else if (c is Button b) b.ForeColor = TG.TitleBarFg;
+                }
+            }
+
+            // Input bar
+            if (_pnlInputBar != null) _pnlInputBar.BackColor = TG.WindowBg;
+            if (_tbMessage != null)
+            {
+                _tbMessage.BackColor = TG.InputBg;
+                _tbMessage.ForeColor = TG.TextPrimary;
+            }
+
+            // Right sidebar
+            if (_pnlRightSidebar != null) _pnlRightSidebar.BackColor = TG.WindowBg;
+            if (_sbHeader != null)
+            {
+                _sbHeader.BackColor = TG.TitleBarBg;
+                foreach (Control c in _sbHeader.Controls)
+                {
+                    if (c is Label l) l.ForeColor = TG.TitleBarFg;
+                    else if (c is Button b) b.ForeColor = TG.TitleBarFg;
+                }
+            }
+
+            foreach (var pnl in _convRowCache.Values)
+            {
+                string id = pnl.Tag as string ?? "";
+                bool isSavedRow = !string.IsNullOrWhiteSpace(_savedMessagesConvId) && id == _savedMessagesConvId;
+                bool isSavedMessages = isSavedRow;
+                pnl.BackColor = isSavedMessages ? TG.WindowBg : TG.SidebarBg;
+                foreach (Control c in pnl.Controls)
+                {
+                    if (c is Label lbl)
+                    {
+                        string n = lbl.Name;
+                        if (n == "lblPreview")
+                            lbl.ForeColor = TG.TextSecondary;
+                        else if (n == "lblTime")
+                            lbl.ForeColor = TG.TextTime;
+                        else
+                            lbl.ForeColor = TG.TextName;
+                    }
+                }
+            }
+
+            _pnlMessages.BackColor = TG.ChatBg;
+            _pnlMessages.CachedWallpaper = null;
+            if (_pnlChat != null) _pnlChat.BackColor = TG.ChatBg;
+
+            foreach (Control c in _pnlMessages.Controls)
+            {
+                if (c is ucAudioBubble audio)
+                    audio.OnNightModeChanged();
+                else if (c is ucFileBubble file)
+                    file.OnNightModeChanged();
+            }
+
+            if (_sbBody != null)
+            {
+                _sbBody.BackColor = TG.WindowBg;
+                foreach (Control c in _sbBody.Controls)
+                {
+                    if (c is ucGroupMemberItem member)
+                        member.OnNightModeChanged();
+                    else if (c is Label lbl)
+                    {
+                        // Các label trong BuildDirectSidebar/BuildGroupSidebar
+                        if (lbl.ForeColor != Color.FromArgb(0x21, 0xA1, 0x66)) // giữ màu "Online" xanh
+                            lbl.ForeColor = TG.TextPrimary;
+                        lbl.BackColor = Color.Transparent;
+                    }
+                    else if (c is Panel p)
+                    {
+                        p.BackColor = TG.WindowBg;
+                        foreach (Control pc in p.Controls)
+                            if (pc is Label pl) pl.ForeColor = TG.TextPrimary;
+                        p.Invalidate();
+                    }
+                }
+                _sbBody.Invalidate(true);
+            }
+
+            // Pinned message bar (bị bỏ sót - không nằm trong OnNightModeChanged ban đầu)
+            if (_pnlPinnedBar != null)
+            {
+                _pnlPinnedBar.BackColor = TG.Divider;
+                _lblPinnedText.ForeColor = TG.TextPrimary;
+                foreach (Control c in _pnlPinnedBar.Controls)
+                    if (c is Label lbl && lbl != _lblPinnedText)
+                        lbl.ForeColor = TG.TextSecondary; // downArrow
+                _pnlPinnedBar.Invalidate(true);
+            }
+            if (_pnlPinnedPopup != null)
+            {
+                _pnlPinnedPopup.BackColor = TG.SidebarBg;
+                if (_pnlPinnedPopup.Visible) RebuildPinnedPopup(); // rebuild để item con lấy màu mới
+            }
+            if (_pnlPinnedBottomBar != null)
+            {
+                _pnlPinnedBottomBar.BackColor = TG.Divider;
+                _lblPinnedBottomText.ForeColor = TG.TextPrimary;
+                _pnlPinnedBottomBar.Invalidate(true);
+            }
+
+            _pnlMessages.Invalidate();
+
+            // Rebuild toàn bộ bubble để MsgInBg/MsgOutBg/ChatBg được áp dụng đúng.
+            // Chỉ Invalidate() không đủ vì màu nền bubble được set tại lúc tạo Panel,
+            // không phải qua Paint event → phải BuildMessages() lại để tạo lại Panel mới.
+            if (_allMsgs.TryGetValue(_activeConvId ?? "", out _))
+                BuildMessages();
         }
 
         private void UpdateSettingsHeaderUI()
@@ -5695,7 +5894,7 @@ namespace SecureChat.Client
                 MaximizeBox = false,
                 MinimizeBox = false,
                 ShowIcon = false,
-                BackColor = Color.White,
+                BackColor = TG.SidebarBg,
                 Font = TG.FontRegular(10f)
             };
 
@@ -6268,14 +6467,14 @@ namespace SecureChat.Client
                 {
                     Height = itemH,
                     Dock = DockStyle.Top,
-                    BackColor = Color.White,
+                    BackColor = TG.SidebarBg,
                     Cursor = Cursors.Hand,
                     Tag = pid,
                 };
 
                 // Hover highlight
-                item.MouseEnter += (_, __) => item.BackColor = Color.FromArgb(0xF0, 0xF0, 0xF0);
-                item.MouseLeave += (_, __) => item.BackColor = Color.White;
+                item.MouseEnter += (_, __) => item.BackColor = TG.SidebarHover;
+                item.MouseLeave += (_, __) => item.BackColor = TG.SidebarBg;
 
                 // Sender name
                 int itemTextW = Math.Max(50, _pnlPinnedBar.Width - 56);
@@ -7868,14 +8067,14 @@ namespace SecureChat.Client
 
         private sealed class ChatMenuColorTable : ProfessionalColorTable
         {
-            public override Color MenuItemSelected => Color.FromArgb(0xF2, 0xF5, 0xF9);
-            public override Color MenuItemBorder => Color.FromArgb(0xD9, 0xE1, 0xEB);
-            public override Color ToolStripDropDownBackground => Color.White;
-            public override Color SeparatorDark => Color.FromArgb(0xEA, 0xEE, 0xF3);
-            public override Color SeparatorLight => Color.FromArgb(0xEA, 0xEE, 0xF3);
-            public override Color ImageMarginGradientBegin => Color.White;
-            public override Color ImageMarginGradientMiddle => Color.White;
-            public override Color ImageMarginGradientEnd => Color.White;
+            public override Color MenuItemSelected           => TG.SidebarHover;
+            public override Color MenuItemBorder             => TG.Divider;
+            public override Color ToolStripDropDownBackground => TG.SidebarBg;
+            public override Color SeparatorDark              => TG.Divider;
+            public override Color SeparatorLight             => TG.Divider;
+            public override Color ImageMarginGradientBegin   => TG.SidebarBg;
+            public override Color ImageMarginGradientMiddle  => TG.SidebarBg;
+            public override Color ImageMarginGradientEnd     => TG.SidebarBg;
         }
 
         private Image LoadAndTintIcon(string fileName, Color tint)
