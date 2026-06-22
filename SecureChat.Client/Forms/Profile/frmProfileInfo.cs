@@ -21,8 +21,7 @@ namespace SecureChat.Client.Forms.Profile
 
         private readonly ProfileModel _profile;
 
-        private Panel _avatar = null!;
-        private Image? _avatarImage = null;
+        private PictureBox _avatar = null!;
         private Label _lblInitial = null!;
         private Label _lblName = null!;
         private Label _lblStatus = null!;
@@ -69,20 +68,13 @@ namespace SecureChat.Client.Forms.Profile
             _btnClose.TextImageRelation = TextImageRelation.Overlay;
             _btnClose.Click += (_, __) => Close();
 
-            _avatar = new Panel
+            _avatar = new PictureBox
             {
                 Size = new Size(120, 120),
-                BackColor = Color.Transparent,
+                BackColor = TG.GetAvatarColor(_profile.FullName),
+                SizeMode = PictureBoxSizeMode.Zoom,
             };
-            typeof(Panel).GetProperty("DoubleBuffered",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                ?.SetValue(_avatar, true);
-            _avatar.Paint += (_, pe) =>
-            {
-                var rect = new Rectangle(0, 0, _avatar.Width, _avatar.Height);
-                TG.DrawCircleAvatar(pe.Graphics, rect, _avatarImage, _profile.FullName,
-                    TG.GetAvatarColor(_profile.FullName));
-            };
+            _avatar.Paint += (_, __) => ClipCircle(_avatar);
 
             _lblInitial = new Label
             {
@@ -244,7 +236,7 @@ namespace SecureChat.Client.Forms.Profile
             _lblName.Text = profile.FullName;
             _lblStatus.Text = profile.StatusText;
             _lblInitial.Text = GetInitials(profile.FullName);
-            _avatar.BackColor = Color.Transparent;
+            _avatar.BackColor = TG.GetAvatarColor(profile.FullName);
             ApplyAvatarImage();
             LayoutDynamic();
         }
@@ -396,16 +388,15 @@ namespace SecureChat.Client.Forms.Profile
         {
             try
             {
-                _avatarImage?.Dispose();
-                _avatarImage = null;
+                _avatar.Image?.Dispose();
+                _avatar.Image = null;
 
                 if (!string.IsNullOrWhiteSpace(_profile.AvatarPath) && File.Exists(_profile.AvatarPath))
                 {
                     using var fs = new FileStream(_profile.AvatarPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                     using var img = Image.FromStream(fs);
-                    _avatarImage = new Bitmap(img);
+                    _avatar.Image = new Bitmap(img);
                     _lblInitial.Visible = false;
-                    _avatar.Invalidate();
                     return;
                 }
             }

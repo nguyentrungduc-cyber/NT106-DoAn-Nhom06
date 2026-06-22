@@ -124,19 +124,31 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Size = new Size(AVATAR_SIZE, AVATAR_SIZE),
                 Location = new Point(HEADER_PADDING_X, 56),
-                BackColor = Color.Transparent
+                BackColor = TG.GetAvatarColor(_profile.FullName)
             };
-            // Enable DoubleBuffer để tránh flicker và artifact hình vuông
-            typeof(Panel).GetProperty("DoubleBuffered",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                ?.SetValue(_avatarPanel, true);
             _avatarPanel.Paint += (_, e) =>
             {
-                var rect = new Rectangle(0, 0, _avatarPanel.Width, _avatarPanel.Height);
-                var photo = LoadAvatarImage(_profile.AvatarPath);
-                TG.DrawCircleAvatar(e.Graphics, rect, photo, _profile.FullName,
-                    TG.GetAvatarColor(_profile.FullName));
-                photo?.Dispose();
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var path = new GraphicsPath();
+                path.AddEllipse(0, 0, _avatarPanel.Width, _avatarPanel.Height);
+                _avatarPanel.Region = new Region(path);
+
+                var avatarImage = LoadAvatarImage(_profile.AvatarPath);
+                if (avatarImage != null)
+                {
+                    e.Graphics.SetClip(path);
+                    e.Graphics.DrawImage(avatarImage, new Rectangle(0, 0, _avatarPanel.Width, _avatarPanel.Height));
+                    e.Graphics.ResetClip();
+                    avatarImage.Dispose();
+                    return;
+                }
+
+                using var f = TG.FontSemiBold(28f);
+                var initials = GetInitials(_profile.FullName);
+                var sz = e.Graphics.MeasureString(initials, f);
+                e.Graphics.DrawString(initials, f, Brushes.White,
+                    (_avatarPanel.Width - sz.Width) / 2,    
+                    (_avatarPanel.Height - sz.Height) / 2);
             };
 
             _lblName = new Label
