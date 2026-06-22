@@ -218,6 +218,10 @@ namespace SecureChat.Client
         {
             NightModeService.Initialize();
             _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
+            // Áp dụng UI ngay nếu night mode đã được bật từ session trước
+            // (Initialize chỉ set TG.* static, không trigger OnNightModeChanged)
+            if (NightModeService.IsEnabled)
+                OnNightModeChanged();
 
             try
             {
@@ -3701,10 +3705,11 @@ namespace SecureChat.Client
 
             _pnlMessages.Invalidate();
 
-            // Rebuild bubble panels để background color (MsgInBg/MsgOutBg/ChatBg) được áp dụng đúng
-            // Paint events đã dùng TG.* nên chỉ cần trigger repaint qua Invalidate(true)
-            foreach (Control c in _pnlMessages.Controls)
-                c.Invalidate(true);
+            // Rebuild toàn bộ bubble để MsgInBg/MsgOutBg/ChatBg được áp dụng đúng.
+            // Chỉ Invalidate() không đủ vì màu nền bubble được set tại lúc tạo Panel,
+            // không phải qua Paint event → phải BuildMessages() lại để tạo lại Panel mới.
+            if (_allMsgs.TryGetValue(_activeConvId ?? "", out _))
+                BuildMessages();
         }
 
         private void UpdateSettingsHeaderUI()
