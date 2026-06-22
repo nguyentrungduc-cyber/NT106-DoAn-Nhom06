@@ -3788,7 +3788,7 @@ namespace SecureChat.Client
             }
 
             _pnlMessages.BackColor = TG.ChatBg;
-            _pnlMessages.CachedWallpaper = null;
+            UpdateCachedBackground();
             if (_pnlChat != null) _pnlChat.BackColor = TG.ChatBg;
 
             foreach (Control c in _pnlMessages.Controls)
@@ -5818,11 +5818,11 @@ namespace SecureChat.Client
                             break;
                         case SecureChat.DTOs.DeliveryStatus.Delivered:
                             tickText  = "✓✓";
-                            tickColor = Color.Gray;    // 2 tick xám = đã nhận
+                            tickColor = TG.TextSecondary;
                             break;
                         default:
                             tickText  = "✓";
-                            tickColor = Color.Gray;    // 1 tick xám = đã gửi
+                            tickColor = TG.TextSecondary;
                             break;
                     }
                     e.Graphics.DrawString(tickText, tickFont, new SolidBrush(tickColor), tickX, ty - 1);
@@ -8172,8 +8172,6 @@ namespace SecureChat.Client
                 UpdateStyles();
             }
         }
-
-        private Bitmap _cachedBackground;
 
         private void UpdateCachedBackground()
         {

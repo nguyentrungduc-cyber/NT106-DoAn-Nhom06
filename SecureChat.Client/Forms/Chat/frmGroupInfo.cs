@@ -107,7 +107,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = string.Empty,
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = C_SUBTEXT,
+                ForeColor = TG.TextSecondary,
                 AutoSize = false,
                 Size = new Size(FORM_WIDTH - 40, 26),
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -484,7 +484,6 @@ namespace SecureChat.Client.Forms.Chat
                 {
                     item.Width = available;
                     item.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
-                    item.RefreshLayout();
                 }
             }
         }
