@@ -42,7 +42,7 @@ namespace SecureChat.Client.Forms.Chat
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
 
             BuildUI();
             Shown += async (_, __) => await LoadFriendsAsync();
@@ -89,7 +89,7 @@ namespace SecureChat.Client.Forms.Chat
                 Text = "Đã chọn: 0",
                 Location = new Point(16, 466),
                 AutoSize = true,
-                ForeColor = Color.Gray,
+                ForeColor = TG.TextSecondary,
             };
 
             var btnCancel = new Button
@@ -170,7 +170,7 @@ namespace SecureChat.Client.Forms.Chat
                         var lblEmpty = new Label
                         {
                             Text = "Không còn bạn bè nào để thêm vào nhóm.",
-                            ForeColor = Color.Gray,
+                            ForeColor = TG.TextSecondary,
                             AutoSize = true,
                             Padding = new Padding(8),
                         };

@@ -416,7 +416,7 @@ namespace SecureChat.Client.Forms.Settings
             var track = chk.Checked ? TG.CAccent : TG.TextSecondary;
 
             using var trackBrush = new SolidBrush(track);
-            using var thumbBrush = new SolidBrush(Color.White);
+            using var thumbBrush = new SolidBrush(TG.WindowBg);
 
             g.FillEllipse(trackBrush, rect.Left, rect.Top, rect.Height, rect.Height);
             g.FillEllipse(trackBrush, rect.Right - rect.Height, rect.Top, rect.Height, rect.Height);

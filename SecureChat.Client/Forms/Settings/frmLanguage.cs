@@ -453,7 +453,7 @@ namespace SecureChat.Client.Forms.Settings
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(460, 520);
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
 
             var title = new Label

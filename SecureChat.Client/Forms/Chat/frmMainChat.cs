@@ -3309,8 +3309,8 @@ namespace SecureChat.Client
                     using var brush = new SolidBrush(on ? TG.Blue : Color.FromArgb(0xCC, 0xCC, 0xCC));
                     e.Graphics.FillPath(brush, RoundedPanel.GetRoundedPath(r, 10));
                     int cx = on ? 22 : 2;
-                    using var white = new SolidBrush(Color.White);
-                    e.Graphics.FillEllipse(white, cx, 4, 16, 16);
+                    using var thumbBrush = new SolidBrush(TG.TitleBarFg);
+                    e.Graphics.FillEllipse(thumbBrush, cx, 4, 16, 16);
                 };
                 toggle.Click += (s, e) =>
                 {

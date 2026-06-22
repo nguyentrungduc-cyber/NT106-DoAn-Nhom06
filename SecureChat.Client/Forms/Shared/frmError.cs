@@ -80,7 +80,7 @@ namespace SecureChat.Client.Forms.Shared
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = TG.FontRegular(9.5f);
             DoubleBuffered = true;
             Size = new Size(420, 240);
@@ -153,7 +153,7 @@ namespace SecureChat.Client.Forms.Shared
                 Font = TG.FontRegular(10f),
                 ForeColor = TG.TextPrimary,
                 AutoSize = false,
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Padding = new Padding(24, 12, 24, 12),
                 Dock = DockStyle.Fill,
@@ -164,7 +164,7 @@ namespace SecureChat.Client.Forms.Shared
             {
                 Height = 64,
                 Dock = DockStyle.Bottom,
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Padding = new Padding(20, 8, 20, 16),
             };
             var btnOk = new TelegramButton
