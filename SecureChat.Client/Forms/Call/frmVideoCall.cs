@@ -229,6 +229,9 @@ namespace SecureChat.Client.Forms.Call
                 BackColor = TgBlue,
                 Cursor = Cursors.Default
             };
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(pnlAvatar, true);
             pnlAvatar.Paint += PnlAvatar_Paint;
 
             lblInitials = new Label
@@ -510,7 +513,7 @@ namespace SecureChat.Client.Forms.Call
             pnlAvatar.Location = new Point(
                 (ClientSize.Width - pnlAvatar.Width) / 2,
                 Math.Max(pnlGradientTop.Height + 8, avY));
-            ApplyCircle(pnlAvatar);
+            pnlAvatar.Invalidate();
 
             // Local preview – snap to bottom-right if user has not moved it
             if (!localPreviewMovedByUser && !isDragging)
@@ -544,9 +547,8 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         private void PnlAvatar_Paint(object? s, PaintEventArgs e)
         {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var br = new SolidBrush(TgBlue);
-            e.Graphics.FillEllipse(br, 0, 0, pnlAvatar.Width - 1, pnlAvatar.Height - 1);
+            var rect = new Rectangle(0, 0, pnlAvatar.Width, pnlAvatar.Height);
+            TG.DrawCircleAvatar(e.Graphics, rect, null, "", TgBlue, drawInitials: false);
         }
 
         private void PnlLocalWrap_Paint(object? s, PaintEventArgs e)
@@ -1384,14 +1386,6 @@ namespace SecureChat.Client.Forms.Call
         {
             if (c.Width <= 0 || c.Height <= 0) return;
             using var path = RoundedRect(new Rectangle(0, 0, c.Width, c.Height), r);
-            c.Region = new Region(path);
-        }
-
-        private static void ApplyCircle(Control c)
-        {
-            if (c.Width <= 0 || c.Height <= 0) return;
-            var path = new GraphicsPath();
-            path.AddEllipse(0, 0, c.Width, c.Height);
             c.Region = new Region(path);
         }
 
