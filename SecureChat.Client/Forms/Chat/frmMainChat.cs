@@ -53,6 +53,8 @@ namespace SecureChat.Client
         private Panel _pnlSidebarHeader; // header trên cùng của sidebar trái (hamburger + "SecureChat")
         private Panel _sbHeader; // header của right sidebar (group/user info panel)
         private TelegramTextBox _tbMessage; // TextBox gõ tin nhắn
+        private Button _btnAttach, _btnTimer, _btnEmoji, _btnMic;
+        private TelegramButton _btnSend;
         private Label _lblChatName, _lblChatStatus; // tên và trạng thái người nhận
         private AvatarControl _chatAvatar; //  avatar tròn người nhận
         private Button _btnVideoCall; // video call button in header
@@ -2362,12 +2364,7 @@ namespace SecureChat.Client
         {
             var bmp = new Bitmap(w, h);
             using var g = Graphics.FromImage(bmp);
-            using var brush = new LinearGradientBrush(
-                new Rectangle(0, 0, w, h),
-                Color.FromArgb(0xDB, 0xE8, 0xD5),
-                Color.FromArgb(0xB5, 0xCC, 0xA8),
-                LinearGradientMode.Vertical);
-            g.FillRectangle(brush, 0, 0, w, h);
+            g.Clear(TG.ChatBg);
             return bmp;
         }
 
@@ -2541,7 +2538,7 @@ namespace SecureChat.Client
             // =========================================================
             // 2. TẠO KHUNG NHẬP CHAT BÌNH THƯỜNG (Có TextBox, Nút gửi...)
             // =========================================================
-            var btnAttach = MakeInputBtn("📎");
+            var btnAttach = MakeInputBtn("📎"); _btnAttach = btnAttach;
             btnAttach.Click += async (s, e) =>
             {
                 try
@@ -2756,7 +2753,7 @@ namespace SecureChat.Client
             };
 
             // Self-destruct timer button
-            var btnTimer = MakeInputBtn("⏱");
+            var btnTimer = MakeInputBtn("⏱"); _btnTimer = btnTimer;
             btnTimer.Click += (s, e) =>
             {
                 // Show context menu to select self-destruct time
@@ -2777,7 +2774,7 @@ namespace SecureChat.Client
             _tbMessage.SetPlaceholder("Write a message...");
             _tbMessage.KeyDown += (s, e) => { if (e.KeyCode == Keys.Return && !e.Shift) { e.SuppressKeyPress = true; SendMessage(); } };
 
-            var btnEmoji = MakeInputBtn("😊");
+            var btnEmoji = MakeInputBtn("😊"); _btnEmoji = btnEmoji;
             btnEmoji.Click += (s, e) =>
             {
                 using var picker = new SecureChat.Client.Forms.Chat.frmReactionPicker();
@@ -2794,7 +2791,7 @@ namespace SecureChat.Client
                     _tbMessage.Focus();
                 }
             };
-            var btnMic = MakeInputBtn("🎤");
+            var btnMic = MakeInputBtn("🎤"); _btnMic = btnMic;
             btnMic.Click += async (s, e) =>
             {
                 try
@@ -3014,6 +3011,7 @@ namespace SecureChat.Client
                 }
             };
             var btnSend = new TelegramButton { Text = "↑", Height = 36, Width = 36, Font = TG.FontSemiBold(14f), Radius = 18, Visible = false };
+            _btnSend = btnSend;
             btnSend.Click += (s, e) => SendMessage();
 
             _tbMessage.TextChanged += (s, e) =>
@@ -3678,6 +3676,14 @@ namespace SecureChat.Client
             _pnlConvList.BackColor = TG.SidebarBg;
             _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
 
+            // Sidebar panel + controls missing from original toggle
+            if (_pnlSidebar != null) _pnlSidebar.BackColor = TG.SidebarBg;
+            if (_btnHamburger != null) _btnHamburger.ForeColor = TG.TitleBarFg;
+            if (_tbSearch != null) _tbSearch.RefreshTheme();
+            if (_pnlEmptyState != null) _pnlEmptyState.BackColor = TG.SidebarBg;
+            if (_lblEmptyState != null) _lblEmptyState.ForeColor = TG.TextSecondary;
+            if (_btnNewMessage != null) { _btnNewMessage.BackColor = TG.Blue; _btnNewMessage.ForeColor = Color.White; }
+
             // Header bar (hamburger + title area)
             if (_pnlSidebarHeader != null)
             {
@@ -3735,30 +3741,48 @@ namespace SecureChat.Client
             }
                 _lblChatEmpty.BackColor = Color.FromArgb(220, TG.WindowBg.R, TG.WindowBg.G, TG.WindowBg.B);
 
-            // Chat header (title bar top)
+            // Chat header (title bar top) — use semantic colors, not blanket overwrite
             if (_pnlChatHeader != null)
             {
-                _pnlChatHeader.BackColor = TG.TitleBarBg;
+                _pnlChatHeader.BackColor = TG.SidebarBg;
+                if (_lblChatName != null) _lblChatName.ForeColor = TG.TextPrimary;
+                if (_lblChatStatus != null) _lblChatStatus.ForeColor = TG.TextSecondary;
                 foreach (Control c in _pnlChatHeader.Controls)
-                {
-                    if (c is Label l) l.ForeColor = TG.TitleBarFg;
-                    else if (c is Button b) b.ForeColor = TG.TitleBarFg;
-                }
+                    if (c is Button b) b.ForeColor = TG.TextSecondary;
+                if (_btnVideoCall != null) _btnVideoCall.ForeColor = TG.TextSecondary;
+                if (_btnToggleSidebar != null) _btnToggleSidebar.ForeColor = TG.TextSecondary;
+                _pnlChatHeader.Invalidate();
             }
 
             // Input bar
-            if (_pnlInputBar != null) _pnlInputBar.BackColor = TG.WindowBg;
-            if (_tbMessage != null)
+            if (_pnlInputBar != null) _pnlInputBar.BackColor = TG.SidebarBg;
+            if (_tbMessage != null) _tbMessage.RefreshTheme();
+            if (_btnSend != null) _btnSend.RefreshTheme();
+            if (_btnAttach != null) _btnAttach.ForeColor = TG.Blue;
+            if (_btnTimer != null) _btnTimer.ForeColor = TG.Blue;
+            if (_btnEmoji != null) _btnEmoji.ForeColor = TG.Blue;
+            if (_btnMic != null) _btnMic.ForeColor = TG.Blue;
+
+            // Reply context bar
+            if (_pnlReplyContext != null)
             {
-                _tbMessage.BackColor = TG.InputBg;
-                _tbMessage.ForeColor = TG.TextPrimary;
+                _pnlReplyContext.BackColor = TG.SidebarBg;
+                if (_lblReplySender != null) _lblReplySender.ForeColor = TG.Blue;
+                if (_lblReplyText != null) _lblReplyText.ForeColor = TG.TextSecondary;
+                foreach (Control c in _pnlReplyContext.Controls)
+                {
+                    if (c is Label lbl && lbl != _lblReplySender && lbl != _lblReplyText)
+                        lbl.ForeColor = TG.Blue;
+                    else if (c is Panel p) p.BackColor = TG.Blue;
+                }
+                _pnlReplyContext.Invalidate();
             }
 
             // Right sidebar
-            if (_pnlRightSidebar != null) _pnlRightSidebar.BackColor = TG.WindowBg;
+            if (_pnlRightSidebar != null) _pnlRightSidebar.BackColor = TG.SidebarBg;
             if (_sbHeader != null)
             {
-                _sbHeader.BackColor = TG.TitleBarBg;
+                _sbHeader.BackColor = TG.SidebarBg;
                 foreach (Control c in _sbHeader.Controls)
                 {
                     if (c is Label l) l.ForeColor = TG.TitleBarFg;
@@ -3789,7 +3813,7 @@ namespace SecureChat.Client
 
             _pnlMessages.BackColor = TG.ChatBg;
             UpdateCachedBackground();
-            if (_pnlChat != null) _pnlChat.BackColor = TG.ChatBg;
+            if (_pnlChat != null) _pnlChat.BackColor = TG.SidebarBg;
 
             foreach (Control c in _pnlMessages.Controls)
             {
@@ -3846,12 +3870,9 @@ namespace SecureChat.Client
                 _pnlPinnedBottomBar.Invalidate(true);
             }
 
-            _pnlMessages.Invalidate();
+            _pnlMessages.Invalidate(true);
 
-            // Rebuild toàn bộ bubble để MsgInBg/MsgOutBg/ChatBg được áp dụng đúng.
-            // Chỉ Invalidate() không đủ vì màu nền bubble được set tại lúc tạo Panel,
-            // không phải qua Paint event → phải BuildMessages() lại để tạo lại Panel mới.
-            if (_allMsgs.TryGetValue(_activeConvId ?? "", out _))
+            if (!string.IsNullOrWhiteSpace(_activeConvId))
                 BuildMessages();
         }
 
@@ -8184,7 +8205,7 @@ namespace SecureChat.Client
             using (Graphics g = Graphics.FromImage(newBmp))
             {
                 // 2. Tô nền bằng màu mặc định trước (phòng trường hợp ảnh không phủ hết hoặc lỗi)
-                g.Clear(Color.FromArgb(0xDB, 0xE8, 0xD5));
+                g.Clear(TG.ChatBg);
 
                 // 3. Lấy ảnh wallpaper (sử dụng hàm LoadWallpaper bạn đã viết)
                 var img = LoadWallpaper();
@@ -8210,14 +8231,9 @@ namespace SecureChat.Client
 
             // 4. Cập nhật BackgroundImage cho Panel
             // Giải phóng ảnh cũ để tránh tràn bộ nhớ (Memory Leak)
-            var oldBmp = _pnlMessages.BackgroundImage;
-            // Xóa 2 dòng code này đi:
-            // _pnlMessages.BackgroundImage = newBmp;
-            // _pnlMessages.BackgroundImageLayout = ImageLayout.None;
-
-            // Thay bằng 2 dòng này:
+            var oldBmp = _pnlMessages.CachedWallpaper;
             _pnlMessages.CachedWallpaper = newBmp;
-            _pnlMessages.Invalidate(); // Ra lệnh cho Panel vẽ lại nền lập tức
+            _pnlMessages.Invalidate();
 
             if (oldBmp != null) oldBmp.Dispose();
         }
