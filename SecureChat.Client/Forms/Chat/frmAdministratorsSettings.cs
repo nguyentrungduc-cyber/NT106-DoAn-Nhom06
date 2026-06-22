@@ -131,32 +131,12 @@
         {
             var row = new Panel { Size = new Size(500, 84), BackColor = Color.White };
 
-            var initials = displayName.Length >= 2
-                ? $"{displayName[0]}".ToUpper()
-                : displayName.ToUpper();
-
-            var avatar = new Panel
+            var avatar = new AvatarControl
             {
                 Location = new Point(20, 14),
                 Size = new Size(52, 52),
-                BackColor = Color.FromArgb(0x5C, 0xA5, 0xEC)
             };
-            avatar.Paint += (_, e) =>
-            {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using var path = new System.Drawing.Drawing2D.GraphicsPath();
-                path.AddEllipse(0, 0, avatar.Width, avatar.Height);
-                avatar.Region = new Region(path);
-            };
-            var lblInitial = new Label
-            {
-                Text = initials,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 16f)
-            };
-            avatar.Controls.Add(lblInitial);
+            avatar.SetName(displayName);
 
             var lblName = new Label
             {

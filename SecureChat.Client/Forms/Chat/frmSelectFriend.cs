@@ -213,33 +213,12 @@ namespace SecureChat.Client.Forms.Chat
             };
 
             var f = friend.Friend;
-            string initials = f.DisplayName?.Length > 0
-                ? f.DisplayName[..1].ToUpperInvariant()
-                : "?";
-            var avatarColor = TG.GetAvatarColor(f.DisplayName ?? "?");
-
-            var avatar = new Panel
+            var avatar = new AvatarControl
             {
                 Location = new Point(20, 14),
                 Size = new Size(52, 52),
-                BackColor = avatarColor
             };
-            avatar.Paint += (_, e) =>
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = new GraphicsPath();
-                path.AddEllipse(0, 0, avatar.Width, avatar.Height);
-                avatar.Region = new Region(path);
-            };
-            var lblInitial = new Label
-            {
-                Text = initials,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 16f)
-            };
-            avatar.Controls.Add(lblInitial);
+            avatar.SetName(f.DisplayName ?? f.Username ?? "?");
 
             var lblName = new Label
             {

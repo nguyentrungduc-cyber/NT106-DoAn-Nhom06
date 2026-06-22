@@ -113,19 +113,7 @@ namespace SecureChat.Client.Components.Group
 
             // ── Avatar ────────────────────────────────────
             var avaRect = new Rectangle(avaL, AVA_TOP, AVA_SZ, AVA_SZ);
-            using (var b = new SolidBrush(_avatarColor))
-                g.FillEllipse(b, avaRect);
-
-            string letter = string.IsNullOrEmpty(_displayName)
-                ? "?"
-                : _displayName[0].ToString().ToUpper();
-            using var fnt = new Font("Segoe UI", 18f, FontStyle.Bold, GraphicsUnit.Pixel);
-            var sfC = new StringFormat
-            {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center,
-            };
-            g.DrawString(letter, fnt, Brushes.White, avaRect, sfC);
+            TG.DrawCircleAvatar(g, avaRect, null, _displayName, _avatarColor);
 
             // ── X button ─────────────────────────────────
             var xR = XBtnRect;

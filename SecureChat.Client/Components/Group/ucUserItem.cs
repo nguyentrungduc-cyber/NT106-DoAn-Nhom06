@@ -186,20 +186,7 @@ namespace SecureChat.Client.Components.Group
 
             // ── Avatar circle ─────────────────────────────
             var avaRect = new Rectangle(PAD, AVA_Y, AVA_SZ, AVA_SZ);
-            using (var avaBrush = new SolidBrush(_avatarColor))
-                g.FillEllipse(avaBrush, avaRect);
-
-            // Chữ cái đầu
-            string letter = string.IsNullOrEmpty(_displayName)
-                ? "?"
-                : _displayName[0].ToString().ToUpper();
-            using var fntInit = new Font("Segoe UI", 20f, FontStyle.Bold, GraphicsUnit.Pixel);
-            var sfCenter = new StringFormat
-            {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center,
-            };
-            g.DrawString(letter, fntInit, Brushes.White, avaRect, sfCenter);
+            TG.DrawCircleAvatar(g, avaRect, null, _displayName, _avatarColor);
 
             // ── Text ──────────────────────────────────────
             int cbX = Width - CB_SZ - PAD;

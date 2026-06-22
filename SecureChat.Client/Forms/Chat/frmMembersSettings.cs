@@ -167,28 +167,12 @@ namespace SecureChat.Client.Forms.Chat
                 BackColor = Color.White
             };
 
-            var avatar = new Panel
+            var avatar = new AvatarControl
             {
                 Location = new Point(20, 20),
                 Size = new Size(56, 56),
-                BackColor = m.AvatarColor
             };
-            avatar.Paint += (_, e) =>
-            {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using var path = new System.Drawing.Drawing2D.GraphicsPath();
-                path.AddEllipse(0, 0, avatar.Width, avatar.Height);
-                avatar.Region = new Region(path);
-            };
-            var lblInitial = new Label
-            {
-                Text = m.Initials,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 16f)
-            };
-            avatar.Controls.Add(lblInitial);
+            avatar.SetName(m.Name);
 
             var lblName = new Label
             {
