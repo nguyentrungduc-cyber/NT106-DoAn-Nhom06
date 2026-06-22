@@ -1,16 +1,23 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Hubs;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations/{conversationID}/calls")]
-	public class CallController(CallRepository calls, ConversationRepository conversations) : BaseController
+	public class CallController(
+		CallRepository calls,
+		ConversationRepository conversations,
+		MessageRepository messages,
+		PrivacyRepository privacy,
+		IHubContext<ChatHub> hubContext) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -57,7 +64,11 @@ namespace SecureChat.Controllers
 
 			var existing = await calls.GetActiveCallAsync(conversationID);
 			if (existing is not null)
-				await calls.EndCallAsync(existing.CallID);
+				return Conflict(new { error = "Đã có cuộc gọi đang diễn ra trong cuộc hội thoại này." });
+
+			var existingUserCall = await calls.GetActiveCallByMemberAsync(member.MemberID);
+			if (existingUserCall is not null)
+				return Conflict(new { error = "Bạn đang có cuộc gọi trong cuộc hội thoại khác." });
 
 			var call = await calls.CreateCallAsync(new CallLog {
 				CallID = NewID(),
@@ -75,6 +86,14 @@ namespace SecureChat.Controllers
 			});
 
 			var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+
+			// Respect CallsPrivacy — skip members who don't want calls from this caller
+			var callerUserID = Me;
+			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID).ToList())
+			{
+				if (!await privacy.CanStartCallAsync(callerUserID, m.UserID))
+					activeMembers.Remove(m);
+			}
 
 			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID))
 				await calls.AddParticipantAsync(new CallParticipant {
@@ -118,6 +137,10 @@ namespace SecureChat.Controllers
 			if (member is null)
 				return Forbid();
 
+			var existingUserCall = await calls.GetActiveCallByMemberAsync(member.MemberID);
+			if (existingUserCall is not null && existingUserCall.CallID != callID)
+				return Conflict(new { error = "Bạn đang có cuộc gọi trong cuộc hội thoại khác." });
+
 			var call = await calls.GetByIdAsync(callID);
 			if (call is null || call.ConversationID != conversationID)
 				return NotFound();
@@ -134,6 +157,37 @@ namespace SecureChat.Controllers
 			} catch (KeyNotFoundException) {
 				return NotFound(new { error = "Bạn không trong danh sách cuộc gọi này." });
 			}
+		}
+
+		[HttpPost("{callID}/end")]
+		public async Task<IActionResult> EndCall(string conversationID, string callID)
+		{
+			var member = await GetActiveMember(conversationID);
+			if (member is null)
+				return Forbid();
+
+			var call = await calls.GetByIdAsync(callID);
+			if (call is null || call.ConversationID != conversationID)
+				return NotFound();
+
+			var preEndStatus = call.Status;
+			var hasDeclined = call.Participants?.Any(p => p.Status == CallParticipantStatus.Declined) ?? false;
+
+			await calls.EndCallAsync(callID);
+
+			if (preEndStatus == CallStatus.Ongoing)
+			{
+				var ended = await calls.GetByIdAsync(callID) ?? call;
+				await CreateCallSystemMessageAsync(ended, missed: false);
+			}
+			else if (preEndStatus == CallStatus.Ringing && hasDeclined)
+			{
+				var ended = await calls.GetByIdAsync(callID) ?? call;
+				await CreateCallSystemMessageAsync(ended, missed: true);
+			}
+			// Ringing without decline → caller cancelled before answer → no message
+
+			return NoContent();
 		}
 
 		[HttpPost("{callID}/leave")]
@@ -155,14 +209,93 @@ namespace SecureChat.Controllers
 				return NotFound();
 			}
 
-			if (call.StartedBy == member.MemberID)
+			// Private call: leaving ends the entire call
+			if (call.Conversation?.Type == ConversationType.Direct)
+			{
+				var preEndStatus = call.Status;
+				var hasDeclined = call.Participants?.Any(p => p.Status == CallParticipantStatus.Declined) ?? false;
+
 				await calls.EndCallAsync(callID);
+
+				if (preEndStatus == CallStatus.Ongoing)
+				{
+					var ended = await calls.GetByIdAsync(callID) ?? call;
+					await CreateCallSystemMessageAsync(ended, missed: false);
+				}
+				else if (preEndStatus == CallStatus.Ringing && hasDeclined)
+				{
+					var ended = await calls.GetByIdAsync(callID) ?? call;
+					await CreateCallSystemMessageAsync(ended, missed: true);
+				}
+				// Ringing without decline → caller left without answer → no message
+			}
+			else
+			{
+				// Group call: auto-end when no active participants remain
+				var activeCount = await calls.GetActiveParticipantCountAsync(callID);
+				if (activeCount == 0)
+				{
+					var preEndStatus = call.Status;
+
+					await calls.EndCallAsync(callID);
+
+					if (preEndStatus == CallStatus.Ongoing)
+					{
+						var ended = await calls.GetByIdAsync(callID) ?? call;
+						await CreateCallSystemMessageAsync(ended, missed: false, isGroup: true);
+					}
+					// Ringing group call with no active participants → no message
+				}
+			}
 
 			return NoContent();
 		}
 
+		private async Task CreateCallSystemMessageAsync(CallLog call, bool missed, bool isGroup = false)
+		{
+			var callTypeName = call.Type == CallType.Video ? "video" : "voice";
+			string content;
+
+			if (isGroup)
+			{
+				content = "Group call ended";
+			}
+			else if (missed)
+			{
+				content = $"Missed {callTypeName} call";
+			}
+			else
+			{
+				var duration = call.EndedAt.HasValue && call.StartedAt != default
+					? (int)(call.EndedAt.Value - call.StartedAt).TotalSeconds
+					: 0;
+				content = duration > 0
+					? $"{callTypeName} call — {duration}s"
+					: $"{callTypeName} call";
+			}
+
+			var sysMsg = new Message
+			{
+				MessageID = NewID(),
+				ConversationID = call.ConversationID,
+				SenderID = null,
+				Type = MessageType.Call,
+				Content = content
+			};
+
+			// Atomic: UPDATE flag + INSERT message in single transaction
+			if (!await calls.TryCreateCallHistoryMessageAsync(call.CallID, sysMsg))
+				return;
+
+			var response = MessageResponse.From(sysMsg);
+
+			await hubContext.Clients
+				.Group(call.ConversationID)
+				.SendAsync("MessageReceived", response);
+		}
+
 		[HttpPut("{callID}/participants/{participantID}")]
-		public async Task<IActionResult> UpdateParticipant(string conversationID, string callID, string participantID, [FromBody] UpdateCallStatusRequest req)
+		public async Task<IActionResult> UpdateParticipant(string conversationID, string callID, string participantID, [FromBody] UpdateParticipantStatusRequest req)
 		{
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
@@ -173,7 +306,7 @@ namespace SecureChat.Controllers
 			if (call.StartedBy != member.MemberID && member.MemberID != participantID)
 				return Forbid();
 
-			var participant = await calls.UpdateParticipantStatusAsync(participantID, callID, (CallParticipantStatus)(int)req.Status);
+			var participant = await calls.UpdateParticipantStatusAsync(participantID, callID, req.Status);
 
 			return Ok(new ParticipantResponse(participant.ParticipantID, participant.CallID,
 						null, participant.Status, participant.JoinedAt, participant.LeftAt));

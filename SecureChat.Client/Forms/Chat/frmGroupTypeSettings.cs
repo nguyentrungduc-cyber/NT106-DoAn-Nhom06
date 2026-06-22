@@ -19,7 +19,7 @@ namespace SecureChat.Client.Forms.Chat
             ControlBox = false;
             BackColor = Color.White;
             Font = new Font("Segoe UI", 10f);
-            ClientSize = new Size(500, 470);
+            ClientSize = new Size(500, 340);
 
             var lblTitle = new Label
             {
@@ -56,7 +56,7 @@ namespace SecureChat.Client.Forms.Chat
             };
             var lblPrivateDesc = new Label
             {
-                Text = "People can only join if they are added or\r\nhave an invite link",
+                Text = "People can only join if they are added by an admin",
                 Font = new Font("Segoe UI", 10f),
                 ForeColor = Color.FromArgb(0x7D, 0x8B, 0x98),
                 AutoSize = false,
@@ -64,59 +64,12 @@ namespace SecureChat.Client.Forms.Chat
                 Location = new Point(58, 194)
             };
 
-            var sep = new Panel
-            {
-                Location = new Point(0, 258),
-                Size = new Size(500, 1),
-                BackColor = Color.FromArgb(0xE5, 0xEA, 0xF0)
-            };
-
-            var lblPrimaryLink = new Label
-            {
-                Text = "Primary link",
-                Font = new Font("Segoe UI Semibold", 12f),
-                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
-                Location = new Point(24, 272),
-                Size = new Size(150, 30)
-            };
-
-            var txtLink = new TextBox
-            {
-                Text = "t.me/+S3QfQvxTOhk5ZTY9",
-                ReadOnly = true,
-                BorderStyle = BorderStyle.None,
-                BackColor = Color.FromArgb(0xF3, 0xF5, 0xF8),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
-                Font = new Font("Segoe UI", 11f),
-                Location = new Point(38, 322),
-                Size = new Size(402, 28)
-            };
-
-            var pnlLink = new Panel
-            {
-                Location = new Point(24, 310),
-                Size = new Size(452, 48),
-                BackColor = Color.FromArgb(0xF3, 0xF5, 0xF8)
-            };
-            pnlLink.Controls.Add(txtLink);
-
-            var btnCopy = BuildBlueButton("\U0001F4CB  Copy Link", new Point(24, 374));
-            btnCopy.Click += (_, __) =>
-            {
-                try { Clipboard.SetText(txtLink.Text); } catch { }
-                MessageBox.Show(this, "Link copied.", "Group type", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            };
-
-            var btnShare = BuildBlueButton("\u27A1\uFE0F  Share Link", new Point(256, 374));
-            btnShare.Click += (_, __) =>
-                MessageBox.Show(this, "Share link action will be connected next.", "Group type", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
             var btnCancel = BuildBottomButton("Cancel", Color.FromArgb(0x2A, 0xAB, 0xEE));
-            btnCancel.Location = new Point(300, 430);
+            btnCancel.Location = new Point(300, 300);
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
             var btnSave = BuildBottomButton("Save", Color.FromArgb(0x2A, 0xAB, 0xEE), true);
-            btnSave.Location = new Point(392, 430);
+            btnSave.Location = new Point(392, 300);
             btnSave.Click += (_, __) =>
             {
                 GroupType = _rbPublic.Checked ? "Public" : "Private";
@@ -129,25 +82,8 @@ namespace SecureChat.Client.Forms.Chat
             Controls.AddRange(new Control[]
             {
                 lblTitle, _rbPublic, lblPublicDesc, _rbPrivate, lblPrivateDesc,
-                sep, lblPrimaryLink, pnlLink, btnCopy, btnShare, btnCancel, btnSave
+                btnCancel, btnSave
             });
-        }
-
-        private static Button BuildBlueButton(string text, Point location)
-        {
-            var btn = new Button
-            {
-                Text = text,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0x45, 0xA9, 0xE3),
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Emoji", 11f, FontStyle.Bold),
-                Size = new Size(220, 42),
-                Location = location,
-                Cursor = Cursors.Hand
-            };
-            btn.FlatAppearance.BorderSize = 0;
-            return btn;
         }
 
         private static Button BuildBottomButton(string text, Color color, bool bold = false)

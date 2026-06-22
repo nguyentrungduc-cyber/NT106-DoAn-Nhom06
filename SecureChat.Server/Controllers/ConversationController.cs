@@ -6,13 +6,15 @@ using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Hubs;
+using SecureChat.Server.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/conversations")]
-	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, IHubContext<ChatHub> hubContext) : BaseController
+	public class ConversationController(ConversationRepository conversations, UserRepository users, MessageRepository messages, PrivacyRepository privacy, IHubContext<ChatHub> hubContext, UserPresenceService presence, GroupLockService groupLock) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -34,6 +36,7 @@ namespace SecureChat.Controllers
                             res = res with { Name = other.User.DisplayName };
                         if (!string.IsNullOrWhiteSpace(other.User.AvatarURL))
                             res = res with { AvatarURL = other.User.AvatarURL };
+                        res = res with { OtherUserId = other.UserID };
                     }
                 }
 
@@ -42,7 +45,7 @@ namespace SecureChat.Controllers
             return Ok(result);
         }
 
-	[HttpGet("{conversationID}")]
+		[HttpGet("{conversationID}")]
 		public async Task<IActionResult> GetConversation(string conversationID)
 		{
 			var conv = await conversations.GetByIdWithMembersAsync(conversationID);
@@ -62,17 +65,61 @@ namespace SecureChat.Controllers
 						res = res with { Name = other.User.DisplayName };
 					if (!string.IsNullOrWhiteSpace(other.User.AvatarURL))
 						res = res with { AvatarURL = other.User.AvatarURL };
+					res = res with { OtherUserId = other.UserID };
 				}
 			}
 			return Ok(res);
 		}
 
+		[HttpGet("{conversationID}/view")]
+		public async Task<IActionResult> GetConversationView(string conversationID)
+		{
+			var conv = await conversations.GetByIdWithMembersAsync(conversationID);
+			if (conv is null)
+				return NotFound();
+			var member = conv.Members.FirstOrDefault(m => m.UserID == Me && m.LeftAt == null);
+			if (member is null)
+				return Forbid();
+
+			var metadata = ConversationResponse.From(conv);
+			var activeMembers = conv.Members
+				.Where(m => m.LeftAt == null)
+				.ToList();
+			var members = activeMembers
+				.Select(m => MemberResponse.From(m, presence.IsOnline(m.UserID)))
+				.ToList();
+			var admins = activeMembers
+				.Where(m => m.Role >= MemberRole.Moderator)
+				.Select(m => MemberResponse.From(m, presence.IsOnline(m.UserID)))
+				.ToList();
+
+			return Ok(new ConversationViewResponse(metadata, members, admins));
+		}
+
+		[HttpGet("saved")]
+		public async Task<IActionResult> GetSavedMessages()
+		{
+			var conv = await conversations.GetOrCreateSavedMessagesConversationAsync(Me);
+			return Ok(ConversationResponse.From(conv));
+		}
+
 		[HttpPost]
 		public async Task<IActionResult> CreateConversation([FromBody] CreateConversationRequest req)
 		{
+			if (req.Type == ConversationType.SavedMessages)
+				return BadRequest(new { error = "Cannot create Saved Messages through this endpoint." });
+
 			foreach (var entry in req.Members)
 				if (!await users.ExistsByIdAsync(entry.UserID))
 					return BadRequest(new { error = $"User '{entry.UserID}' không tồn tại." });
+
+			// Respect MessagesPrivacy for direct conversations
+			if (req.Type == ConversationType.Direct)
+			{
+				var otherID = req.Members.FirstOrDefault(m => m.UserID != Me)?.UserID;
+				if (otherID is not null && !await privacy.CanSendMessageAsync(Me, otherID))
+					return Forbid();
+			}
 
 			if (req.Type == ConversationType.Direct)
 			{
@@ -143,27 +190,45 @@ namespace SecureChat.Controllers
 			var conv = await conversations.GetByIdAsync(conversationID);
 			if (conv is null)
 				return NotFound();
+			if (conv.Type == ConversationType.SavedMessages)
+				return Forbid();
 
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return Forbid();
 			if (member.Role < MemberRole.Moderator)
 				return Forbid();
+
+			bool settingsChanged = false;
+
+			// Name / Avatar (legacy settings)
 			if (req.Name is not null)
 				conv.Name = req.Name;
 			if (req.AvatarUrl is not null)
 				conv.AvatarURL = req.AvatarUrl;
 
-			await conversations.UpdateAsync(conv);
+			// Group settings (Description, GroupType, HistoryMode)
+			if (req.Description is not null || req.GroupType.HasValue || req.ChatHistoryMode.HasValue)
+			{
+				settingsChanged = true;
+				// Use the dedicated method to handle version conflict
+				conv = await conversations.UpdateGroupSettingsAsync(
+					conversationID, req.Description, req.GroupType, req.ChatHistoryMode);
+			}
+			else
+			{
+				await conversations.UpdateAsync(conv);
+			}
 
 			// Notify all active members about the update
 			try
 			{
+				var eventName = settingsChanged ? "GroupSettingsUpdated" : "ConversationUpdated";
 				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
 				foreach (var m in activeMembers)
 				{
 					if (m.UserID != Me)
-						await hubContext.Clients.User(m.UserID).SendAsync("ConversationUpdated", conversationID);
+						await hubContext.Clients.User(m.UserID).SendAsync(eventName, conversationID, conv.Version);
 				}
 			}
 			catch { /* best-effort */ }
@@ -177,6 +242,8 @@ namespace SecureChat.Controllers
 			var conv = await conversations.GetByIdAsync(conversationID);
 			if (conv is null)
 				return NotFound();
+			if (conv.Type == ConversationType.SavedMessages)
+				return Forbid();
 
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
@@ -217,12 +284,31 @@ namespace SecureChat.Controllers
 		[HttpPost("{conversationID}/clear")]
 		public async Task<IActionResult> ClearConversationMessages(string conversationID)
 		{
+			var conv = await conversations.GetByIdAsync(conversationID);
+			if (conv is null)
+				return NotFound();
+
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return Forbid();
 
+			// Reset last-read pointer before deleting messages
+			member.LastReadMsgID = null;
+
 			await messages.DeleteAllByConversationAsync(conversationID);
 			await conversations.ClearLastMessageAsync(conversationID);
+
+			// Notify all active members that messages were cleared
+			var members = await conversations.GetActiveMembersAsync(conversationID);
+			foreach (var m in members)
+			{
+				try
+				{
+					await hubContext.Clients.User(m.UserID).SendAsync("MessagesCleared", conversationID);
+				}
+				catch { /* per-user best-effort */ }
+			}
+
 			return NoContent();
 		}
 
@@ -241,12 +327,17 @@ namespace SecureChat.Controllers
 			if (existing is not null && existing.LeftAt is null)
 				return Conflict(new { error = "Người dùng đã là thành viên." });
 
+			// Cap role at adder's level — a Moderator cannot add an Owner
+			var assignedRole = req.Role;
+			if (myMember.Role < MemberRole.Owner && assignedRole >= MemberRole.Moderator)
+				assignedRole = MemberRole.Member;
+
 			var newMember = await conversations.AddMemberAsync(new ConversationMember {
 				MemberID       = NewID(),
 				ConversationID = conversationID,
 				UserID         = req.UserID,
 				EncryptedKey   = req.EncryptedKey,
-				Role           = req.Role
+				Role           = assignedRole
 			});
 
 			var loaded = await conversations.GetMemberByIdAsync(newMember.MemberID);
@@ -283,10 +374,26 @@ namespace SecureChat.Controllers
 			var target = await conversations.GetMemberByIdAsync(memberID);
 			if (target is null || target.ConversationID != conversationID)
 				return NotFound();
+
 			bool roleChanged = false;
-			if (req.Role.HasValue) {
+			if (req.Role.HasValue)
+			{
 				if (myMember.Role != MemberRole.Owner)
 					return Forbid();
+
+				// Prevent self-demotion if this is the last Owner
+				if (target.Role == MemberRole.Owner && target.UserID == Me)
+				{
+					var ownerCount = await conversations.GetActiveMembersAsync(conversationID);
+					if (ownerCount.Count(m => m.Role == MemberRole.Owner) <= 1)
+						return BadRequest(new { error = "Cannot demote yourself as the last owner. Use the leave flow to transfer ownership." });
+				}
+
+				// Prevent promoting anyone to Owner through this endpoint
+				// Ownership transfer must go through the /leave flow.
+				if (req.Role.Value == MemberRole.Owner)
+					return BadRequest(new { error = "Cannot promote to Owner. Use the leave flow to transfer ownership." });
+
 				await conversations.UpdateRoleAsync(memberID, req.Role.Value);
 				roleChanged = true;
 			}
@@ -334,6 +441,14 @@ namespace SecureChat.Controllers
 			if (target.Role >= myMember.Role)
 				return Forbid();
 
+			// Prevent removing the last Owner
+			if (target.Role == MemberRole.Owner)
+			{
+				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+				if (activeMembers.Count(m => m.Role == MemberRole.Owner) <= 1)
+					return BadRequest(new { error = "Cannot remove the last owner." });
+			}
+
 			await conversations.RemoveMemberAsync(memberID);
 
 			// Notify the removed member (so their UI removes the conversation)
@@ -360,45 +475,113 @@ namespace SecureChat.Controllers
 		}
 
 		[HttpPost("{conversationID}/leave")]
-		public async Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
+		public Task<IActionResult> LeaveConversation(string conversationID, [FromBody] LeaveConversationRequest? req = null)
 		{
-			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
-			if (member is null || member.LeftAt is not null)
-				return NotFound();
-
-			// Nếu là Owner, cần chuyển quyền trước khi rời
-			if (member.Role == MemberRole.Owner)
+			var strategy = conversations.DbContext.Database.CreateExecutionStrategy();
+			return strategy.ExecuteAsync<IActionResult>(async () =>
 			{
-				if (req is null || string.IsNullOrWhiteSpace(req.NewOwnerMemberId))
+				const int maxRetries = 3;
+
+				for (int attempt = 1; attempt <= maxRetries; attempt++)
 				{
-					return BadRequest(new { error = "Owner must appoint a new admin before leaving." });
+					using var lockHandle = await groupLock.AcquireAsync(conversationID);
+
+					try
+					{
+						await using var tx = await conversations.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
+
+						var conv = await conversations.GetByIdWithMembersAsync(conversationID);
+						if (conv is null)
+							return NotFound();
+						if (conv.Type == ConversationType.SavedMessages)
+							return Forbid();
+
+						var member = conv.Members.FirstOrDefault(m => m.UserID == Me && m.LeftAt == null);
+						if (member is null)
+							return NotFound();
+
+						var activeMembers = conv.Members.Where(m => m.LeftAt == null).ToList();
+						int activeCount = activeMembers.Count;
+
+						if (member.LeftAt is not null)
+							return NoContent();
+
+						if (activeCount == 1)
+						{
+							member.LeftAt = DateTime.UtcNow;
+							await conversations.DbContext.SaveChangesAsync();
+
+							await conversations.HardDeleteConversationAsync(conv.ConversationID);
+
+							tx.Commit();
+
+							await NotifyGroupDeletedAsync(Me, conversationID);
+							return NoContent();
+						}
+
+						if (member.Role == MemberRole.Owner)
+						{
+							if (req is null || string.IsNullOrWhiteSpace(req.NewOwnerMemberId))
+								return BadRequest(new { error = "Owner must appoint a new admin before leaving." });
+
+							var target = activeMembers.FirstOrDefault(m =>
+								m.MemberID == req.NewOwnerMemberId && m.MemberID != member.MemberID);
+
+							if (target is null)
+								return BadRequest(new { error = "Selected member not found or is the current owner." });
+
+							target.Role = MemberRole.Owner;
+							member.LeftAt = DateTime.UtcNow;
+							await conversations.DbContext.SaveChangesAsync();
+
+							tx.Commit();
+
+							await NotifyOwnerLeftAsync(conversationID, Me, target.UserID, member.User?.DisplayName ?? "A member");
+							return NoContent();
+						}
+
+						member.LeftAt = DateTime.UtcNow;
+						await conversations.DbContext.SaveChangesAsync();
+
+						tx.Commit();
+
+						await NotifyMemberLeftAsync(conversationID, Me, member.User?.DisplayName ?? "A member");
+						return NoContent();
+					}
+					catch (DbUpdateConcurrencyException) when (attempt < maxRetries)
+					{
+						await Task.Delay(100 * attempt);
+						continue;
+					}
+					catch (DbUpdateConcurrencyException)
+					{
+						return Conflict(new { error = "The group was modified concurrently. Please try again." });
+					}
 				}
 
-				var newOwner = await conversations.GetActiveMembersAsync(conversationID);
-				var target = newOwner.FirstOrDefault(m => m.MemberID == req.NewOwnerMemberId && m.MemberID != member.MemberID);
-				if (target is null)
-					return BadRequest(new { error = "Selected member not found or is the current owner." });
+				return StatusCode(StatusCodes.Status500InternalServerError);
+			});
+		}
 
-				await conversations.UpdateRoleAsync(target.MemberID, MemberRole.Owner);
-			}
+		// ─── SignalR notification helpers (called after commit) ─────────
 
-			// Send ConversationDeleted to the LEAVING user so their UI removes the conversation
-			try
-			{
-				await hubContext.Clients.User(Me).SendAsync("ConversationDeleted", conversationID);
-			}
+		private async Task NotifyGroupDeletedAsync(string leavingUserId, string conversationId)
+		{
+			try { await hubContext.Clients.User(leavingUserId).SendAsync("ConversationDeleted", conversationId); }
+			catch { /* best-effort */ }
+		}
+
+		private async Task NotifyOwnerLeftAsync(string conversationId, string leavingUserId, string newOwnerUserId, string displayName)
+		{
+			try { await hubContext.Clients.User(leavingUserId).SendAsync("ConversationDeleted", conversationId); }
 			catch { /* best-effort */ }
 
-			await conversations.LeaveMemberAsync(member.MemberID);
-
-			// Gửi thông báo hệ thống cho các thành viên còn lại
 			try
 			{
-				var displayName = member.User?.DisplayName ?? "A member";
 				var sysMsg = new Message
 				{
 					MessageID      = NewID(),
-					ConversationID = conversationID,
+					ConversationID = conversationId,
 					Type           = MessageType.SystemNotification,
 					Content        = $"{displayName} has left the group",
 					SentAt         = DateTime.UtcNow,
@@ -406,19 +589,46 @@ namespace SecureChat.Controllers
 				};
 				var created = await messages.CreateAsync(sysMsg);
 				var msgResponse = SecureChat.DTOs.MessageResponse.From(created);
-				await hubContext.Clients.Group(conversationID).SendAsync("MessageReceived", msgResponse);
+				await hubContext.Clients.Group(conversationId).SendAsync("MessageReceived", msgResponse);
 
-				// Notify remaining members that someone left (for UI refresh)
-				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
-				foreach (var m in activeMembers)
+				var remaining = await conversations.GetActiveMembersAsync(conversationId);
+				foreach (var m in remaining)
 				{
-					if (m.UserID != Me)
-						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationID, Me);
+					if (m.UserID != leavingUserId)
+						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationId, leavingUserId);
 				}
 			}
-			catch { /* best-effort notification */ }
+			catch { /* best-effort */ }
+		}
 
-			return NoContent();
+		private async Task NotifyMemberLeftAsync(string conversationId, string leavingUserId, string displayName)
+		{
+			try { await hubContext.Clients.User(leavingUserId).SendAsync("ConversationDeleted", conversationId); }
+			catch { /* best-effort */ }
+
+			try
+			{
+				var sysMsg = new Message
+				{
+					MessageID      = NewID(),
+					ConversationID = conversationId,
+					Type           = MessageType.SystemNotification,
+					Content        = $"{displayName} has left the group",
+					SentAt         = DateTime.UtcNow,
+					SenderID       = null
+				};
+				var created = await messages.CreateAsync(sysMsg);
+				var msgResponse = SecureChat.DTOs.MessageResponse.From(created);
+				await hubContext.Clients.Group(conversationId).SendAsync("MessageReceived", msgResponse);
+
+				var remaining = await conversations.GetActiveMembersAsync(conversationId);
+				foreach (var m in remaining)
+				{
+					if (m.UserID != leavingUserId)
+						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationId, leavingUserId);
+				}
+			}
+			catch { /* best-effort */ }
 		}
 
 		[HttpGet("{conversationID}/members/me")]
@@ -447,7 +657,7 @@ namespace SecureChat.Controllers
 				.Where(m => m.LeftAt == null)
 				.ToList();
 
-			return Ok(activeMembers.Select(MemberResponse.From));
+			return Ok(activeMembers.Select(m => MemberResponse.From(m, presence.IsOnline(m.UserID))));
 		}
 	}
 }

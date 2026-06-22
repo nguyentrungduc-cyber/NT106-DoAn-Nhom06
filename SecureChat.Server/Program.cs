@@ -5,11 +5,12 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Services;
 using SecureChat.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
 
 var connStr = builder.Configuration.GetConnectionString("Default")
 	?? throw new InvalidOperationException("Connection string 'Default' not found.");
@@ -35,12 +36,17 @@ builder.Services.AddScoped<FriendRepository>();
 builder.Services.AddScoped<ConversationRepository>();
 builder.Services.AddScoped<MessageRepository>();
 builder.Services.AddScoped<CallRepository>();
+builder.Services.AddScoped<PrivacyRepository>();
+builder.Services.AddSingleton<UserPresenceService>();
+builder.Services.AddSingleton<GroupLockService>();
 builder.Services.AddScoped<JwtTokenService>();
 // Email service used by forgot-password flow. Registered as singleton so it can be reused.
 builder.Services.AddSingleton<EmailService>();
 // OtpService holds in-memory OTP state and must be a singleton so state is preserved across requests
 builder.Services.AddSingleton<OtpService>();
 builder.Services.AddSingleton<ForgotPasswordService>();
+builder.Services.AddHostedService<CallTimeoutService>();
+builder.Services.AddHostedService<AutoDeleteMessageService>();
 
 var jwtKey = builder.Configuration["Jwt:Key"]
 	?? throw new InvalidOperationException("Jwt:Key is not configured.");
@@ -140,5 +146,39 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<SecureChat.Server.Hubs.ChatHub>("/hubs/chat");
+
+// Create Saved Messages conversations for existing users who lack one
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var usersNeedingSaved = await db.Users
+        .Where(u => !db.Conversations
+            .Where(c => c.Type == SecureChat.Models.ConversationType.SavedMessages)
+            .Any(c => c.Members.Any(m => m.UserID == u.UserID)))
+        .ToListAsync();
+
+    foreach (var user in usersNeedingSaved)
+    {
+        var convID = Guid.NewGuid().ToString("N")[..8];
+        db.Conversations.Add(new SecureChat.Models.Conversation
+        {
+            ConversationID = convID,
+            Type = SecureChat.Models.ConversationType.SavedMessages,
+            Name = "Saved Messages",
+            CreatedBy = user.UserID,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.ConversationMembers.Add(new SecureChat.Models.ConversationMember
+        {
+            MemberID       = Guid.NewGuid().ToString("N")[..8],
+            ConversationID = convID,
+            UserID         = user.UserID,
+            EncryptedKey   = "",
+            Role           = SecureChat.Models.MemberRole.Owner,
+            JoinedAt       = DateTime.UtcNow
+        });
+    }
+    await db.SaveChangesAsync();
+}
 
 app.Run();

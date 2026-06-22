@@ -31,6 +31,10 @@ namespace SecureChat.Client.Services.Api
         public Task<(bool Ok, List<ConversationResponse>? Data, string Err)> GetMyConversationsAsync()
             => _api.GetAsync<List<ConversationResponse>>("api/conversations");
 
+        /// <summary>GET /api/conversations/saved — auto-creates Saved Messages if missing</summary>
+        public Task<(bool Ok, ConversationResponse? Data, string Err)> GetOrCreateSavedConversationAsync()
+            => _api.GetAsync<ConversationResponse>("api/conversations/saved");
+
         /// <summary>GET /api/conversations/{conversationID}</summary>
         public Task<(bool Ok, ConversationResponse? Data, string Err)> GetConversationAsync(string conversationId)
         {

@@ -35,20 +35,32 @@ namespace SecureChat.DTOs
 		string? BioText,
 		bool ShowReadStatus,
 		bool ShowOnlineStatus,
+		DateTime? LastSeenUtc,
 		string HashedBKey,
 		string HashedRecoveryKey,
 		string KeySalt,
 		string PublicKey,
 		DateTime CreatedAt,
-		DateTime UpdatedAt
+		DateTime UpdatedAt,
+		bool IsOnline = false
 	)
 	{
 
 		public static UserResponse From(User u) => new (
 			u.UserID, u.Username, u.DisplayName,
 			u.Email, u.AvatarURL, u.BioText,
-			u.ShowReadStatus, u.ShowOnlineStatus, u.HashedBKey, u.HashedRecoveryKey,
+			u.ShowReadStatus, u.ShowOnlineStatus, u.LastSeenUtc,
+			u.HashedBKey, u.HashedRecoveryKey,
 			u.KeySalt, u.PublicKey, u.CreatedAt, u.UpdatedAt
+		);
+
+		public static UserResponse From(User u, bool isOnline) => new (
+			u.UserID, u.Username, u.DisplayName,
+			u.Email, u.AvatarURL, u.BioText,
+			u.ShowReadStatus, u.ShowOnlineStatus, u.LastSeenUtc,
+			u.HashedBKey, u.HashedRecoveryKey,
+			u.KeySalt, u.PublicKey, u.CreatedAt, u.UpdatedAt,
+			isOnline
 		);
 	}
 
@@ -62,5 +74,29 @@ namespace SecureChat.DTOs
 	public record UpdatePrivacyRequest(
 		bool ShowReadStatus,
 		bool ShowOnlineStatus
+	);
+
+	public record PrivacySettingsResponse(
+		PrivacyLevel LastSeenPrivacy,
+		PrivacyLevel ProfilePhotoPrivacy,
+		PrivacyLevel ForwardedMessagesPrivacy,
+		PrivacyLevel CallsPrivacy,
+		PrivacyLevel VoiceMessagesPrivacy,
+		PrivacyLevel MessagesPrivacy,
+		PrivacyLevel BirthdayPrivacy,
+		PrivacyLevel BioPrivacy,
+		AutoDeleteMode AutoDeleteMode
+	);
+
+	public record UpdatePrivacySettingsRequest(
+		PrivacyLevel? LastSeenPrivacy,
+		PrivacyLevel? ProfilePhotoPrivacy,
+		PrivacyLevel? ForwardedMessagesPrivacy,
+		PrivacyLevel? CallsPrivacy,
+		PrivacyLevel? VoiceMessagesPrivacy,
+		PrivacyLevel? MessagesPrivacy,
+		PrivacyLevel? BirthdayPrivacy,
+		PrivacyLevel? BioPrivacy,
+		AutoDeleteMode? AutoDeleteMode
 	);
 }

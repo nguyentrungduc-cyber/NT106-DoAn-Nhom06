@@ -28,7 +28,7 @@ namespace SecureChat.Repositories
 				.Include(m => m.Mentions)
 				.FirstOrDefaultAsync(m => m.MessageID == messageID);
 
-		public async Task<List<Message>> GetByConversationAsync(string conversationID, int limit = 50, DateTime? before = null)
+		public async Task<List<Message>> GetByConversationAsync(string conversationID, int limit = 50, DateTime? before = null, DateTime? memberJoinedAt = null)
 		{
 			var query = db.Messages
 				.Include(m => m.Sender)
@@ -40,6 +40,11 @@ namespace SecureChat.Repositories
 
 			if (before.HasValue)
 				query = query.Where(m => m.SentAt < before.Value);
+
+			// If member joined after some messages already existed (HistoryMode = Hidden),
+			// filter out messages sent before they joined.
+			if (memberJoinedAt.HasValue)
+				query = query.Where(m => m.SentAt >= memberJoinedAt.Value);
 
 			return await query.OrderByDescending(m => m.SentAt).Take(limit).ToListAsync();
 		}
@@ -62,6 +67,15 @@ namespace SecureChat.Repositories
 				?? throw new KeyNotFoundException($"Không tìm thấy tin nhắn {messageID} not found.");
 
 			message.DeletedAt = DateTime.UtcNow;
+			await db.SaveChangesAsync();
+		}
+
+		public async Task RecallAsync(string messageID)
+		{
+			var message = await db.Messages.FindAsync(messageID)
+				?? throw new KeyNotFoundException($"Không tìm thấy tin nhắn {messageID}.");
+
+			message.RecalledAt = DateTime.UtcNow;
 			await db.SaveChangesAsync();
 		}
 

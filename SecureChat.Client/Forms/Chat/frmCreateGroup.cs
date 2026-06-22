@@ -126,7 +126,15 @@ namespace SecureChat.Client.Forms.Chat
                 var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.FriendResponse>>(json, opts);
                 if (list == null) return;
 
-                var users = list.Select(f => (f.Friend.UserID, f.Friend.DisplayName, "last seen recently"));
+                var users = list.Select(f =>
+                {
+                    string status;
+                    if (f.Friend.ShowOnlineStatus)
+                        status = SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(f.IsOnline, f.Friend.LastSeenUtc);
+                    else
+                        status = "offline";
+                    return (f.Friend.UserID, f.Friend.DisplayName, status);
+                });
                 BeginInvoke(new Action(() => LoadUserList(users)));
             }
             catch { /* Giữ list rỗng nếu lỗi mạng */ }

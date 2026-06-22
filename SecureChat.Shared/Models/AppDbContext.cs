@@ -19,6 +19,8 @@ namespace SecureChat.Models
 		public DbSet<MessageMention>    MessageMentions		=> Set<MessageMention>();
 		public DbSet<CallLog>           CallLogs		=> Set<CallLog>();
 		public DbSet<CallParticipant>   CallParticipants	=> Set<CallParticipant>();
+		public DbSet<UserPrivacySettings> UserPrivacySettings => Set<UserPrivacySettings>();
+		public DbSet<UserPresence> UserPresences => Set<UserPresence>();
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
 		{
@@ -76,6 +78,11 @@ namespace SecureChat.Models
 				.OnDelete(DeleteBehavior.Cascade);
 
 				m.Entity<Conversation>()
+				.Property(c => c.Version)
+				.IsConcurrencyToken()
+				.HasDefaultValueSql("0");
+
+			m.Entity<Conversation>()
 				.HasOne(c => c.Creator)
 				.WithMany()
 				.HasForeignKey(c => c.CreatedBy)
@@ -200,12 +207,18 @@ namespace SecureChat.Models
 				.HasForeignKey(mm => mm.MemberID)
 				.OnDelete(DeleteBehavior.Cascade);
 
+			m.Entity<UserPrivacySettings>()
+				.HasOne(p => p.User)
+				.WithMany()
+				.HasForeignKey(p => p.UserID)
+				.OnDelete(DeleteBehavior.Cascade);
+
 			m.Entity<CallLog>()
 				.HasOne(c => c.Conversation)
 				.WithMany()
 				.HasForeignKey(c => c.ConversationID)
 				.OnDelete(DeleteBehavior.Cascade);
- 
+  
 			m.Entity<CallLog>()
 				.HasOne(c => c.StartedByMember)
 				.WithMany()
@@ -338,8 +351,8 @@ namespace SecureChat.Models
 
 		private static void ConfigureCheckConstraints(ModelBuilder m)
 		{
-			m.Entity<Conversation>()
-				.ToTable(t => t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1)"));
+m.Entity<Conversation>()
+	.ToTable(t => t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1, 2)"));
 
 			m.Entity<ConversationMember>()
 				.ToTable(t => t.HasCheckConstraint("chk_convmems_role", "role between 0 and 2"));
@@ -357,7 +370,7 @@ namespace SecureChat.Models
 				.ToTable(t => t.HasCheckConstraint("chk_call_type", "call_type in (0, 1)"));
 
 			m.Entity<CallLog>()
-				.ToTable(t => t.HasCheckConstraint("chk_call_status", "status between 0 and 3"));
+				.ToTable(t => t.HasCheckConstraint("chk_call_status", "status between 0 and 4"));
 
 			m.Entity<CallParticipant>()
 				.ToTable(t => t.HasCheckConstraint("chk_participant_status", "status between 0 and 4"));
@@ -423,6 +436,10 @@ namespace SecureChat.Models
 			
 			m.Entity<CallLog>()
 				.Property(u => u.StartedAt)
+				.HasDefaultValueSql("current_timestamp");
+
+			m.Entity<UserPrivacySettings>()
+				.Property(p => p.UpdatedAt)
 				.HasDefaultValueSql("current_timestamp");
 		}
 

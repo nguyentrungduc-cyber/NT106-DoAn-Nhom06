@@ -10,13 +10,14 @@ using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Security;
+using SecureChat.Server.Services;
 using SecureChat.Services;
 
 namespace SecureChat.Controllers
 {
 	[ApiController]
 	[Route("api/auth")]
-  public class AuthController(UserRepository users, JwtTokenService tokens, IConfiguration config, ForgotPasswordService forgotPasswordService, OtpService otpService, EmailService emailService, ILogger<AuthController> logger) : BaseController
+  public class AuthController(UserRepository users, JwtTokenService tokens, IConfiguration config, ForgotPasswordService forgotPasswordService, OtpService otpService, EmailService emailService, ILogger<AuthController> logger, ConversationRepository conversations, UserPresenceService presence) : BaseController
 	{
 		[HttpPost("register")]
 		public async Task<IActionResult> Register([FromBody] RegisterRequest req)
@@ -27,10 +28,11 @@ namespace SecureChat.Controllers
 				return Conflict(new { error = "Email đã được sử dụng." });
 
             var (hash, salt) = PasswordHasher.HashPassword(req.HashedPassword);
+            var userID = NewID();
 
             await users.CreateAsync(new User
             {
-                UserID = NewID(),
+                UserID = userID,
                 Username = req.Username,
                 DisplayName = req.DisplayName,
                 Email = req.Email,
@@ -39,6 +41,9 @@ namespace SecureChat.Controllers
                 KeySalt = salt,        // Lưu salt thật vào đây
                 PublicKey = req.PublicKey
             });
+
+            // Auto-create Saved Messages conversation
+            await conversations.GetOrCreateSavedMessagesConversationAsync(userID);
 
 			return Ok(new { message = "Đăng ký thành công." });
 		}
@@ -279,12 +284,18 @@ namespace SecureChat.Controllers
 		}
 
 		[Authorize]
-		[HttpDelete("logout")]
+		[HttpPost("logout")]
 		public async Task<IActionResult> Logout()
 		{
+			var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 			var jti = User.FindFirstValue(JwtRegisteredClaimNames.Jti);
+
 			if (jti is not null)
 				await users.DeleteSessionAsync(jti);
+
+			if (!string.IsNullOrWhiteSpace(userId))
+				await presence.ForceOfflineAsync(userId);
+
 			return NoContent();
 		}
 

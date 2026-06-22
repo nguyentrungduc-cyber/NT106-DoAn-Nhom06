@@ -4,13 +4,14 @@ using Microsoft.AspNetCore.Mvc;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Services;
 
 namespace SecureChat.Controllers
 {
 	[Authorize]
 	[ApiController]
 	[Route("api/friends")]
-	public class FriendController(FriendRepository friends, UserRepository users) : BaseController
+	public class FriendController(FriendRepository friends, UserRepository users, UserPresenceService presence) : BaseController
 	{
 		string Me => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -20,7 +21,7 @@ namespace SecureChat.Controllers
 			var list = await friends.GetFriendsByUserAsync(Me);
 			var result = list.Select(f => {
 				var friend = f.UserAID == Me ? f.UserB : f.UserA;
-				return new FriendResponse(f.FriendshipID, UserResponse.From(friend), f.CreatedAt);
+				return new FriendResponse(f.FriendshipID, UserResponse.From(friend), f.CreatedAt, presence.IsOnline(friend.UserID));
 			});
 
 			return Ok(result);

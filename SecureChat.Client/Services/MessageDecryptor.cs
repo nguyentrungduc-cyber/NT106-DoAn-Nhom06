@@ -244,6 +244,59 @@ namespace SecureChat.Client.Services
         }
 
         /// <summary>
+        /// Lấy conversation AES key (luôn fresh — xoá cache trước để tránh
+        /// dùng key cũ sau rekey), RSA-encrypt bằng publicKeyPem của member
+        /// mới, trả về Base64.
+        ///
+        /// Bắt buộc gọi fresh bởi vì:
+        ///   - Có thể group đã rekey từ session trước → cache cũ không còn
+        ///     đúng.
+        ///   - Nếu encrypt bằng key cũ, member mới sẽ có encryptedKey sai và
+        ///     không đọc được message nào.
+        ///   - Chi phí: 1 HTTP GET (membership) + 1 RSA decrypt → chấp nhận
+        ///     được cho luồng add member (không hot-path).
+        /// </summary>
+        public async Task<string?> EncryptConversationKeyForMemberAsync(string conversationId, string memberPublicKeyPem)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId) || string.IsNullOrWhiteSpace(memberPublicKeyPem))
+                return null;
+
+            // 1. Xoá cache để force fresh fetch từ server
+            //    (tránh stale key nếu group đã rekey).
+            if (_conversationKeys.TryRemove(conversationId, out var oldKey))
+            {
+                var history = _oldConversationKeys.GetOrAdd(conversationId, _ => new List<byte[]>());
+                lock (history) { history.Insert(0, oldKey); }
+            }
+            SaveKeyHistory();
+
+            // 2. Fetch fresh key từ server (sẽ gọi GetMyMembershipAsync +
+            //    RSA decrypt, không dùng cache).
+            var key = await EnsureConversationKeyAsync(conversationId).ConfigureAwait(false);
+            if (key is null)
+                return null;
+
+            // 3. Validate độ dài key (phải 32 bytes cho AES-256)
+            if (key.Length != AesEncryption.KeySize)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Key length mismatch: {key.Length} != {AesEncryption.KeySize}");
+                return null;
+            }
+
+            // 4. RSA-encrypt cho member mới
+            try
+            {
+                byte[] enc = RSAEncryption.Encrypt(key, memberPublicKeyPem);
+                return Convert.ToBase64String(enc);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MessageDecryptor] Failed to encrypt key for new member: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Xóa conversation key đã cache (gọi khi rời / xoá conversation).
         /// </summary>
         public void ForgetConversation(string conversationId)
@@ -377,6 +430,24 @@ namespace SecureChat.Client.Services
         {
             ArgumentNullException.ThrowIfNull(message);
 
+            bool isOut = !string.IsNullOrWhiteSpace(myMemberId)
+                ? string.Equals(message.SenderID, myMemberId, StringComparison.Ordinal)
+                : !string.IsNullOrWhiteSpace(message.SenderUsername)
+                    && string.Equals(message.SenderUsername, CurrentUsername,
+                        StringComparison.Ordinal);
+
+            // If the message was recalled, return immediately — no decryption needed
+            if (message.RecalledAt is not null)
+            {
+                return new DecryptedMessage(
+                    message.MessageID,
+                    "recalled::",
+                    isOut,
+                    message.SentAt.ToLocalTime().ToString("h:mm tt"),
+                    message.SenderUsername ?? string.Empty,
+                    message);
+            }
+
             // 1. Hybrid AES key cho từng attachment (file / voice).
             if (message.Attachments is not null)
             {
@@ -437,12 +508,6 @@ namespace SecureChat.Client.Services
                     }
                 }
             }
-
-            bool isOut = !string.IsNullOrWhiteSpace(myMemberId)
-                ? string.Equals(message.SenderID, myMemberId, StringComparison.Ordinal)
-                : !string.IsNullOrWhiteSpace(message.SenderUsername)
-                    && string.Equals(message.SenderUsername, CurrentUsername, // ← đổi CurrentUserId → CurrentUsername
-                        StringComparison.Ordinal);
 
             return new DecryptedMessage(
                 message.MessageID,

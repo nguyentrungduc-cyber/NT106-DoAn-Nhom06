@@ -58,16 +58,7 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_block_pair");
 
-                    b.ToTable("BlockedUsers", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            BlockID = "B0000001",
-                            BlockedID = "U0000003",
-                            BlockerID = "U0000002",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 8, 0, 0, DateTimeKind.Utc)
-                        });
+                    b.ToTable("BlockedUsers");
                 });
 
             modelBuilder.Entity("SecureChat.Models.CallLog", b =>
@@ -86,6 +77,10 @@ namespace SecureChat.Server.Migrations
                     b.Property<DateTime?>("EndedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("ended_at");
+
+                    b.Property<bool>("HasHistoryMessage")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("has_history_message");
 
                     b.Property<DateTime>("StartedAt")
                         .ValueGeneratedOnAdd()
@@ -114,22 +109,11 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("StartedBy");
 
-                    b.ToTable("CallLogs", null, t =>
+                    b.ToTable("CallLogs", t =>
                         {
-                            t.HasCheckConstraint("chk_call_type", "call_type in (0, 1)");
-                            t.HasCheckConstraint("chk_call_status", "status between 0 and 3");
-                        });
+                            t.HasCheckConstraint("chk_call_status", "status between 0 and 4");
 
-                    b.HasData(
-                        new
-                        {
-                            CallID = "CL000001",
-                            ConversationID = "C0000002",
-                            EndedAt = new DateTime(2025, 1, 10, 8, 28, 0, 0, DateTimeKind.Utc),
-                            StartedAt = new DateTime(2025, 1, 10, 8, 24, 0, 0, DateTimeKind.Utc),
-                            StartedBy = "M0000003",
-                            Status = (byte)2,
-                            Type = (byte)0
+                            t.HasCheckConstraint("chk_call_type", "call_type in (0, 1)");
                         });
                 });
 
@@ -164,33 +148,9 @@ namespace SecureChat.Server.Migrations
                     b.HasIndex("ParticipantID")
                         .HasDatabaseName("idx_call_participants_user");
 
-                    b.ToTable("CallParticipants", null, t =>
+                    b.ToTable("CallParticipants", t =>
                         {
                             t.HasCheckConstraint("chk_participant_status", "status between 0 and 4");
-                        });
-
-                    b.HasData(
-                        new
-                        {
-                            ParticipantID = "M0000003",
-                            CallID = "CL000001",
-                            JoinedAt = new DateTime(2025, 1, 10, 8, 24, 0, 0, DateTimeKind.Utc),
-                            LeftAt = new DateTime(2025, 1, 10, 8, 28, 0, 0, DateTimeKind.Utc),
-                            Status = (byte)1
-                        },
-                        new
-                        {
-                            ParticipantID = "M0000004",
-                            CallID = "CL000001",
-                            JoinedAt = new DateTime(2025, 1, 10, 8, 24, 0, 0, DateTimeKind.Utc),
-                            LeftAt = new DateTime(2025, 1, 10, 8, 28, 0, 0, DateTimeKind.Utc),
-                            Status = (byte)1
-                        },
-                        new
-                        {
-                            ParticipantID = "M0000005",
-                            CallID = "CL000001",
-                            Status = (byte)3
                         });
                 });
 
@@ -216,6 +176,19 @@ namespace SecureChat.Server.Migrations
                         .HasColumnType("varchar(8)")
                         .HasColumnName("created_by");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)")
+                        .HasColumnName("description");
+
+                    b.Property<byte>("GroupType")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("group_type");
+
+                    b.Property<byte>("HistoryMode")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("history_mode");
+
                     b.Property<DateTime?>("LastActivityAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("last_activity_at");
@@ -233,6 +206,13 @@ namespace SecureChat.Server.Migrations
                         .HasColumnType("tinyint unsigned")
                         .HasColumnName("conversation_type");
 
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("version")
+                        .HasDefaultValueSql("0");
+
                     b.HasKey("ConversationID");
 
                     b.HasIndex("CreatedBy");
@@ -243,28 +223,9 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("LastMessageID");
 
-                    b.ToTable("Conversations", null, t =>
+                    b.ToTable("Conversations", t =>
                         {
-                            t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1)");
-                        });
-
-                    b.HasData(
-                        new
-                        {
-                            ConversationID = "C0000001",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 12, 0, 0, DateTimeKind.Utc),
-                            CreatedBy = "U0000001",
-                            LastActivityAt = new DateTime(2025, 1, 10, 8, 21, 0, 0, DateTimeKind.Utc),
-                            Type = (byte)0
-                        },
-                        new
-                        {
-                            ConversationID = "C0000002",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 12, 0, 0, DateTimeKind.Utc),
-                            CreatedBy = "U0000001",
-                            LastActivityAt = new DateTime(2025, 1, 10, 8, 28, 0, 0, DateTimeKind.Utc),
-                            Name = "NT106 Team",
-                            Type = (byte)1
+                            t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1, 2)");
                         });
                 });
 
@@ -315,6 +276,7 @@ namespace SecureChat.Server.Migrations
                         .HasColumnName("role");
 
                     b.Property<byte>("ShowNotifications")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint unsigned")
                         .HasColumnName("show_notifications")
                         .HasDefaultValueSql("2");
@@ -336,67 +298,11 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_convmems_user");
 
-                    b.ToTable("ConversationMembers", null, t =>
+                    b.ToTable("ConversationMembers", t =>
                         {
-                            t.HasCheckConstraint("chk_convmems_role", "role between 0 and 2");
                             t.HasCheckConstraint("chk_convmems_notif", "show_notifications between 0 and 2");
-                        });
 
-                    b.HasData(
-                        new
-                        {
-                            MemberID = "M0000001",
-                            ConversationID = "C0000001",
-                            EncryptedKey = "encrypted_demo_value",
-                            JoinedAt = new DateTime(2025, 1, 10, 8, 12, 0, 0, DateTimeKind.Utc),
-                            Nickname = "Hieu",
-                            Role = (byte)2,
-                            ShowNotifications = (byte)2,
-                            UserID = "U0000001"
-                        },
-                        new
-                        {
-                            MemberID = "M0000002",
-                            ConversationID = "C0000001",
-                            EncryptedKey = "encrypted_demo_value",
-                            JoinedAt = new DateTime(2025, 1, 10, 8, 12, 0, 0, DateTimeKind.Utc),
-                            Nickname = "Quan",
-                            Role = (byte)0,
-                            ShowNotifications = (byte)2,
-                            UserID = "U0000002"
-                        },
-                        new
-                        {
-                            MemberID = "M0000003",
-                            ConversationID = "C0000002",
-                            EncryptedKey = "encrypted_demo_value",
-                            JoinedAt = new DateTime(2025, 1, 10, 8, 12, 0, 0, DateTimeKind.Utc),
-                            Nickname = "Admin Hieu",
-                            Role = (byte)2,
-                            ShowNotifications = (byte)2,
-                            UserID = "U0000001"
-                        },
-                        new
-                        {
-                            MemberID = "M0000004",
-                            ConversationID = "C0000002",
-                            EncryptedKey = "encrypted_demo_value",
-                            JoinedAt = new DateTime(2025, 1, 10, 8, 12, 0, 0, DateTimeKind.Utc),
-                            Nickname = "Mod Quan",
-                            Role = (byte)1,
-                            ShowNotifications = (byte)2,
-                            UserID = "U0000002"
-                        },
-                        new
-                        {
-                            MemberID = "M0000005",
-                            ConversationID = "C0000002",
-                            EncryptedKey = "encrypted_demo_value",
-                            JoinedAt = new DateTime(2025, 1, 10, 8, 12, 0, 0, DateTimeKind.Utc),
-                            Nickname = "Linh",
-                            Role = (byte)0,
-                            ShowNotifications = (byte)2,
-                            UserID = "U0000003"
+                            t.HasCheckConstraint("chk_convmems_role", "role between 0 and 2");
                         });
                 });
 
@@ -433,18 +339,9 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_friends_pair");
 
-                    b.ToTable("Friends", null, t =>
+                    b.ToTable("Friends", t =>
                         {
                             t.HasCheckConstraint("chk_friends_order", "user_a_id < user_b_id");
-                        });
-
-                    b.HasData(
-                        new
-                        {
-                            FriendshipID = "F0000001",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 5, 0, 0, DateTimeKind.Utc),
-                            UserAID = "U0000001",
-                            UserBID = "U0000002"
                         });
                 });
 
@@ -490,19 +387,9 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_friendreq_pair");
 
-                    b.ToTable("FriendRequests", null, t =>
+                    b.ToTable("FriendRequests", t =>
                         {
                             t.HasCheckConstraint("chk_friendreq_status", "status between 0 and 3");
-                        });
-
-                    b.HasData(
-                        new
-                        {
-                            RequestID = "RQ000001",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 8, 0, 0, DateTimeKind.Utc),
-                            RecipientID = "U0000001",
-                            SenderID = "U0000003",
-                            Status = (byte)0
                         });
                 });
 
@@ -535,10 +422,18 @@ namespace SecureChat.Server.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("edited_at");
 
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("expires_at");
+
                     b.Property<string>("OriginalSenderID")
                         .HasMaxLength(8)
                         .HasColumnType("varchar(8)")
                         .HasColumnName("original_sender_id");
+
+                    b.Property<DateTime?>("RecalledAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("recalled_at");
 
                     b.Property<string>("ReplyToID")
                         .HasMaxLength(8)
@@ -560,10 +455,6 @@ namespace SecureChat.Server.Migrations
                         .HasColumnType("tinyint unsigned")
                         .HasColumnName("message_type");
 
-                    b.Property<DateTime?>("ExpiresAt")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("expires_at");
-
                     b.HasKey("MessageID");
 
                     b.HasIndex("OriginalSenderID");
@@ -577,94 +468,9 @@ namespace SecureChat.Server.Migrations
                         .IsDescending(false, true)
                         .HasDatabaseName("idx_messages_conversation");
 
-                    b.HasIndex("ExpiresAt")
-                        .HasDatabaseName("idx_messages_expires_at");
-
-                    b.ToTable("Messages", null, t =>
+                    b.ToTable("Messages", t =>
                         {
                             t.HasCheckConstraint("chk_message_type", "message_type between 0 and 7");
-                        });
-
-                    b.HasData(
-                        new
-                        {
-                            MessageID = "MSG00001",
-                            Content = "hello bro",
-                            ContentIV = "iv_demo_value",
-                            ConversationID = "C0000001",
-                            OriginalSenderID = "U0000001",
-                            SenderID = "M0000001",
-                            SentAt = new DateTime(2025, 1, 10, 8, 15, 0, 0, DateTimeKind.Utc),
-                            Type = (byte)0
-                        },
-                        new
-                        {
-                            MessageID = "MSG00002",
-                            Content = "check API ch?a?",
-                            ContentIV = "iv_demo_value",
-                            ConversationID = "C0000001",
-                            OriginalSenderID = "U0000002",
-                            ReplyToID = "MSG00001",
-                            SenderID = "M0000002",
-                            SentAt = new DateTime(2025, 1, 10, 8, 18, 0, 0, DateTimeKind.Utc),
-                            Type = (byte)0
-                        },
-                        new
-                        {
-                            MessageID = "MSG00003",
-                            Content = "encrypt ok ch?a?",
-                            ContentIV = "iv_demo_value",
-                            ConversationID = "C0000001",
-                            OriginalSenderID = "U0000001",
-                            SenderID = "M0000001",
-                            SentAt = new DateTime(2025, 1, 10, 8, 21, 0, 0, DateTimeKind.Utc),
-                            Type = (byte)0
-                        },
-                        new
-                        {
-                            MessageID = "MSG00004",
-                            Content = "hello team, test group chat nhé",
-                            ContentIV = "iv_demo_value",
-                            ConversationID = "C0000002",
-                            OriginalSenderID = "U0000001",
-                            SenderID = "M0000003",
-                            SentAt = new DateTime(2025, 1, 10, 8, 15, 0, 0, DateTimeKind.Utc),
-                            Type = (byte)0
-                        },
-                        new
-                        {
-                            MessageID = "MSG00005",
-                            Content = "ok bro, SignalR realtime ?n",
-                            ContentIV = "iv_demo_value",
-                            ConversationID = "C0000002",
-                            OriginalSenderID = "U0000002",
-                            ReplyToID = "MSG00004",
-                            SenderID = "M0000004",
-                            SentAt = new DateTime(2025, 1, 10, 8, 18, 0, 0, DateTimeKind.Utc),
-                            Type = (byte)0
-                        },
-                        new
-                        {
-                            MessageID = "MSG00006",
-                            Content = "done r?i, nh? test forgot password",
-                            ContentIV = "iv_demo_value",
-                            ConversationID = "C0000002",
-                            OriginalSenderID = "U0000003",
-                            SenderID = "M0000005",
-                            SentAt = new DateTime(2025, 1, 10, 8, 21, 0, 0, DateTimeKind.Utc),
-                            Type = (byte)0
-                        },
-                        new
-                        {
-                            MessageID = "MSG00007",
-                            Content = "file sent: api_test_plan.pdf",
-                            ContentIV = "iv_demo_value",
-                            ConversationID = "C0000002",
-                            OriginalSenderID = "U0000001",
-                            ReplyToID = "MSG00006",
-                            SenderID = "M0000003",
-                            SentAt = new DateTime(2025, 1, 10, 8, 24, 0, 0, DateTimeKind.Utc),
-                            Type = (byte)4
                         });
                 });
 
@@ -768,22 +574,7 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("ReceiverId");
 
-                    b.ToTable("MessageAttachments", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            AttachmentID = "A0000001",
-                            FileHash = "hash_demo_value",
-                            FileIv = "iv_demo_value",
-                            FileName = "api_test_plan.pdf",
-                            FileNameInStorage = "",
-                            FileSize = 102400L,
-                            FileType = "application/pdf",
-                            FileURL = "encrypted_demo_value",
-                            MessageID = "MSG00007",
-                            UploadedAt = new DateTime(2025, 1, 10, 8, 24, 0, 0, DateTimeKind.Utc)
-                        });
+                    b.ToTable("MessageAttachments");
                 });
 
             modelBuilder.Entity("SecureChat.Models.MessageMention", b =>
@@ -803,14 +594,7 @@ namespace SecureChat.Server.Migrations
                     b.HasIndex("MemberID")
                         .HasDatabaseName("idx_mentions_user");
 
-                    b.ToTable("MessageMentions", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            MessageID = "MSG00005",
-                            MemberID = "M0000005"
-                        });
+                    b.ToTable("MessageMentions");
                 });
 
             modelBuilder.Entity("SecureChat.Models.MessagePin", b =>
@@ -843,16 +627,7 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("PinnedBy");
 
-                    b.ToTable("MessagePins", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            MessageID = "MSG00006",
-                            ConversationID = "C0000002",
-                            PinnedAt = new DateTime(2025, 1, 10, 8, 28, 0, 0, DateTimeKind.Utc),
-                            PinnedBy = "M0000003"
-                        });
+                    b.ToTable("MessagePins");
                 });
 
             modelBuilder.Entity("SecureChat.Models.MessageReaction", b =>
@@ -894,17 +669,7 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_reaction_msg_users");
 
-                    b.ToTable("MessageReactions", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            ReactionID = "RE000001",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 21, 0, 0, DateTimeKind.Utc),
-                            MemberID = "M0000001",
-                            MessageID = "MSG00002",
-                            Reaction = "??"
-                        });
+                    b.ToTable("MessageReactions");
                 });
 
             modelBuilder.Entity("SecureChat.Models.MessageStatus", b =>
@@ -943,33 +708,7 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_status_msg_user");
 
-                    b.ToTable("MessageStatuses", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            StatusID = "ST000001",
-                            DeliveredAt = new DateTime(2025, 1, 10, 8, 15, 0, 0, DateTimeKind.Utc),
-                            MemberID = "M0000002",
-                            MessageID = "MSG00001",
-                            ReadAt = new DateTime(2025, 1, 10, 8, 18, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            StatusID = "ST000002",
-                            DeliveredAt = new DateTime(2025, 1, 10, 8, 18, 0, 0, DateTimeKind.Utc),
-                            MemberID = "M0000001",
-                            MessageID = "MSG00002",
-                            ReadAt = new DateTime(2025, 1, 10, 8, 21, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            StatusID = "ST000003",
-                            DeliveredAt = new DateTime(2025, 1, 10, 8, 21, 0, 0, DateTimeKind.Utc),
-                            MemberID = "M0000003",
-                            MessageID = "MSG00006",
-                            ReadAt = new DateTime(2025, 1, 10, 8, 24, 0, 0, DateTimeKind.Utc)
-                        });
+                    b.ToTable("MessageStatuses");
                 });
 
             modelBuilder.Entity("SecureChat.Models.User", b =>
@@ -1025,6 +764,10 @@ namespace SecureChat.Server.Migrations
                         .HasColumnType("longtext")
                         .HasColumnName("key_salt");
 
+                    b.Property<DateTime?>("LastSeenUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("last_seen_utc");
+
                     b.Property<string>("PublicKey")
                         .IsRequired()
                         .HasColumnType("longtext")
@@ -1060,57 +803,85 @@ namespace SecureChat.Server.Migrations
                         .IsUnique()
                         .HasDatabaseName("idx_users_username");
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
+                });
 
-                    b.HasData(
-                        new
-                        {
-                            UserID = "U0000001",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 0, 0, 0, DateTimeKind.Utc),
-                            DisplayName = "Hoang Hieu",
-                            Email = "u1@securechat.local",
-                            HashedBKey = "hash_demo_value",
-                            HashedPassword = "hash_demo_value",
-                            HashedRecoveryKey = "hash_demo_value",
-                            KeySalt = "hash_demo_value",
-                            PublicKey = "encrypted_demo_value",
-                            ShowOnlineStatus = true,
-                            ShowReadStatus = true,
-                            UpdatedAt = new DateTime(2025, 1, 10, 8, 0, 0, 0, DateTimeKind.Utc),
-                            Username = "hoanghieu"
-                        },
-                        new
-                        {
-                            UserID = "U0000002",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 0, 0, 0, DateTimeKind.Utc),
-                            DisplayName = "Minh Quan",
-                            Email = "u2@securechat.local",
-                            HashedBKey = "hash_demo_value",
-                            HashedPassword = "hash_demo_value",
-                            HashedRecoveryKey = "hash_demo_value",
-                            KeySalt = "hash_demo_value",
-                            PublicKey = "encrypted_demo_value",
-                            ShowOnlineStatus = true,
-                            ShowReadStatus = true,
-                            UpdatedAt = new DateTime(2025, 1, 10, 8, 0, 0, 0, DateTimeKind.Utc),
-                            Username = "minhquan"
-                        },
-                        new
-                        {
-                            UserID = "U0000003",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 0, 0, 0, DateTimeKind.Utc),
-                            DisplayName = "Linh Nguyen",
-                            Email = "u3@securechat.local",
-                            HashedBKey = "hash_demo_value",
-                            HashedPassword = "hash_demo_value",
-                            HashedRecoveryKey = "hash_demo_value",
-                            KeySalt = "hash_demo_value",
-                            PublicKey = "encrypted_demo_value",
-                            ShowOnlineStatus = true,
-                            ShowReadStatus = true,
-                            UpdatedAt = new DateTime(2025, 1, 10, 8, 0, 0, 0, DateTimeKind.Utc),
-                            Username = "linhnguyen"
-                        });
+            modelBuilder.Entity("SecureChat.Models.UserPresence", b =>
+                {
+                    b.Property<string>("UserID")
+                        .HasMaxLength(8)
+                        .HasColumnType("varchar(8)")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("ActiveSessionCount")
+                        .HasColumnType("int")
+                        .HasColumnName("active_session_count");
+
+                    b.Property<DateTime?>("LastSeenUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("last_seen_utc");
+
+                    b.Property<byte>("Status")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("status");
+
+                    b.HasKey("UserID");
+
+                    b.ToTable("UserPresence");
+                });
+
+            modelBuilder.Entity("SecureChat.Models.UserPrivacySettings", b =>
+                {
+                    b.Property<string>("UserID")
+                        .HasMaxLength(8)
+                        .HasColumnType("varchar(8)")
+                        .HasColumnName("user_id");
+
+                    b.Property<byte>("AutoDeleteMode")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("auto_delete_mode");
+
+                    b.Property<byte>("BioPrivacy")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("bio_privacy");
+
+                    b.Property<byte>("BirthdayPrivacy")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("birthday_privacy");
+
+                    b.Property<byte>("CallsPrivacy")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("calls_privacy");
+
+                    b.Property<byte>("ForwardedMessagesPrivacy")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("forwarded_messages_privacy");
+
+                    b.Property<byte>("LastSeenPrivacy")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("last_seen_privacy");
+
+                    b.Property<byte>("MessagesPrivacy")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("messages_privacy");
+
+                    b.Property<byte>("ProfilePhotoPrivacy")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("profile_photo_privacy");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("current_timestamp");
+
+                    b.Property<byte>("VoiceMessagesPrivacy")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("voice_messages_privacy");
+
+                    b.HasKey("UserID");
+
+                    b.ToTable("UserPrivacySettings");
                 });
 
             modelBuilder.Entity("SecureChat.Models.UserSession", b =>
@@ -1161,29 +932,7 @@ namespace SecureChat.Server.Migrations
 
                     b.HasIndex("UserID");
 
-                    b.ToTable("UserSessions", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            SessionID = "S0000001",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 2, 0, 0, DateTimeKind.Utc),
-                            DeviceName = "Windows 11 Dev Machine",
-                            ExpiresAt = new DateTime(2025, 2, 9, 8, 2, 0, 0, DateTimeKind.Utc),
-                            LastUsedAt = new DateTime(2025, 1, 10, 8, 2, 0, 0, DateTimeKind.Utc),
-                            RefreshToken = "refresh_token_demo_u1",
-                            UserID = "U0000001"
-                        },
-                        new
-                        {
-                            SessionID = "S0000002",
-                            CreatedAt = new DateTime(2025, 1, 10, 8, 2, 0, 0, DateTimeKind.Utc),
-                            DeviceName = "Windows 11 QA Laptop",
-                            ExpiresAt = new DateTime(2025, 2, 9, 8, 2, 0, 0, DateTimeKind.Utc),
-                            LastUsedAt = new DateTime(2025, 1, 10, 8, 2, 0, 0, DateTimeKind.Utc),
-                            RefreshToken = "refresh_token_demo_u2",
-                            UserID = "U0000002"
-                        });
+                    b.ToTable("UserSessions");
                 });
 
             modelBuilder.Entity("SecureChat.Models.BlockedUser", b =>
@@ -1455,6 +1204,28 @@ namespace SecureChat.Server.Migrations
                     b.Navigation("Member");
 
                     b.Navigation("Message");
+                });
+
+            modelBuilder.Entity("SecureChat.Models.UserPresence", b =>
+                {
+                    b.HasOne("SecureChat.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SecureChat.Models.UserPrivacySettings", b =>
+                {
+                    b.HasOne("SecureChat.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("SecureChat.Models.UserSession", b =>

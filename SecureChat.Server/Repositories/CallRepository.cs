@@ -38,10 +38,31 @@ namespace SecureChat.Repositories
 				.ToListAsync();
 
 		public async Task<CallLog?> GetActiveCallAsync(string conversationID)
-			=> await db.CallLogs
+		{
+			var now = DateTime.UtcNow;
+			return await db.CallLogs
 				.Include(c => c.Participants)
 				.FirstOrDefaultAsync(c => c.ConversationID == conversationID
-						&& (c.Status == CallStatus.Ringing || c.Status == CallStatus.Ongoing));
+						&& ((c.Status == CallStatus.Ringing && c.StartedAt >= now.AddMinutes(-2))
+						 || (c.Status == CallStatus.Ongoing  && c.StartedAt >= now.AddHours(-4))));
+		}
+
+		public async Task<CallLog?> GetActiveCallByMemberAsync(string memberID)
+		{
+			var now = DateTime.UtcNow;
+			return await db.CallLogs
+				.Include(c => c.Participants)
+				.Where(c => c.Status == CallStatus.Ringing || c.Status == CallStatus.Ongoing)
+				.Where(c => c.Participants.Any(p =>
+					p.ParticipantID == memberID &&
+					p.Status != CallParticipantStatus.LeftEarly &&
+					p.Status != CallParticipantStatus.Declined &&
+					p.Status != CallParticipantStatus.Missed))
+				.Where(c => c.Status == CallStatus.Ringing
+					? c.StartedAt >= now.AddMinutes(-2)
+					: c.StartedAt >= now.AddHours(-4))
+				.FirstOrDefaultAsync();
+		}
 
 		public async Task<CallLog> UpdateStatusAsync(string callID, CallStatus status)
 		{
@@ -60,8 +81,88 @@ namespace SecureChat.Repositories
 
 			call.Status = CallStatus.Ended;
 			call.EndedAt = DateTime.UtcNow;
+
+			// Mark all non-left participants as LeftEarly so they don't block future calls
+			var activeParticipants = await db.CallParticipants
+				.Where(p => p.CallID == callID
+					&& p.Status != CallParticipantStatus.LeftEarly
+					&& p.Status != CallParticipantStatus.Declined
+					&& p.Status != CallParticipantStatus.Missed)
+				.ToListAsync();
+
+			foreach (var p in activeParticipants)
+			{
+				p.Status = CallParticipantStatus.LeftEarly;
+				p.LeftAt ??= DateTime.UtcNow;
+			}
+
 			await db.SaveChangesAsync();
 			return call;
+		}
+
+		public async Task<CallLog> MarkCallAsMissedAsync(string callID)
+		{
+			var call = await db.CallLogs.FindAsync(callID)
+				?? throw new KeyNotFoundException($"Không tìm thấy call_log {callID}.");
+
+			call.Status = CallStatus.Missed;
+			call.EndedAt = DateTime.UtcNow;
+
+			var ringingParticipants = await db.CallParticipants
+				.Where(p => p.CallID == callID && p.Status == CallParticipantStatus.Ringing)
+				.ToListAsync();
+
+			foreach (var p in ringingParticipants)
+			{
+				p.Status = CallParticipantStatus.Missed;
+				p.LeftAt ??= DateTime.UtcNow;
+			}
+
+			// Mark the caller as LeftEarly if they never joined (shouldn't happen, but safety)
+			var caller = await db.CallParticipants
+				.FirstOrDefaultAsync(p => p.CallID == callID && p.Status == CallParticipantStatus.Joined);
+			if (caller != null)
+			{
+				caller.Status = CallParticipantStatus.LeftEarly;
+				caller.LeftAt ??= DateTime.UtcNow;
+			}
+
+			await db.SaveChangesAsync();
+			return call;
+		}
+
+		public async Task<int> GetActiveParticipantCountAsync(string callID)
+			=> await db.CallParticipants
+				.CountAsync(p => p.CallID == callID
+					&& p.Status != CallParticipantStatus.LeftEarly
+					&& p.Status != CallParticipantStatus.Declined
+					&& p.Status != CallParticipantStatus.Missed);
+
+		public async Task<bool> TryCreateCallHistoryMessageAsync(string callID, Message sysMsg, CancellationToken ct = default)
+		{
+			using var tx = await db.Database.BeginTransactionAsync(ct);
+			try
+			{
+				var rows = await db.Database.ExecuteSqlInterpolatedAsync(
+					$"UPDATE CallLogs SET has_history_message = 1 WHERE call_id = {callID} AND has_history_message = 0", ct);
+
+				if (rows == 0)
+				{
+					await tx.RollbackAsync(ct);
+					return false;
+				}
+
+				sysMsg.SentAt = DateTime.UtcNow;
+				db.Messages.Add(sysMsg);
+				await db.SaveChangesAsync(ct);
+				await tx.CommitAsync(ct);
+				return true;
+			}
+			catch
+			{
+				await tx.RollbackAsync(ct);
+				throw;
+			}
 		}
 
 		public async Task DeleteCallAsync(string callID)

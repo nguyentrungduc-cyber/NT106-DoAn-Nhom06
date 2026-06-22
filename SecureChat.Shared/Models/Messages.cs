@@ -43,6 +43,9 @@ namespace SecureChat.Models
 	[Column("expires_at")]
 	public DateTime? ExpiresAt { get; set; }
 
+	[Column("recalled_at")]
+	public DateTime? RecalledAt { get; set; }
+
 	[ForeignKey(nameof(ConversationID)), InverseProperty(nameof(Conversation.Messages))]
 	public Conversation Conversation { get; set; } = null!;
 

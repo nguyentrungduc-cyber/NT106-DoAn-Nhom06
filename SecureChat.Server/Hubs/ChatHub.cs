@@ -4,17 +4,46 @@ using Microsoft.AspNetCore.SignalR;
 using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
+using SecureChat.Server.Services;
 
 namespace SecureChat.Server.Hubs
 {
     [Authorize]
-    public sealed class ChatHub(ConversationRepository conversations, CallRepository calls, ILogger<ChatHub> logger) : Hub
+    public sealed class ChatHub(
+        ConversationRepository conversations,
+        MessageRepository messages,
+        CallRepository calls,
+        UserRepository users,
+        PrivacyRepository privacy,
+        FriendRepository friends,
+        UserPresenceService presence,
+        ILogger<ChatHub> logger) : Hub
     {
         private string Me => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+
+        // Track connectionId → userId để dùng GroupExcept khi block
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _connToUser = new();
 
         public override async Task OnConnectedAsync()
         {
             logger.LogInformation("SignalR connected: {ConnectionId} User={UserId}", Context.ConnectionId, Me);
+
+            if (string.IsNullOrWhiteSpace(Me))
+            {
+                await base.OnConnectedAsync();
+                return;
+            }
+
+            _connToUser[Context.ConnectionId] = Me;
+
+            // Track presence via UserPresenceService (DB + broadcast)
+            await presence.UserConnectedAsync(Me, Context.ConnectionId);
+
+            // Always join conversation groups
+            var myConvs = await conversations.GetConversationsByMemberAsync(Me);
+            foreach (var conv in myConvs)
+                await Groups.AddToGroupAsync(Context.ConnectionId, conv.ConversationID);
+
             await base.OnConnectedAsync();
         }
 
@@ -25,7 +54,44 @@ namespace SecureChat.Server.Hubs
             else
                 logger.LogWarning(exception, "SignalR disconnected with error: {ConnectionId} User={UserId}", Context.ConnectionId, Me);
 
+            if (string.IsNullOrWhiteSpace(Me))
+            {
+                await base.OnDisconnectedAsync(exception);
+                return;
+            }
+
+            _connToUser.TryRemove(Context.ConnectionId, out _);
+
+            // Track presence via UserPresenceService (DB + broadcast)
+            await presence.UserDisconnectedAsync(Me, Context.ConnectionId);
+
             await base.OnDisconnectedAsync(exception);
+        }
+
+        public async Task QueryUserPresence(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId)) return;
+            var user = await users.GetByIdAsync(userId);
+            if (user is null) return;
+
+            bool online = presence.IsOnline(userId);
+
+            // Respect ShowOnlineStatus privacy toggle
+            if (user.ShowOnlineStatus == false)
+            {
+                await Clients.Caller.SendAsync("UserStatusChanged", userId, "Offline", (DateTime?)null);
+                return;
+            }
+
+            DateTime? lastSeen = user.LastSeenUtc;
+            if (!online)
+            {
+                var settings = await privacy.GetRawSettingsAsync(userId);
+                if (settings is not null && settings.LastSeenPrivacy != PrivacyLevel.Everybody)
+                    lastSeen = null;
+            }
+
+            await Clients.Caller.SendAsync("UserStatusChanged", userId, online ? "Online" : "Offline", lastSeen);
         }
 
         /// <summary>
@@ -67,7 +133,96 @@ namespace SecureChat.Server.Hubs
             if (member is null || member.LeftAt is not null)
                 throw new HubException("You are not a member of this conversation.");
 
-            await Clients.Group(conversationId).SendAsync("MessageReceived", message);
+            var conversation = await conversations.GetByIdAsync(conversationId);
+            if (conversation?.Type == ConversationType.Direct)
+            {
+                // DM: tìm connectionId của người bị chặn rồi dùng GroupExcept
+                var activeMembers = await conversations.GetActiveMembersAsync(conversationId);
+                var excludedConnIds = new List<string>();
+
+                foreach (var m in activeMembers.Where(m => m.UserID != Me))
+                {
+                    bool isBlocked = await friends.IsBlockedEitherWayAsync(Me, m.UserID);
+                    logger.LogInformation("Block check: sender={Sender} receiver={Receiver} isBlocked={IsBlocked}", Me, m.UserID, isBlocked);
+                    if (isBlocked)
+                    {
+                        // Lấy tất cả connectionId của user bị chặn
+                        var blockedConns = _connToUser
+                            .Where(kv => kv.Value == m.UserID)
+                            .Select(kv => kv.Key)
+                            .ToList();
+                        excludedConnIds.AddRange(blockedConns);
+                    }
+                }
+
+                // Broadcast trong group nhưng exclude connection của người bị chặn
+                await Clients.GroupExcept(conversationId, excludedConnIds)
+                             .SendAsync("MessageReceived", message);
+            }
+            else
+            {
+                // Group chat: broadcast bình thường, không check block
+                await Clients.Group(conversationId).SendAsync("MessageReceived", message);
+            }
+        }
+
+		/// <summary>
+		/// Broadcast a recalled message to a conversation group.
+		/// </summary>
+		public async Task RecallMessage(string conversationId, string messageId)
+		{
+			if (string.IsNullOrWhiteSpace(conversationId))
+				throw new HubException("ConversationId is required.");
+			if (string.IsNullOrWhiteSpace(messageId))
+				throw new HubException("MessageId is required.");
+
+			var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+			if (member is null || member.LeftAt is not null)
+				throw new HubException("You are not a member of this conversation.");
+
+			var msg = await messages.GetByIdAsync(messageId);
+			if (msg is null || msg.ConversationID != conversationId)
+				throw new HubException("Message not found.");
+			if (msg.RecalledAt is null)
+				throw new HubException("Message has not been recalled.");
+
+			await Clients.Group(conversationId).SendAsync("MessageRecalled", MessageResponse.From(msg));
+		}
+
+        /// <summary>
+        /// Broadcast a pin event to a conversation group.
+        /// Pinner identity is resolved server-side from the JWT claim.
+        /// </summary>
+        public async Task PinMessage(string conversationId, string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new HubException("ConversationId is required.");
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new HubException("MessageId is required.");
+
+            var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+            if (member is null || member.LeftAt is not null)
+                throw new HubException("You are not a member of this conversation.");
+
+            var pinnedByName = member.Nickname ?? member.User?.DisplayName ?? member.User?.Username ?? "Unknown";
+            await Clients.Group(conversationId).SendAsync("MessagePinned", conversationId, messageId, member.UserID, pinnedByName);
+        }
+
+        /// <summary>
+        /// Broadcast an unpin event to a conversation group.
+        /// </summary>
+        public async Task UnpinMessage(string conversationId, string messageId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId))
+                throw new HubException("ConversationId is required.");
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new HubException("MessageId is required.");
+
+            var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
+            if (member is null || member.LeftAt is not null)
+                throw new HubException("You are not a member of this conversation.");
+
+            await Clients.Group(conversationId).SendAsync("MessageUnpinned", conversationId, messageId);
         }
 
         /// <summary>
@@ -122,12 +277,18 @@ namespace SecureChat.Server.Hubs
         /// <summary>
         /// Leave a call group.
         /// </summary>
-        public Task LeaveCall(string callId)
+        public async Task LeaveCall(string callId)
         {
             if (string.IsNullOrWhiteSpace(callId))
                 throw new HubException("CallId is required.");
 
-            return Groups.RemoveFromGroupAsync(Context.ConnectionId, callId);
+            var call = await calls.GetByIdAsync(callId);
+            if (call is null)
+                throw new HubException("Call not found.");
+            if (!IsCallParticipant(call))
+                throw new HubException("You are not a participant of this call.");
+
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, callId);
         }
 
         /// <summary>
@@ -146,7 +307,7 @@ namespace SecureChat.Server.Hubs
             if (!IsCallParticipant(call))
                 throw new HubException("You are not a participant of this call.");
 
-            await Clients.Group(callId).SendAsync("CallSignalReceived", callId, signal);
+            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, $"{Me}|{signal}");
         }
 
         /// <summary>
@@ -157,13 +318,38 @@ namespace SecureChat.Server.Hubs
             if (string.IsNullOrWhiteSpace(callId))
                 throw new HubException("CallId is required.");
 
-            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("VideoFrameReceived", callId, frameData);
+            var call = await calls.GetByIdAsync(callId);
+            if (call is null)
+                throw new HubException("Call not found.");
+            if (!IsCallParticipant(call))
+                throw new HubException("You are not a participant of this call.");
+
+            string senderId = Me;
+            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("VideoFrameReceived", callId, senderId, frameData);
         }
 
         /// <summary>
-        /// Notify all members in a conversation that an incoming call is happening.
+        /// Relay audio data to other participants in a call.
         /// </summary>
-        public async Task NotifyCallIncoming(string conversationId, string callId, string callerName, int callType)
+        public async Task SendAudioData(string callId, byte[] audioData)
+        {
+            if (string.IsNullOrWhiteSpace(callId))
+                throw new HubException("CallId is required.");
+
+            var call = await calls.GetByIdAsync(callId);
+            if (call is null)
+                throw new HubException("Call not found.");
+            if (!IsCallParticipant(call))
+                throw new HubException("You are not a participant of this call.");
+
+            string senderId = Me;
+            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("AudioDataReceived", callId, senderId, audioData);
+        }
+
+        /// <summary>
+        /// Notify members in a conversation about an incoming call — respects CallsPrivacy.
+        /// </summary>
+        public async Task NotifyCallIncoming(string conversationId, string callId, string callerName, CallType callType)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new HubException("ConversationId is required.");
@@ -172,7 +358,12 @@ namespace SecureChat.Server.Hubs
             if (member is null || member.LeftAt is not null)
                 throw new HubException("You are not a member of this conversation.");
 
-            await Clients.GroupExcept(conversationId, Context.ConnectionId).SendAsync("CallIncoming", callId, callerName, callType, conversationId);
+            var activeMembers = await conversations.GetActiveMembersAsync(conversationId);
+            foreach (var m in activeMembers.Where(m => m.UserID != Me))
+            {
+                if (await privacy.CanStartCallAsync(Me, m.UserID))
+                    await Clients.User(m.UserID).SendAsync("CallIncoming", callId, callerName, callType, conversationId);
+            }
         }
 
         private bool IsCallParticipant(CallLog call)

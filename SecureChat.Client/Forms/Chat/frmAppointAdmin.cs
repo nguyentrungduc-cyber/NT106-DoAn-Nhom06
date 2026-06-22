@@ -24,11 +24,11 @@ namespace SecureChat.Client.Forms.Chat
             _allMembers = memberNames
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Select(x => new MemberItem(x.Trim(), "last seen recently"))
+                .Select(x => new MemberItem(x.Trim(), "Select as admin"))
                 .ToList();
 
             if (_allMembers.Count == 0)
-                _allMembers.Add(new MemberItem(string.IsNullOrWhiteSpace(currentAdmin) ? "Group member" : currentAdmin.Trim(), "last seen recently"));
+                _allMembers.Add(new MemberItem(string.IsNullOrWhiteSpace(currentAdmin) ? "Group member" : currentAdmin.Trim(), "Select as admin"));
 
             _selectedMemberName = _allMembers.Any(x => string.Equals(x.Name, currentAdmin, StringComparison.OrdinalIgnoreCase))
                 ? _allMembers.First(x => string.Equals(x.Name, currentAdmin, StringComparison.OrdinalIgnoreCase)).Name
