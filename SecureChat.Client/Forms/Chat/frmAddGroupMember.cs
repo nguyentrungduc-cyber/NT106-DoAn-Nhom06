@@ -34,8 +34,7 @@ namespace SecureChat.Client.Forms.Chat
         /// <param name="existingMemberUserIds">UserID của các thành viên đã có trong nhóm (sẽ bị loại khỏi danh sách chọn)</param>
         public frmAddGroupMember(IEnumerable<string> existingMemberUserIds)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             _existingMemberIds = new HashSet<string>(existingMemberUserIds);
             Text = "Thêm thành viên";
             Size = new Size(420, 560);

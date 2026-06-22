@@ -34,8 +34,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmReactionPicker()
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             Text = "Pick an emoji";
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedToolWindow;

@@ -27,8 +27,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmLeaveGroup(string groupName, string nextOwnerName, IEnumerable<string>? groupMembers = null, IEnumerable<string>? groupMemberIds = null)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             _groupName = string.IsNullOrWhiteSpace(groupName) ? "this group" : groupName.Trim();
             _appointedAdminName = nextOwnerName?.Trim() ?? string.Empty;
 

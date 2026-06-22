@@ -12,8 +12,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmInviteLinksSettings(int currentCount)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             _linksCount = Math.Max(1, currentCount);
 
             Text = "Invite links";

@@ -18,8 +18,7 @@ namespace SecureChat.Client.Forms.Settings
 
         public frmDownloads()
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             InitializeComponent();
             BuildUI();
             Load += (_, __) => LoadFiles();

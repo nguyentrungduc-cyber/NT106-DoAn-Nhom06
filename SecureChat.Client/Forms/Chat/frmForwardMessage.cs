@@ -13,8 +13,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmForwardMessage(List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> convs, string? excludeConversationId = null, string? savedMessagesConvId = null)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             Text = "Forward to...";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;

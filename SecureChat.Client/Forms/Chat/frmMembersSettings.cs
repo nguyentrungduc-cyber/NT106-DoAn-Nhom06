@@ -18,8 +18,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmMembersSettings(string conversationId)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             _conversationId = conversationId;  // Gán vào biến
             _ = LoadMembersAsync();
             Text = "Members";

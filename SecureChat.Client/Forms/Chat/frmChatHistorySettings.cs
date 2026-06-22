@@ -1,3 +1,4 @@
+using SecureChat.Client.Services;
 namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmChatHistorySettings : Form
@@ -9,8 +10,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmChatHistorySettings(string current)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            ThemeRefreshHelper.Hook(this);
             ChatHistoryMode = string.IsNullOrWhiteSpace(current) ? "Hidden" : current;
 
             Text = "Chat history for new members";
