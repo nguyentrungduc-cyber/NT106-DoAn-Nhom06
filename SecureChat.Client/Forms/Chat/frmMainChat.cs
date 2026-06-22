@@ -28,6 +28,7 @@ namespace SecureChat.Client
         private Panel _pnlSidebar = null!; // Panel trái rộng 280px chứa danh sách hội thoại
         private Panel _pnlChat; // Panel phải chiếm phần còn lại, hiển thị tin nhắn
         private Panel _pnlSettingsMenu;  // Menu trượt từ trái ra, đè lên chat area
+        private Panel _pnlSettingsMenuList; // Panel chứa các menu rows (để refresh theme)
         private bool _settingsVisible = false; // Trạng thái menu đang hiện hay ẩn, mặc định là ẩn
         private System.Windows.Forms.Timer _slideTimer; // Timer tạo hiệu ứng trượt (animation)
         private int _settingsTargetX;  // Tọa độ X đích khi animate menu
@@ -3218,6 +3219,7 @@ namespace SecureChat.Client
 };
 
             var pnlMenuList = new Panel { Dock = DockStyle.Fill, BackColor = TG.SidebarBg };
+            _pnlSettingsMenuList = pnlMenuList;
             pnlMenuList.Resize += (s, e) =>
             {
                 foreach (Control c in pnlMenuList.Controls)
@@ -3616,7 +3618,25 @@ namespace SecureChat.Client
             if (_lblSettingsUserName != null) _lblSettingsUserName.ForeColor = TG.TitleBarFg;
 
             // Settings menu body
-            if (_pnlSettingsMenu != null) _pnlSettingsMenu.BackColor = TG.WindowBg;
+            if (_pnlSettingsMenu != null) _pnlSettingsMenu.BackColor = TG.SidebarBg;
+
+            // Refresh toàn bộ settings menu rows (pnlMenuList + từng row + label)
+            if (_pnlSettingsMenuList != null)
+            {
+                _pnlSettingsMenuList.BackColor = TG.SidebarBg;
+                foreach (Control row in _pnlSettingsMenuList.Controls)
+                {
+                    row.BackColor = TG.SidebarBg;
+                    foreach (Control c in row.Controls)
+                    {
+                        if (c is Label lbl && lbl.BackColor != Color.Transparent)
+                            lbl.ForeColor = TG.TextPrimary;
+                        else if (c is Label lbl2)
+                            lbl2.ForeColor = TG.TextPrimary;
+                    }
+                    row.Invalidate();
+                }
+            }
 
             // Context menu (chat header ⋮)
             if (_chatMoreMenu != null)
@@ -3685,6 +3705,7 @@ namespace SecureChat.Client
 
             _pnlMessages.BackColor = TG.ChatBg;
             _pnlMessages.CachedWallpaper = null;
+            if (_pnlChat != null) _pnlChat.BackColor = TG.ChatBg;
 
             foreach (Control c in _pnlMessages.Controls)
             {
@@ -3696,11 +3717,27 @@ namespace SecureChat.Client
 
             if (_sbBody != null)
             {
+                _sbBody.BackColor = TG.WindowBg;
                 foreach (Control c in _sbBody.Controls)
                 {
                     if (c is ucGroupMemberItem member)
                         member.OnNightModeChanged();
+                    else if (c is Label lbl)
+                    {
+                        // Các label trong BuildDirectSidebar/BuildGroupSidebar
+                        if (lbl.ForeColor != Color.FromArgb(0x21, 0xA1, 0x66)) // giữ màu "Online" xanh
+                            lbl.ForeColor = TG.TextPrimary;
+                        lbl.BackColor = Color.Transparent;
+                    }
+                    else if (c is Panel p)
+                    {
+                        p.BackColor = TG.WindowBg;
+                        foreach (Control pc in p.Controls)
+                            if (pc is Label pl) pl.ForeColor = TG.TextPrimary;
+                        p.Invalidate();
+                    }
                 }
+                _sbBody.Invalidate(true);
             }
 
             _pnlMessages.Invalidate();
