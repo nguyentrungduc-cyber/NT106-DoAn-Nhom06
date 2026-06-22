@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -33,6 +34,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmReactionPicker()
         {
+            ThemeRefreshHelper.Hook(this);
             Text = "Pick an emoji";
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
@@ -69,6 +71,5 @@ namespace SecureChat.Client.Forms.Chat
             }
 
             Controls.Add(flow);
-        }
-    }
+        }    }
 }

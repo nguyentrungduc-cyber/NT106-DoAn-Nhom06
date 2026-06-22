@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using SecureChat.Client;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -10,6 +11,8 @@ namespace SecureChat.Client.Forms.Chat
         public frmUserProfile(string displayName, string username, string? email, string? bio,
             bool isOnline = false, DateTime? lastSeenUtc = null, bool showOnlineStatus = true)
         {
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             Text = "Profile";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
@@ -17,8 +20,9 @@ namespace SecureChat.Client.Forms.Chat
             MinimizeBox = false;
             HelpButton = false;
             ControlBox = false;
-            ClientSize = new Size(440, 400);
-            BackColor = Color.White;
+            ClientSize = new Size(400, 400);
+            BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
@@ -33,13 +37,13 @@ namespace SecureChat.Client.Forms.Chat
                 Location = new Point(ClientSize.Width - 46, 14),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
+                ForeColor = TG.TextPrimary,
                 Cursor = Cursors.Hand,
                 TabStop = false,
             };
             btnClose.FlatAppearance.BorderSize = 0;
-            btnClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xF0, 0xF4, 0xF8);
-            btnClose.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEE, 0xF5);
+            btnClose.FlatAppearance.MouseOverBackColor = TG.SidebarHover;
+            btnClose.FlatAppearance.MouseDownBackColor = TG.SidebarHover;
             btnClose.Click += (_, __) => Close();
             Controls.Add(btnClose);
 
@@ -53,34 +57,36 @@ namespace SecureChat.Client.Forms.Chat
             Controls.Add(avatar);
             y += 114;
 
-            // Helper: label full-width (trừ margin 2 bên), dùng TextAlign để căn giữa thật -
-            // không tự đo Width rồi tự chia đôi nữa nên không thể bị lệch/tràn mép như trước.
-            Label AddCenteredLabel(string text, Font font, Color color, int topY)
+            // Display Name (centered)
+            var lblName = new Label
             {
-                int w = ClientSize.Width - 40;
-                var measured = TextRenderer.MeasureText(text, font, new Size(w, int.MaxValue),
-                    TextFormatFlags.WordBreak | TextFormatFlags.HorizontalCenter);
-                var lbl = new Label
-                {
-                    Text = text,
-                    Font = font,
-                    ForeColor = color,
-                    TextAlign = ContentAlignment.MiddleCenter,
-                    AutoSize = false,
-                    BackColor = Color.Transparent,
-                    Location = new Point(20, topY),
-                    Size = new Size(w, measured.Height + 4),
-                };
-                Controls.Add(lbl);
-                return lbl;
-            }
-
-            // Display Name (centered, tự xuống dòng nếu tên dài)
-            var lblName = AddCenteredLabel(displayName, TG.FontSemiBold(18f), TG.TextPrimary, y);
+                Text = displayName,
+                Font = TG.FontSemiBold(18f),
+                ForeColor = TG.TextPrimary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                AutoSize = true,
+                MaximumSize = new Size(360, 0),
+                BackColor = Color.Transparent,
+            };
+            if (lblName.Height < 28) lblName.Height = 28;
+            lblName.Location = new Point((ClientSize.Width - lblName.Width) / 2, y);
+            Controls.Add(lblName);
             y += lblName.Height + 4;
 
             // Username (centered)
-            var lblUsername = AddCenteredLabel($"@{username}", TG.FontRegular(13f), TG.TextSecondary, y);
+            var lblUsername = new Label
+            {
+                Text = $"@{username}",
+                Font = TG.FontRegular(13f),
+                ForeColor = TG.TextSecondary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                AutoSize = true,
+                MaximumSize = new Size(360, 0),
+                BackColor = Color.Transparent,
+            };
+            if (lblUsername.Height < 20) lblUsername.Height = 20;
+            lblUsername.Location = new Point((ClientSize.Width - lblUsername.Width) / 2, y);
+            Controls.Add(lblUsername);
             y += lblUsername.Height + 6;
 
             // Presence status (centered)
@@ -90,8 +96,18 @@ namespace SecureChat.Client.Forms.Chat
             else
                 presenceText = "offline";
 
-            var lblStatus = AddCenteredLabel(presenceText, TG.FontRegular(11f),
-                presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary, y);
+            var lblStatus = new Label
+            {
+                Text = presenceText,
+                Font = TG.FontRegular(11f),
+                ForeColor = presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                AutoSize = true,
+                MaximumSize = new Size(360, 0),
+                BackColor = Color.Transparent,
+            };
+            lblStatus.Location = new Point((ClientSize.Width - lblStatus.Width) / 2, y);
+            Controls.Add(lblStatus);
             y += lblStatus.Height + 18;
 
             // Divider
@@ -113,9 +129,6 @@ namespace SecureChat.Client.Forms.Chat
                 y += 4;
                 AppendInfoField("Bio", bio, ref y);
             }
-
-            // Co lại đúng theo nội dung thật (tránh bị clip khi tên/email/bio dài), nhưng vẫn giữ tối thiểu cho thoáng
-            ClientSize = new Size(ClientSize.Width, Math.Max(380, y + 12));
         }
 
         private void AppendInfoField(string label, string value, ref int y)
@@ -147,5 +160,30 @@ namespace SecureChat.Client.Forms.Chat
             Controls.Add(lblValue);
             y += lblValue.Height + 20;
         }
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {
+            foreach (Control c in controls)
+            {
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+                if (c.ForeColor != Color.White && c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }
+        }
+
     }
 }

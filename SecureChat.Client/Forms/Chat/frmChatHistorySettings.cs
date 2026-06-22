@@ -1,3 +1,4 @@
+using SecureChat.Client.Services;
 namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmChatHistorySettings : Form
@@ -9,6 +10,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmChatHistorySettings(string current)
         {
+            ThemeRefreshHelper.Hook(this);
             ChatHistoryMode = string.IsNullOrWhiteSpace(current) ? "Hidden" : current;
 
             Text = "Chat history for new members";
@@ -17,7 +19,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(500, 340);
 
@@ -25,7 +27,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Chat history for new members",
                 Font = new Font("Segoe UI Semibold", 17f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(20, 16),
                 Size = new Size(430, 34)
             };
@@ -41,7 +43,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "New members will see messages\r\nthat were sent before they joined.",
                 Font = new Font("Segoe UI", 10f),
-                ForeColor = Color.FromArgb(0x7D, 0x8B, 0x98),
+                ForeColor = TG.TextSecondary,
                 AutoSize = false,
                 Size = new Size(430, 52),
                 Location = new Point(58, 110)
@@ -58,17 +60,17 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "New members won't see more\r\nthan 100 previous messages.",
                 Font = new Font("Segoe UI", 10f),
-                ForeColor = Color.FromArgb(0x7D, 0x8B, 0x98),
+                ForeColor = TG.TextSecondary,
                 AutoSize = false,
                 Size = new Size(430, 52),
                 Location = new Point(58, 204)
             };
 
-            var btnCancel = BuildBottomButton("Cancel", Color.FromArgb(0x2A, 0xAB, 0xEE));
+            var btnCancel = BuildBottomButton("Cancel", TG.Blue);
             btnCancel.Location = new Point(300, 292);
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
-            var btnSave = BuildBottomButton("Save", Color.FromArgb(0x2A, 0xAB, 0xEE), true);
+            var btnSave = BuildBottomButton("Save", TG.Blue, true);
             btnSave.Location = new Point(392, 292);
             btnSave.Click += (_, __) =>
             {

@@ -6,20 +6,19 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Settings
 {
     public class frmDownloads : Form
     {
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x8C, 0x96, 0xA2);
-        private static readonly Color C_DIVIDER = Color.FromArgb(0xE8, 0xEC, 0xF1);
+        // Colors read from TG at paint time
 
         private Panel _content = null!;
 
         public frmDownloads()
         {
+            ThemeRefreshHelper.Hook(this);
             InitializeComponent();
             BuildUI();
             Load += (_, __) => LoadFiles();
@@ -37,7 +36,7 @@ namespace SecureChat.Client.Forms.Settings
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 760);
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
@@ -45,7 +44,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Dock = DockStyle.Top,
                 Height = 74,
-                BackColor = C_BG
+                BackColor = TG.WindowBg
             };
 
             var back = new PictureBox
@@ -63,7 +62,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = "Downloads",
                 Font = new Font("Segoe UI Semibold", 13f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 AutoSize = true,
                 Location = new Point(46, 20),
                 BackColor = Color.Transparent
@@ -75,7 +74,7 @@ namespace SecureChat.Client.Forms.Settings
                 AutoSize = true,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 TabStop = false,
                 Padding = new Padding(6, 2, 6, 2)
@@ -88,7 +87,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Dock = DockStyle.Bottom,
                 Height = 1,
-                BackColor = C_DIVIDER
+                BackColor = TG.Divider
             };
 
             header.Controls.Add(back);
@@ -99,7 +98,7 @@ namespace SecureChat.Client.Forms.Settings
             _content = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = C_BG
+                BackColor = TG.WindowBg
             };
 
             Controls.Add(_content);
@@ -126,8 +125,8 @@ namespace SecureChat.Client.Forms.Settings
                 FullRowSelect = true,
                 HeaderStyle = ColumnHeaderStyle.Nonclickable,
                 BorderStyle = BorderStyle.None,
-                BackColor = C_BG,
-                ForeColor = C_TEXT,
+                BackColor = TG.WindowBg,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 10.2f)
             };
 
@@ -184,7 +183,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = "No files here yet",
                 AutoSize = true,
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 Font = new Font("Segoe UI", 10.8f),
                 BackColor = Color.Transparent
             };
