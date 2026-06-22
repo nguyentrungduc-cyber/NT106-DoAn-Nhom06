@@ -14,7 +14,8 @@ namespace SecureChat.Client.Components.Group
         private static readonly Color C_SUBTEXT = Color.FromArgb(0x8A, 0x98, 0xA6);
         private static readonly Color C_ROLE = Color.FromArgb(0x7D, 0x5F, 0xC9);
 
-        private PictureBox _avatar = null!;
+        private Panel _avatar = null!;
+        private Image? _avatarImage;
         private Label _lblInitial = null!;
         private Label _lblName = null!;
         private Label _lblStatus = null!;
@@ -46,13 +47,13 @@ namespace SecureChat.Client.Components.Group
 
         public Image AvatarImage
         {
-            get => _avatar.Image;
+            get => _avatarImage!;
             set
             {
-                if (_avatar.Image != value)
+                if (_avatarImage != value)
                 {
-                    var old = _avatar.Image;
-                    _avatar.Image = value;
+                    var old = _avatarImage;
+                    _avatarImage = value;
                     old?.Dispose();
                 }
                 _lblInitial.Visible = value == null;
@@ -67,7 +68,7 @@ namespace SecureChat.Client.Components.Group
             set
             {
                 _avatarColor = value;
-                _avatar.BackColor = value;
+                _avatar.Invalidate();
             }
         }
 
@@ -82,15 +83,20 @@ namespace SecureChat.Client.Components.Group
 
         private void BuildUI()
         {
-            _avatar = new PictureBox
+            _avatar = new Panel
             {
                 Size = new Size(AVATAR_SIZE, AVATAR_SIZE),
                 Location = new Point(LEFT_PAD, 20),
-                BackColor = _avatarColor,
-                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Transparent,
             };
-            _avatar.SizeChanged += (_, __) => ClipCircle(_avatar);
-            ClipCircle(_avatar);
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_avatar, true);
+            _avatar.Paint += (_, pe) =>
+            {
+                var rect = new Rectangle(0, 0, _avatar.Width, _avatar.Height);
+                TG.DrawCircleAvatar(pe.Graphics, rect, _avatarImage, "", _avatarColor, drawInitials: false);
+            };
 
             _lblInitial = new Label
             {
@@ -206,12 +212,5 @@ namespace SecureChat.Client.Components.Group
         /// Resize có fire đúng thứ tự hay không.
         /// </summary>
         public void RefreshLayout() => LayoutDynamic();
-
-        private static void ClipCircle(PictureBox pb)
-        {
-            using var path = new GraphicsPath();
-            path.AddEllipse(0, 0, pb.Width, pb.Height);
-            pb.Region = new Region(path);
-        }
     }
 }

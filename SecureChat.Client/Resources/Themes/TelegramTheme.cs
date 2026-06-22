@@ -89,7 +89,8 @@ namespace SecureChat.Client
             Rectangle rect,
             Image? photo,
             string displayName,
-            Color? bgColor = null)
+            Color? bgColor = null,
+            bool drawInitials = true)
         {
             g.SmoothingMode      = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.InterpolationMode  = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
@@ -115,13 +116,16 @@ namespace SecureChat.Client
                 using var fill = new SolidBrush(color);
                 g.FillEllipse(fill, r);
 
-                // Initials
-                string initials = GetInitials(displayName);
-                float fontSize = Math.Max(10f, r.Width * 0.34f);
-                using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-                TextRenderer.DrawText(g, initials, font, r, Color.White,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                if (drawInitials)
+                {
+                    // Initials
+                    string initials = GetInitials(displayName);
+                    float fontSize = Math.Max(10f, r.Width * 0.34f);
+                    using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
+                    TextRenderer.DrawText(g, initials, font, r, Color.White,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                }
             }
         }
 
