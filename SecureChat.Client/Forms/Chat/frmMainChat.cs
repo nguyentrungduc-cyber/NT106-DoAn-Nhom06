@@ -3740,6 +3740,28 @@ namespace SecureChat.Client
                 _sbBody.Invalidate(true);
             }
 
+            // Pinned message bar (bị bỏ sót - không nằm trong OnNightModeChanged ban đầu)
+            if (_pnlPinnedBar != null)
+            {
+                _pnlPinnedBar.BackColor = TG.Divider;
+                _lblPinnedText.ForeColor = TG.TextPrimary;
+                foreach (Control c in _pnlPinnedBar.Controls)
+                    if (c is Label lbl && lbl != _lblPinnedText)
+                        lbl.ForeColor = TG.TextSecondary; // downArrow
+                _pnlPinnedBar.Invalidate(true);
+            }
+            if (_pnlPinnedPopup != null)
+            {
+                _pnlPinnedPopup.BackColor = TG.SidebarBg;
+                if (_pnlPinnedPopup.Visible) RebuildPinnedPopup(); // rebuild để item con lấy màu mới
+            }
+            if (_pnlPinnedBottomBar != null)
+            {
+                _pnlPinnedBottomBar.BackColor = TG.Divider;
+                _lblPinnedBottomText.ForeColor = TG.TextPrimary;
+                _pnlPinnedBottomBar.Invalidate(true);
+            }
+
             _pnlMessages.Invalidate();
 
             // Rebuild toàn bộ bubble để MsgInBg/MsgOutBg/ChatBg được áp dụng đúng.
