@@ -2262,14 +2262,17 @@ namespace SecureChat.Client
             _wallpaperLoaded = true;
 
             string imagesDir = Path.Combine(Application.StartupPath, "Resources", "Images");
-            string[] candidates = {
+            var candidates = new List<string>();
+            if (NightModeService.IsEnabled)
+                candidates.Add(Path.Combine(imagesDir, "chat_bg_nm.jpg"));
+            candidates.AddRange(new[] {
             Path.Combine(imagesDir, "chat_bg.jpg"),
             Path.Combine(imagesDir, "chat_bg.png"),
             Path.Combine(imagesDir, "wallpaper.jpg"),
             Path.Combine(imagesDir, "wallpaper.png"),
             Path.Combine(imagesDir, "background.jpg"),
             Path.Combine(imagesDir, "background.png"),
-    };
+    });
 
             foreach (var path in candidates)
             {
@@ -3812,7 +3815,7 @@ namespace SecureChat.Client
             }
 
             _pnlMessages.BackColor = TG.ChatBg;
-            UpdateCachedBackground();
+            ReloadWallpaper();
             if (_pnlChat != null) _pnlChat.BackColor = TG.SidebarBg;
 
             foreach (Control c in _pnlMessages.Controls)
