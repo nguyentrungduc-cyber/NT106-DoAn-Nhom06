@@ -4,7 +4,8 @@
     {
         private readonly TextBox _txtName;
         private readonly TextBox _txtDescription;
-        private readonly PictureBox _avatar;
+        private readonly Panel _avatar;
+        private Image? _avatarImage;
 
         private readonly Label _lblDescPlaceholder;
         private readonly Label _lblGroupTypeValue;
@@ -28,7 +29,7 @@
         public string ChatHistoryMode => _chatHistory;
         public int AdminsCount => _adminsCount;
         public int MembersCount => _membersCount;
-        public Image? GroupAvatar => _avatar.Image;
+        public Image? GroupAvatar => _avatarImage;
 
         public frmEditGroup(string conversationId, string currentName)
         {
@@ -76,27 +77,24 @@
                 Cursor = Cursors.Hand
             };
 
-            _avatar = new PictureBox
+            _avatar = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = Color.FromArgb(0x5C, 0xA5, 0xEC),
-                // Fill the full circular frame when user selects an image.
-                SizeMode = PictureBoxSizeMode.StretchImage,
+                BackColor = Color.Transparent,
                 Cursor = Cursors.Hand
             };
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_avatar, true);
             _avatar.Paint += (_, e) =>
             {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                if (_avatar.Image == null)
+                var rect = new Rectangle(0, 0, _avatar.Width, _avatar.Height);
+                TG.DrawCircleAvatar(e.Graphics, rect, _avatarImage, "", Color.FromArgb(0x5C, 0xA5, 0xEC), drawInitials: false);
+                if (_avatarImage == null)
                 {
-                    e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0x5C, 0xA5, 0xEC)), 0, 0, _avatar.Width - 1, _avatar.Height - 1);
                     TextRenderer.DrawText(e.Graphics, "\U0001F4F7", new Font("Segoe UI Emoji", 24f), _avatar.ClientRectangle, Color.White,
                         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                 }
-
-                using var path = new System.Drawing.Drawing2D.GraphicsPath();
-                path.AddEllipse(0, 0, _avatar.Width, _avatar.Height);
-                _avatar.Region = new Region(path);
             };
             _avatar.Click += (_, __) => PickAvatarImage();
             avatarHost.Click += (_, __) => PickAvatarImage();
@@ -307,8 +305,8 @@
             {
                 using var fs = new FileStream(ofd.FileName, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var img = Image.FromStream(fs);
-                _avatar.Image?.Dispose();
-                _avatar.Image = new Bitmap(img);
+                _avatarImage?.Dispose();
+                _avatarImage = new Bitmap(img);
                 _avatar.Invalidate();
                 NewAvatarPath = ofd.FileName;
             }
@@ -339,8 +337,8 @@
             _disposed = true;
             _fadeTimer.Stop();
             _fadeTimer.Dispose();
-            _avatar.Image?.Dispose();
-            _avatar.Image = null;
+            _avatarImage?.Dispose();
+            _avatarImage = null;
             base.OnFormClosed(e);
         }
 
@@ -403,8 +401,8 @@
                 this.Invoke(new Action(() =>
                 {
                     if (_disposed) { img.Dispose(); return; }
-                    _avatar.Image?.Dispose();
-                    _avatar.Image = img;
+                    _avatarImage?.Dispose();
+                    _avatarImage = img;
                     _avatar.Invalidate();
                 }));
             }
