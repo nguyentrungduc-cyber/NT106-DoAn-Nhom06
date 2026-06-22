@@ -7332,6 +7332,16 @@ namespace SecureChat.Client
         {
             if (IsDisposed) return Task.CompletedTask;
 
+            DeviceConfig.Load();
+            if (!DeviceConfig.AcceptCallsOnThisDevice)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED"); } catch { }
+                });
+                return Task.CompletedTask;
+            }
+
             var s = NotificationSettings.Default;
             if (s.FlashTaskbar)
                 NotificationManager.FlashWindow(this.Handle);

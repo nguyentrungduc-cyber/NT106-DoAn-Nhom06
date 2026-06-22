@@ -19,6 +19,7 @@ namespace SecureChat.Client.Media
         private bool _capturing;
         private uint _sendSequenceNumber;
         private uint _lastReceivedSeq;
+        private int _outputDeviceNumber;
 
         // Jitter buffer: holds out-of-order packets for reordering
         private readonly ConcurrentDictionary<uint, byte[]> _jitterBuffer = new();
@@ -35,7 +36,7 @@ namespace SecureChat.Client.Media
         public bool IsMuted => _muted;
         public bool IsCapturing => _capturing;
 
-        public Task StartAsync()
+        public Task StartAsync(int? inputDeviceNumber = null, int? outputDeviceNumber = null)
         {
             lock (_lock)
             {
@@ -48,12 +49,15 @@ namespace SecureChat.Client.Media
                 _waveIn = new WaveInEvent
                 {
                     WaveFormat = new WaveFormat(AudioSampleRate, 16, 1),
-                    BufferMilliseconds = 50
+                    BufferMilliseconds = 50,
+                    DeviceNumber = inputDeviceNumber ?? 0
                 };
                 _waveIn.DataAvailable += OnDataAvailable;
                 _waveIn.RecordingStopped += OnRecordingStopped;
                 _waveIn.StartRecording();
                 _capturing = true;
+
+                _outputDeviceNumber = outputDeviceNumber ?? 0;
             }
             return Task.CompletedTask;
         }
@@ -125,7 +129,7 @@ namespace SecureChat.Client.Media
 
             if (_waveOut == null)
             {
-                _waveOut = new WaveOutEvent { DesiredLatency = 150 };
+                _waveOut = new WaveOutEvent { DesiredLatency = 150, DeviceNumber = _outputDeviceNumber };
                 _waveProvider = new BufferedWaveProvider(new WaveFormat(AudioSampleRate, 8, 1))
                 {
                     BufferDuration = TimeSpan.FromMilliseconds(800),
