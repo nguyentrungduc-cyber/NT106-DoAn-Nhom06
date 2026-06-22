@@ -50,7 +50,8 @@ namespace SecureChat.Client.Forms.Chat
         //  CONTROLS – Step 1
         // ═══════════════════════════════════════════════════
         private Panel _pnlStep1;
-        private PictureBox _pbAvatar;
+        private Panel _pbAvatar;
+        private Image? _avatarImage;
         private Panel _pnlCamOverlay;
         private TextBox _txtGroupName;
         private Panel _pnlUnderline;
@@ -199,15 +200,21 @@ namespace SecureChat.Client.Forms.Chat
             // Avatar
             const int AVA = 82;
             int avaL = (FORM_WIDTH - AVA) / 2;
-            _pbAvatar = new PictureBox
+            _pbAvatar = new Panel
             {
                 Size = new Size(AVA, AVA),
                 Location = new Point(avaL, 66),
-                BackColor = C_AVATAR_D,
-                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
             };
-            ClipCircle(_pbAvatar);
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_pbAvatar, true);
+            _pbAvatar.Paint += (_, pe) =>
+            {
+                var rect = new Rectangle(0, 0, _pbAvatar.Width, _pbAvatar.Height);
+                TG.DrawCircleAvatar(pe.Graphics, rect, _avatarImage, "", C_AVATAR_D, drawInitials: false);
+            };
 
             _pnlCamOverlay = new Panel
             {
@@ -528,10 +535,10 @@ namespace SecureChat.Client.Forms.Chat
             ResultAvatarPath = dlg.FileName;
             try
             {
-                var old = _pbAvatar.Image;
-                _pbAvatar.Image = Image.FromFile(ResultAvatarPath);
+                var old = _avatarImage;
+                _avatarImage = Image.FromFile(ResultAvatarPath);
                 old?.Dispose();
-                _pbAvatar.BackColor = Color.Black;
+                _pbAvatar.Invalidate();
                 _pnlCamOverlay.Invalidate();
             }
             catch { /* ảnh không hợp lệ – bỏ qua */ }
@@ -561,13 +568,6 @@ namespace SecureChat.Client.Forms.Chat
         // ═══════════════════════════════════════════════════
         //  DRAWING HELPERS
         // ═══════════════════════════════════════════════════
-        private static void ClipCircle(PictureBox pb)
-        {
-            var p = new GraphicsPath();
-            p.AddEllipse(0, 0, pb.Width, pb.Height);
-            pb.Region = new Region(p);
-        }
-
         private static void RoundRect(Graphics g, Pen pen, int x, int y, int w, int h, int r)
         {
             int d = r * 2;
