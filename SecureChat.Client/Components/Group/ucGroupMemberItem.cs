@@ -101,7 +101,7 @@ namespace SecureChat.Client.Components.Group
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
+                ForeColor = TG.TitleBarFg,
                 Font = new Font("Segoe UI Semibold", 16f),
                 BackColor = Color.Transparent,
             };

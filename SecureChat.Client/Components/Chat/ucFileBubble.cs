@@ -288,7 +288,7 @@ namespace SecureChat.Client.Components.Chat
             string label = string.IsNullOrEmpty(ext) ? "FILE" : ext.TrimStart('.').ToUpper();
             if (label.Length > 4) label = label[..4];
             using var font = new Font("Segoe UI", 7f, FontStyle.Bold);
-            using var textBrush = new SolidBrush(Color.White);
+            using var textBrush = new SolidBrush(TG.TitleBarFg);
             var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
             g.DrawString(label, font, textBrush, rect, sf);
         }

@@ -62,7 +62,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(430, 360);
 
@@ -70,7 +70,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 0),
                 Size = new Size(430, 120),
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
             EnableDoubleBuffer(header);
 
@@ -92,7 +92,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(196, 52),
                 Size = new Size(30, 18),
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
 
             var badge = new Label

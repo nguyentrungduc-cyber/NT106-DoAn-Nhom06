@@ -524,7 +524,7 @@ namespace SecureChat.Client.Forms.Chat
                 var old = _pbAvatar.Image;
                 _pbAvatar.Image = Image.FromFile(ResultAvatarPath);
                 old?.Dispose();
-                _pbAvatar.BackColor = Color.Black;
+                _pbAvatar.BackColor = TG.SidebarBg;
                 _pnlCamOverlay.Invalidate();
             }
             catch { /* ảnh không hợp lệ – bỏ qua */ }
@@ -547,7 +547,7 @@ namespace SecureChat.Client.Forms.Chat
             RoundRect(g, pen, cx - 16, cy - 9, 32, 20, 4);   // body
             g.DrawEllipse(pen, cx - 7, cy - 7, 14, 14);       // lens
             RoundRect(g, pen, cx - 5, cy - 15, 10, 7, 2);     // top bump
-            using var dot = new SolidBrush(Color.White);
+            using var dot = new SolidBrush(TG.TitleBarFg);
             g.FillEllipse(dot, cx + 8, cy - 11, 4, 4);        // flash
         }
 
