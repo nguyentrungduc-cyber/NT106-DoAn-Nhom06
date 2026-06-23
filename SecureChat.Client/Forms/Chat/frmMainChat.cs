@@ -144,6 +144,7 @@ namespace SecureChat.Client
 
         // Timer to refresh UI for countdown display
         private System.Windows.Forms.Timer? _countdownRefreshTimer;
+        private System.Windows.Forms.Timer? _resizeDebounceTimer;
 
         // Local audio recorder service (NAudio)
         private SecureChat.Client.Services.AudioRecorderService? _audioRecorder;
@@ -1331,7 +1332,16 @@ namespace SecureChat.Client
             _pnlRightSidebar.Controls.Add(_sbHeader);
 
             // _pnlMessages.Resize += (s, e) => _pnlMessages.Invalidate(); // bỏ vì đã có PaintChatBackground tự xử lý.
-            _pnlMessages.Resize += (s, e) => UpdateCachedBackground();
+            _pnlMessages.Resize += (s, e) =>
+            {
+                // Debounce: chỉ UpdateCachedBackground sau khi resize dừng 150ms
+                // Tránh tạo/huỷ bitmap liên tục mỗi pixel resize → giật khi phóng to
+                _resizeDebounceTimer?.Stop();
+                _resizeDebounceTimer ??= new System.Windows.Forms.Timer { Interval = 150 };
+                _resizeDebounceTimer.Tick -= ResizeDebounce_Tick;
+                _resizeDebounceTimer.Tick += ResizeDebounce_Tick;
+                _resizeDebounceTimer.Start();
+            };
 
             UpdateChatEmptyStateUI();
         }
@@ -8175,9 +8185,9 @@ namespace SecureChat.Client
             get
             {
                 CreateParams cp = base.CreateParams;
-                // Bật WS_EX_COMPOSITED (0x02000000)
-                // Ép toàn bộ control trên form phải vẽ bằng Double Buffer
-                cp.ExStyle |= 0x02000000;
+                // KHÔNG dùng WS_EX_COMPOSITED (0x02000000) — nó conflict với
+                // AutoScroll BitBlt trong ChatPanel gây rung khi scroll.
+                // Double-buffer được xử lý tại từng control (OptimizedDoubleBuffer).
                 return cp;
             }
         }
@@ -8210,13 +8220,22 @@ namespace SecureChat.Client
             }
         }
 
+        private void ResizeDebounce_Tick(object? sender, EventArgs e)
+        {
+            _resizeDebounceTimer?.Stop();
+            UpdateCachedBackground();
+        }
+
         private void UpdateCachedBackground()
         {
             // Kiểm tra nếu Panel chưa có kích thước hoặc bị ẩn thì không làm gì cả
-            if (_pnlMessages.Width <= 0 || _pnlMessages.Height <= 0) return;
+            if (_pnlMessages.ClientSize.Width <= 0 || _pnlMessages.ClientSize.Height <= 0) return;
 
-            // 1. Tạo một Bitmap mới khớp hoàn toàn với kích thước hiện tại của Panel
-            Bitmap newBmp = new Bitmap(_pnlMessages.Width, _pnlMessages.Height);
+            // Bitmap kích thước đúng bằng ClientSize (vùng nhìn thấy, không bao gồm
+            // phần scroll ẩn). Wallpaper là background tĩnh của viewport — không scroll.
+            int bmpW = _pnlMessages.ClientSize.Width;
+            int bmpH = _pnlMessages.ClientSize.Height;
+            Bitmap newBmp = new Bitmap(bmpW, bmpH);
 
             using (Graphics g = Graphics.FromImage(newBmp))
             {
@@ -8228,15 +8247,15 @@ namespace SecureChat.Client
                 if (img != null)
                 {
                     // Sử dụng lại logic "Center Crop" chuyên nghiệp của bạn
-                    float scaleX = (float)_pnlMessages.Width / img.Width;
-                    float scaleY = (float)_pnlMessages.Height / img.Height;
+                    float scaleX = (float)bmpW / img.Width;
+                    float scaleY = (float)bmpH / img.Height;
                     float scale = Math.Max(scaleX, scaleY);
 
                     int drawW = (int)(img.Width * scale);
                     int drawH = (int)(img.Height * scale);
 
-                    int offsetX = (_pnlMessages.Width - drawW) / 2;
-                    int offsetY = (_pnlMessages.Height - drawH) / 2;
+                    int offsetX = (bmpW - drawW) / 2;
+                    int offsetY = (bmpH - drawH) / 2;
 
                     g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                     g.SmoothingMode = SmoothingMode.HighQuality;
@@ -8272,29 +8291,14 @@ namespace SecureChat.Client
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            // Vẽ wallpaper/màu nền theo AutoScrollPosition để không bị tear khi scroll
-            int offsetY = -this.AutoScrollPosition.Y;
-            int offsetX = -this.AutoScrollPosition.X;
-
             if (CachedWallpaper != null)
             {
-                // Tile wallpaper theo scroll offset — không bị lộ trắng
-                int panelW = this.ClientSize.Width;
-                int panelH = this.ClientSize.Height;
-                int imgW = CachedWallpaper.Width;
-                int imgH = CachedWallpaper.Height;
-
-                // Vẽ wallpaper lấp đầy vùng hiển thị (stretched)
-                e.Graphics.DrawImage(CachedWallpaper,
-                    new Rectangle(0, 0, panelW, panelH),
-                    new Rectangle(offsetX % imgW, offsetY % imgH, imgW, imgH),
-                    GraphicsUnit.Pixel);
-                // Phủ thêm nếu cần (wrap)
-                if (offsetY % imgH != 0 || offsetX % imgW != 0)
-                    e.Graphics.DrawImage(CachedWallpaper,
-                        new Rectangle(0, 0, panelW, panelH),
-                        new Rectangle(0, 0, imgW, imgH),
-                        GraphicsUnit.Pixel);
+                // CachedWallpaper được tạo đúng kích thước ClientSize (vùng nhìn thấy).
+                // Luôn vẽ tại (0,0) trong client coordinates — không cần theo
+                // AutoScrollPosition vì wallpaper là background tĩnh của viewport,
+                // không scroll cùng với content.
+                e.Graphics.DrawImage(CachedWallpaper, 0, 0,
+                    ClientSize.Width, ClientSize.Height);
             }
             else
             {
@@ -8305,23 +8309,12 @@ namespace SecureChat.Client
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             const int WM_ERASEBKGND = 0x0014;
-            const int WM_VSCROLL    = 0x0115;
-            const int WM_MOUSEWHEEL = 0x020A;
-
             if (m.Msg == WM_ERASEBKGND)
             {
                 m.Result = (IntPtr)1;
                 return;
             }
             base.WndProc(ref m);
-
-            // Khi scroll, phải Invalidate để OnPaintBackground vẽ lại wallpaper
-            // đúng offset mới (AutoScrollPosition). Không có dòng này sẽ lộ trắng.
-            if (CachedWallpaper != null &&
-                (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL))
-            {
-                this.Invalidate();
-            }
         }
     }
 }
