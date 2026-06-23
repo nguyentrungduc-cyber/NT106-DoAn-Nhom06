@@ -73,6 +73,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 12f),
+                BackColor = TG.WindowBg,
                 ForeColor = TG.TextSecondary,
                 Location = new Point(56, 15),
                 Size = new Size(420, 26),
