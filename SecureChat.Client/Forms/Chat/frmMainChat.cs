@@ -191,6 +191,7 @@ namespace SecureChat.Client
         private Panel _pnlPinnedBottomBar = null!;
         private Label _lblPinnedBottomText = null!;
         private bool _isPinnedPopupOpen = false;
+        private Panel? _nightModeToggle; // ref để sync toggle khi OnNightModeChanged
 
         public frmMainChat()
         {
@@ -3218,7 +3219,7 @@ namespace SecureChat.Client
     ("🪪", "Contacts",        false),
     ("🔖", "Saved Messages",  false),
     ("⚙️", "Settings",        false),
-    ("🌙", "Night Mode",      true),
+    ("🌙", "Night Mode",      NightModeService.IsEnabled),
 };
 
             var pnlMenuList = new Panel { Dock = DockStyle.Fill, BackColor = TG.SidebarBg };
@@ -3305,20 +3306,29 @@ namespace SecureChat.Client
             {
                 bool on = initialOn;
                 var toggle = new Panel { Size = new Size(44, 24), BackColor = Color.Transparent, Cursor = Cursors.Hand };
+
+                // Nếu đây là Night Mode toggle, lưu reference để sync sau
+                if (label == "Night Mode")
+                    _nightModeToggle = toggle;
+
                 toggle.Paint += (s, e) =>
                 {
+                    // Luôn đọc state thực từ _settingsToggles nếu là Night Mode
+                    bool paintOn = (label == "Night Mode")
+                        ? _settingsToggles.TryGetValue("Night Mode", out var v) && v
+                        : on;
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     var r = new Rectangle(0, 2, 40, 20);
-                    using var brush = new SolidBrush(on ? TG.Blue : Color.FromArgb(0xCC, 0xCC, 0xCC));
+                    using var brush = new SolidBrush(paintOn ? TG.Blue : Color.FromArgb(0xCC, 0xCC, 0xCC));
                     e.Graphics.FillPath(brush, RoundedPanel.GetRoundedPath(r, 10));
-                    int cx = on ? 22 : 2;
+                    int cx = paintOn ? 22 : 2;
                     using var thumbBrush = new SolidBrush(TG.TitleBarFg);
                     e.Graphics.FillEllipse(thumbBrush, cx, 4, 16, 16);
                 };
                 toggle.Click += (s, e) =>
                 {
                     on = !on;
-                    onToggle?.Invoke(on); // update class-level store (or caller)
+                    onToggle?.Invoke(on);
                     toggle.Invalidate();
                 };
                 pnl.Controls.Add(toggle);
@@ -3596,6 +3606,7 @@ namespace SecureChat.Client
             // ── Sidebar ────────────────────────────────────────────────
             _pnlConvList.BackColor = TG.SidebarBg;
             _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
+            _nightModeToggle?.Invalidate(); // sync visual state của toggle
 
             // Header bar (hamburger + title area)
             if (_pnlSidebarHeader != null)
