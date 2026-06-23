@@ -1,7 +1,4 @@
-using System.Drawing;
-using SecureChat.Client.Services;
-
-namespace SecureChat.Client.Forms.Chat
+﻿namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmAdministratorsSettings : Form
     {
@@ -15,8 +12,6 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmAdministratorsSettings(string conversationId, int currentCount)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             _conversationId = conversationId;
             _adminsCount = Math.Max(0, currentCount);
 
@@ -26,8 +21,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = TG.WindowBg;
-            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
+            BackColor = Color.White;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(500, 740);
             Opacity = 0;
@@ -44,7 +38,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Administrators",
                 Font = new Font("Segoe UI Semibold", 18f),
-                ForeColor = TG.TextPrimary,
+                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
                 Location = new Point(20, 16),
                 Size = new Size(300, 34)
             };
@@ -53,13 +47,13 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 62),
                 Size = new Size(500, 54),
-                BackColor = TG.WindowBg
+                BackColor = Color.White
             };
             var txtSearch = new TextBox
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 12f),
-                ForeColor = TG.TextSecondary,
+                ForeColor = Color.FromArgb(0x7F, 0x8D, 0x9A),
                 Text = "Search",
                 Location = new Point(54, 16),
                 Size = new Size(420, 26)
@@ -68,12 +62,12 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "\U0001F50D",
                 Font = new Font("Segoe UI Emoji", 13f),
-                ForeColor = TG.TextSecondary,
+                ForeColor = Color.FromArgb(0x8E, 0x9A, 0xA7),
                 Location = new Point(16, 10),
                 Size = new Size(32, 32),
                 TextAlign = ContentAlignment.MiddleCenter
             };
-            var sep = new Panel { Location = new Point(0, 53), Size = new Size(500, 1), BackColor = TG.Divider };
+            var sep = new Panel { Location = new Point(0, 53), Size = new Size(500, 1), BackColor = Color.FromArgb(0xE6, 0xEB, 0xF1) };
             pnlSearch.Controls.AddRange(new Control[] { lblSearchIcon, txtSearch, sep });
 
             // Panel chứa danh sách admin — sẽ được populate từ API
@@ -82,19 +76,19 @@ namespace SecureChat.Client.Forms.Chat
                 Location = new Point(0, 120),
                 Size = new Size(500, 560),
                 AutoScroll = true,
-                BackColor = TG.WindowBg
+                BackColor = Color.White
             };
 
             _lblCount = new Label
             {
                 Text = $"Administrators: {_adminsCount}",
                 Font = new Font("Segoe UI", 10f),
-                ForeColor = TG.TextSecondary,
+                ForeColor = Color.FromArgb(0x8A, 0x98, 0xA6),
                 Location = new Point(20, 688),
                 Size = new Size(200, 24)
             };
 
-            var btnClose = BuildBottomButton("Close", TG.Blue, false, 90);
+            var btnClose = BuildBottomButton("Close", Color.FromArgb(0x2A, 0xAB, 0xEE), false, 90);
             btnClose.Location = new Point(390, 698);
             btnClose.Click += (_, __) => DialogResult = DialogResult.OK;
 
@@ -135,41 +129,20 @@ namespace SecureChat.Client.Forms.Chat
 
         private static Panel BuildAdminRow(string displayName, string role)
         {
-            var row = new Panel { Size = new Size(500, 84), BackColor = TG.WindowBg };
+            var row = new Panel { Size = new Size(500, 84), BackColor = Color.White };
 
-            var initials = displayName.Length >= 2
-                ? $"{displayName[0]}".ToUpper()
-                : displayName.ToUpper();
-
-            var avatar = new Panel
+            var avatar = new AvatarControl
             {
                 Location = new Point(20, 14),
                 Size = new Size(52, 52),
-                BackColor = TG.Blue
             };
-            avatar.Paint += (_, e) =>
-            {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using var path = new System.Drawing.Drawing2D.GraphicsPath();
-
-                path.AddEllipse(0, 0, avatar.Width, avatar.Height);
-                avatar.Region = new Region(path);
-            };
-            var lblInitial = new Label
-            {
-                Text = initials,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 16f)
-            };
-            avatar.Controls.Add(lblInitial);
+            avatar.SetName(displayName);
 
             var lblName = new Label
             {
                 Text = displayName,
                 Font = new Font("Segoe UI Semibold", 13f),
-                ForeColor = TG.TextPrimary,
+                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
                 Location = new Point(92, 16),
                 Size = new Size(220, 28)
             };
@@ -177,7 +150,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = role,
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = TG.TextSecondary,
+                ForeColor = Color.FromArgb(0x7D, 0x8B, 0x98),
                 Location = new Point(92, 46),
                 Size = new Size(120, 24)
             };
@@ -187,7 +160,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = role.ToLower(),
                 Font = new Font("Segoe UI Semibold", 11f),
-                ForeColor = isOwner ? Color.FromArgb(0x9A, 0x77, 0xD5) : TG.Blue,
+                ForeColor = isOwner ? Color.FromArgb(0x9A, 0x77, 0xD5) : Color.FromArgb(0x2A, 0xAB, 0xEE),
                 BackColor = isOwner ? Color.FromArgb(0xEF, 0xE8, 0xFF) : Color.FromArgb(0xE3, 0xF4, 0xFF),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Location = new Point(416, 28),
@@ -231,11 +204,5 @@ namespace SecureChat.Client.Forms.Chat
             _fadeTimer.Dispose();
             base.OnFormClosed(e);
         }
-        private void OnThemeChanged()
-        {
-            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            ThemeRefreshHelper.ApplyTo(this);  // ← delegate hết cho helper
-        }
-
     }
 }

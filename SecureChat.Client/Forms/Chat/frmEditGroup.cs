@@ -1,13 +1,11 @@
-using SecureChat.Client.Services;
-using System.Drawing;
-
-namespace SecureChat.Client.Forms.Chat
+﻿namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmEditGroup : Form
     {
         private readonly TextBox _txtName;
         private readonly TextBox _txtDescription;
-        private readonly PictureBox _avatar;
+        private readonly Panel _avatar;
+        private Image? _avatarImage;
 
         private readonly Label _lblDescPlaceholder;
         private readonly Label _lblGroupTypeValue;
@@ -31,12 +29,10 @@ namespace SecureChat.Client.Forms.Chat
         public string ChatHistoryMode => _chatHistory;
         public int AdminsCount => _adminsCount;
         public int MembersCount => _membersCount;
-        public Image? GroupAvatar => _avatar.Image;
+        public Image? GroupAvatar => _avatarImage;
 
         public frmEditGroup(string conversationId, string currentName)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             _conversationId = conversationId; // Gán ID nhóm
             GroupName = currentName;
 
@@ -46,8 +42,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = TG.WindowBg;
-            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
+            BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA);
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(520, 720);
             DoubleBuffered = true;
@@ -69,7 +64,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Edit group",
                 Font = new Font("Segoe UI Semibold", 18f),
-                ForeColor = TG.TextPrimary,
+                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
                 Location = new Point(20, 18),
                 Size = new Size(260, 38)
             };
@@ -82,27 +77,26 @@ namespace SecureChat.Client.Forms.Chat
                 Cursor = Cursors.Hand
             };
 
-            _avatar = new PictureBox
+            _avatar = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = TG.Blue,
-                // Fill the full circular frame when user selects an image.
-                SizeMode = PictureBoxSizeMode.StretchImage,
+                BackColor = Color.Transparent,
                 Cursor = Cursors.Hand
             };
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_avatar, true);
             _avatar.Paint += (_, e) =>
             {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                if (_avatar.Image == null)
+                var rect = new Rectangle(0, 0, _avatar.Width, _avatar.Height);
+                TG.DrawCircleAvatar(e.Graphics, rect, _avatarImage, "", Color.FromArgb(0x5C, 0xA5, 0xEC), drawInitials: false);
+                if (_avatarImage == null)
                 {
-                    e.Graphics.FillEllipse(new SolidBrush(TG.Blue), 0, 0, _avatar.Width - 1, _avatar.Height - 1);
-                    TextRenderer.DrawText(e.Graphics, "\U0001F4F7", new Font("Segoe UI Emoji", 24f), _avatar.ClientRectangle, Color.White,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    using var emojiFont = new Font("Segoe UI Emoji", 24f);
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    e.Graphics.DrawString("\U0001F4F7", emojiFont, Brushes.White, _avatar.ClientRectangle, sf);
                 }
-
-                using var path = new System.Drawing.Drawing2D.GraphicsPath();
-                path.AddEllipse(0, 0, _avatar.Width, _avatar.Height);
-                _avatar.Region = new Region(path);
             };
             _avatar.Click += (_, __) => PickAvatarImage();
             avatarHost.Click += (_, __) => PickAvatarImage();
@@ -112,7 +106,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Group name",
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = TG.TextBlue,
+                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
                 Location = new Point(150, 86),
                 Size = new Size(170, 28)
             };
@@ -122,15 +116,15 @@ namespace SecureChat.Client.Forms.Chat
                 Text = currentName,
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 16f),
-                ForeColor = TG.TextPrimary,
+                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
                 Location = new Point(150, 116),
                 Size = new Size(320, 36),
-                BackColor = TG.WindowBg
+                BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA)
             };
 
             var nameUnderline = new Panel
             {
-                BackColor = TG.TextBlue,
+                BackColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
                 Location = new Point(150, 156),
                 Size = new Size(280, 2)
             };
@@ -139,7 +133,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Description (optional)",
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = TG.TextSecondary,
+                ForeColor = Color.FromArgb(0x9A, 0xA6, 0xB3),
                 Location = new Point(28, 186),
                 Size = new Size(240, 26),
                 BackColor = Color.Transparent,
@@ -150,11 +144,11 @@ namespace SecureChat.Client.Forms.Chat
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = TG.TextPrimary,
+                ForeColor = Color.FromArgb(0x3B, 0x4A, 0x5A),
                 Location = new Point(28, 214),
                 Size = new Size(460, 58),
                 Multiline = true,
-                BackColor = TG.WindowBg
+                BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA)
             };
             _txtDescription.TextChanged += (_, __) => _lblDescPlaceholder.Visible = string.IsNullOrWhiteSpace(_txtDescription.Text);
             _lblDescPlaceholder.Click += (_, __) => _txtDescription.Focus();
@@ -163,9 +157,9 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 286),
                 Size = new Size(520, 312),
-                BackColor = TG.WindowBg
+                BackColor = Color.White
             };
-            section.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = TG.Divider });
+            section.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = Color.FromArgb(0xE6, 0xEB, 0xF1) });
 
             var rowGroupType = BuildSettingsRow("\u2699\uFE0F  Group type", _groupType, out _lblGroupTypeValue);
             rowGroupType.Location = new Point(0, 8);
@@ -185,11 +179,11 @@ namespace SecureChat.Client.Forms.Chat
 
             section.Controls.AddRange(new Control[] { rowGroupType, rowHistory, rowAdmins, rowMembers });
 
-            var btnCancel = BuildBottomButton("Cancel", TG.TextBlue);
+            var btnCancel = BuildBottomButton("Cancel", Color.FromArgb(0x2A, 0xAB, 0xEE));
             btnCancel.Location = new Point(300, 676);
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
-            var btnSave = BuildBottomButton("Save", TG.TextBlue, bold: true);
+            var btnSave = BuildBottomButton("Save", Color.FromArgb(0x2A, 0xAB, 0xEE), bold: true);
             btnSave.Location = new Point(392, 676);
             btnSave.Click += (_, __) =>
             {
@@ -219,7 +213,7 @@ namespace SecureChat.Client.Forms.Chat
             var pnl = new Panel
             {
                 Size = new Size(520, 46),
-                BackColor = TG.WindowBg,
+                BackColor = Color.White,
                 Cursor = Cursors.Hand
             };
 
@@ -227,7 +221,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = leftText,
                 Font = new Font("Segoe UI Emoji", 10.5f),
-                ForeColor = TG.TextPrimary,
+                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
                 Location = new Point(30, 8),
                 Size = new Size(330, 30),
                 BackColor = Color.Transparent
@@ -237,7 +231,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = rightText,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = TG.TextBlue,
+                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
                 TextAlign = ContentAlignment.MiddleRight,
                 Location = new Point(360, 8),
                 Size = new Size(130, 30),
@@ -248,13 +242,13 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(30, 45),
                 Size = new Size(460, 1),
-                BackColor = TG.Divider
+                BackColor = Color.FromArgb(0xEE, 0xF2, 0xF7)
             };
 
             pnl.Controls.AddRange(new Control[] { left, rightValue, sep });
 
-            pnl.MouseEnter += (_, __) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (_, __) => pnl.BackColor = TG.WindowBg;
+            pnl.MouseEnter += (_, __) => pnl.BackColor = Color.FromArgb(0xF7, 0xFA, 0xFD);
+            pnl.MouseLeave += (_, __) => pnl.BackColor = Color.White;
 
             return pnl;
         }
@@ -313,8 +307,8 @@ namespace SecureChat.Client.Forms.Chat
             {
                 using var fs = new FileStream(ofd.FileName, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var img = Image.FromStream(fs);
-                _avatar.Image?.Dispose();
-                _avatar.Image = new Bitmap(img);
+                _avatarImage?.Dispose();
+                _avatarImage = new Bitmap(img);
                 _avatar.Invalidate();
                 NewAvatarPath = ofd.FileName;
             }
@@ -345,8 +339,8 @@ namespace SecureChat.Client.Forms.Chat
             _disposed = true;
             _fadeTimer.Stop();
             _fadeTimer.Dispose();
-            _avatar.Image?.Dispose();
-            _avatar.Image = null;
+            _avatarImage?.Dispose();
+            _avatarImage = null;
             base.OnFormClosed(e);
         }
 
@@ -409,19 +403,13 @@ namespace SecureChat.Client.Forms.Chat
                 this.Invoke(new Action(() =>
                 {
                     if (_disposed) { img.Dispose(); return; }
-                    _avatar.Image?.Dispose();
-                    _avatar.Image = img;
+                    _avatarImage?.Dispose();
+                    _avatarImage = img;
                     _avatar.Invalidate();
                 }));
             }
             catch { }
         }
-
-
-        private void OnThemeChanged()
-        {
-            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            ThemeRefreshHelper.ApplyTo(this);  // ← delegate hết cho helper
-        }
     }
+
 }

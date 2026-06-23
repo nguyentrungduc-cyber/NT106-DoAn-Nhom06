@@ -4297,7 +4297,7 @@ namespace SecureChat.Client
                 var rowPanel = new Panel
                 {
                     Width  = body.ClientSize.Width > 0 ? body.ClientSize.Width : 340,
-                    Height = 100,
+                    Height = ucGroupMemberItem.ITEM_HEIGHT, // dùng đúng hằng số thật, tránh lệch lại như trước (56 vs 78/100)
                     Location = new Point(0, y),
                     BackColor = Color.Transparent
                 };
@@ -4306,7 +4306,7 @@ namespace SecureChat.Client
                 {
                     Dock = DockStyle.None,
                     Width = rowPanel.Width - (canManage ? 32 : 0),
-                    Height = 100,
+                    Height = ucGroupMemberItem.ITEM_HEIGHT,
                     Location = Point.Empty,
                     BackColor = Color.Transparent
                 };

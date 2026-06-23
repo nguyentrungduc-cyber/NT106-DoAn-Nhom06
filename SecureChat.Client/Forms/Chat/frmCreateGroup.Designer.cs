@@ -8,7 +8,7 @@
         {
             if (disposing)
             {
-                _pbAvatar?.Image?.Dispose();
+                // _pbAvatar?.Image?.Dispose();
                 components?.Dispose();
             }
             base.Dispose(disposing);
