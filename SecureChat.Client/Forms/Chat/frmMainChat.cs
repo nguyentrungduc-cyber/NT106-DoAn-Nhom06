@@ -144,7 +144,6 @@ namespace SecureChat.Client
 
         // Timer to refresh UI for countdown display
         private System.Windows.Forms.Timer? _countdownRefreshTimer;
-        private System.Windows.Forms.Timer? _resizeDebounceTimer;
 
         // Local audio recorder service (NAudio)
         private SecureChat.Client.Services.AudioRecorderService? _audioRecorder;
@@ -1332,16 +1331,7 @@ namespace SecureChat.Client
             _pnlRightSidebar.Controls.Add(_sbHeader);
 
             // _pnlMessages.Resize += (s, e) => _pnlMessages.Invalidate(); // bỏ vì đã có PaintChatBackground tự xử lý.
-            _pnlMessages.Resize += (s, e) =>
-            {
-                // Debounce: chỉ UpdateCachedBackground sau khi resize dừng 150ms
-                // Tránh tạo/huỷ bitmap liên tục mỗi pixel resize → giật khi phóng to
-                _resizeDebounceTimer?.Stop();
-                _resizeDebounceTimer ??= new System.Windows.Forms.Timer { Interval = 150 };
-                _resizeDebounceTimer.Tick -= ResizeDebounce_Tick;
-                _resizeDebounceTimer.Tick += ResizeDebounce_Tick;
-                _resizeDebounceTimer.Start();
-            };
+            _pnlMessages.Resize += (s, e) => UpdateCachedBackground();
 
             UpdateChatEmptyStateUI();
         }
@@ -8185,9 +8175,9 @@ namespace SecureChat.Client
             get
             {
                 CreateParams cp = base.CreateParams;
-                // KHÔNG dùng WS_EX_COMPOSITED (0x02000000) — nó conflict với
-                // AutoScroll BitBlt trong ChatPanel gây rung khi scroll.
-                // Double-buffer được xử lý tại từng control (OptimizedDoubleBuffer).
+                // Bật WS_EX_COMPOSITED (0x02000000)
+                // Ép toàn bộ control trên form phải vẽ bằng Double Buffer
+                cp.ExStyle |= 0x02000000;
                 return cp;
             }
         }
@@ -8220,73 +8210,103 @@ namespace SecureChat.Client
             }
         }
 
-        private void ResizeDebounce_Tick(object? sender, EventArgs e)
-        {
-            _resizeDebounceTimer?.Stop();
-            UpdateCachedBackground();
-        }
-
         private void UpdateCachedBackground()
         {
-            if (_pnlMessages.ClientSize.Width <= 0 || _pnlMessages.ClientSize.Height <= 0) return;
+            // Kiểm tra nếu Panel chưa có kích thước hoặc bị ẩn thì không làm gì cả
+            if (_pnlMessages.Width <= 0 || _pnlMessages.Height <= 0) return;
 
-            int bmpW = _pnlMessages.ClientSize.Width;
-            int bmpH = _pnlMessages.ClientSize.Height;
-            Bitmap newBmp = new Bitmap(bmpW, bmpH);
+            // 1. Tạo một Bitmap mới khớp hoàn toàn với kích thước hiện tại của Panel
+            Bitmap newBmp = new Bitmap(_pnlMessages.Width, _pnlMessages.Height);
 
             using (Graphics g = Graphics.FromImage(newBmp))
             {
+                // 2. Tô nền bằng màu mặc định trước (phòng trường hợp ảnh không phủ hết hoặc lỗi)
                 g.Clear(TG.ChatBg);
+
+                // 3. Lấy ảnh wallpaper (sử dụng hàm LoadWallpaper bạn đã viết)
                 var img = LoadWallpaper();
                 if (img != null)
                 {
-                    float scaleX = (float)bmpW / img.Width;
-                    float scaleY = (float)bmpH / img.Height;
+                    // Sử dụng lại logic "Center Crop" chuyên nghiệp của bạn
+                    float scaleX = (float)_pnlMessages.Width / img.Width;
+                    float scaleY = (float)_pnlMessages.Height / img.Height;
                     float scale = Math.Max(scaleX, scaleY);
+
                     int drawW = (int)(img.Width * scale);
                     int drawH = (int)(img.Height * scale);
-                    int offsetX = (bmpW - drawW) / 2;
-                    int offsetY = (bmpH - drawH) / 2;
+
+                    int offsetX = (_pnlMessages.Width - drawW) / 2;
+                    int offsetY = (_pnlMessages.Height - drawH) / 2;
+
                     g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                     g.SmoothingMode = SmoothingMode.HighQuality;
+
                     g.DrawImage(img, offsetX, offsetY, drawW, drawH);
                 }
             }
 
-            // Dùng BackgroundImage thay vì custom Paint — WinForms tự xử lý
-            // repaint đúng cách với AutoScroll, không bị đường trắng hay rung.
-            var oldBmp = _pnlMessages.BackgroundImage as Bitmap;
-            _pnlMessages.BackgroundImage = newBmp;
-            _pnlMessages.BackgroundImageLayout = ImageLayout.Stretch;
-            _pnlMessages.CachedWallpaper = null;
-            oldBmp?.Dispose();
+            // 4. Cập nhật BackgroundImage cho Panel
+            // Giải phóng ảnh cũ để tránh tràn bộ nhớ (Memory Leak)
+            var oldBmp = _pnlMessages.CachedWallpaper;
+            _pnlMessages.CachedWallpaper = newBmp;
+            _pnlMessages.Invalidate();
+
+            if (oldBmp != null) oldBmp.Dispose();
         }
 
     }
 
     public class ChatPanel : Panel
     {
-        // CachedWallpaper không còn dùng — wallpaper được set qua BackgroundImage
-        public Bitmap? CachedWallpaper { get; set; }
+        public Bitmap CachedWallpaper { get; set; }
 
         public ChatPanel()
         {
-            // OptimizedDoubleBuffer tại control level — không cần WS_EX_COMPOSITED
             this.SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
-                ControlStyles.OptimizedDoubleBuffer, true);
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.UserPaint |
+                ControlStyles.ResizeRedraw, true);
             this.UpdateStyles();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (CachedWallpaper != null)
+            {
+                var state = e.Graphics.Save();
+                e.Graphics.ResetTransform();
+                e.Graphics.DrawImage(CachedWallpaper, 0, 0);
+                e.Graphics.Restore(state);
+            }
+            else
+            {
+                var state = e.Graphics.Save();
+                e.Graphics.ResetTransform();
+                e.Graphics.Clear(this.BackColor);
+                e.Graphics.Restore(state);
+            }
         }
 
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             const int WM_ERASEBKGND = 0x0014;
+            const int WM_VSCROLL = 0x0115;
+            const int WM_HSCROLL = 0x0114;
+            const int WM_MOUSEWHEEL = 0x020A;
+
             if (m.Msg == WM_ERASEBKGND)
             {
-                m.Result = (IntPtr)1; // suppress → không xóa trắng trước khi paint
+                m.Result = (IntPtr)1;
                 return;
             }
+
             base.WndProc(ref m);
+
+            if (m.Msg == WM_VSCROLL || m.Msg == WM_HSCROLL || m.Msg == WM_MOUSEWHEEL)
+            {
+                this.Invalidate();
+            }
         }
     }
 }
