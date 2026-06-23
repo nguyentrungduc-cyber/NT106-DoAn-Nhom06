@@ -55,10 +55,28 @@ namespace SecureChat.Client.Forms.Chat
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 12f),
+                BackColor = TG.WindowBg,
                 ForeColor = TG.TextSecondary,
                 Text = "Search",
+                Tag = "search-tb",
                 Location = new Point(54, 16),
                 Size = new Size(420, 26)
+            };
+            txtSearch.GotFocus += (_, __) =>
+            {
+                if (txtSearch.Text == "Search")
+                {
+                    txtSearch.Text = string.Empty;
+                    txtSearch.ForeColor = TG.TextPrimary;
+                }
+            };
+            txtSearch.LostFocus += (_, __) =>
+            {
+                if (string.IsNullOrWhiteSpace(txtSearch.Text))
+                {
+                    txtSearch.Text = "Search";
+                    txtSearch.ForeColor = TG.TextSecondary;
+                }
             };
             var lblSearchIcon = new Label
             {
@@ -234,6 +252,12 @@ namespace SecureChat.Client.Forms.Chat
                         bool isOwner = badge.Text.Equals("owner", StringComparison.OrdinalIgnoreCase);
                         badge.ForeColor = isOwner ? Color.FromArgb(0x9A, 0x77, 0xD5) : TG.Blue;
                         badge.BackColor = isOwner ? Color.FromArgb(0xEF, 0xE8, 0xFF) : TG.SidebarHover;
+                    }
+                    if (c.Tag as string == "search-tb")
+                    {
+                        c.BackColor = TG.WindowBg;
+                        if (c is TextBox tb && !tb.Focused)
+                            tb.ForeColor = string.IsNullOrWhiteSpace(tb.Text) || tb.Text == "Search" ? TG.TextSecondary : TG.TextPrimary;
                     }
                     if (c.HasChildren)
                         FixControls(c);

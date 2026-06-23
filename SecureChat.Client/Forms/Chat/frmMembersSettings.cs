@@ -21,8 +21,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmMembersSettings(string conversationId)
         {
-            ThemeRefreshHelper.Hook(this);
-            _conversationId = conversationId;  // Gán vào biến
+            _conversationId = conversationId;
             _ = LoadMembersAsync();
             Text = "Members";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -101,7 +100,7 @@ namespace SecureChat.Client.Forms.Chat
                 BuildMemberRows(_txtSearch.Text.Trim());
             };
 
-            var sep = new Panel { Location = new Point(0, 51), Size = new Size(500, 1), BackColor = TG.Divider };
+            var sep = new Panel { Location = new Point(0, 51), Size = new Size(500, 1), BackColor = TG.Divider, Tag = "sep" };
             searchWrap.Controls.AddRange(new Control[] { lblSearchIcon, _txtSearch, sep });
 
             _pnlList = new Panel
@@ -113,10 +112,12 @@ namespace SecureChat.Client.Forms.Chat
             };
 
             var btnAdd = BuildBottomButton("Add members", TG.Blue, true, 140);
+            btnAdd.Tag = "accent-fg";
             btnAdd.Location = new Point(20, 690);
             btnAdd.Click += (_, __) => AddMember();
 
             var btnClose = BuildBottomButton("Close", TG.Blue, false, 90);
+            btnClose.Tag = "accent-fg";
             btnClose.Location = new Point(390, 690);
             btnClose.Click += (_, __) => DialogResult = DialogResult.OK;
 
@@ -125,6 +126,8 @@ namespace SecureChat.Client.Forms.Chat
                 lblTitle, searchWrap, _pnlList, btnAdd, btnClose
             });
 
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             BuildMemberRows(string.Empty);
         }
 
@@ -205,6 +208,7 @@ namespace SecureChat.Client.Forms.Chat
                     Font = new Font("Segoe UI Semibold", 11f),
                     ForeColor = Color.FromArgb(0x9A, 0x77, 0xD5),
                     BackColor = Color.FromArgb(0xEF, 0xE8, 0xFF),
+                    Tag = "role-badge",
                     TextAlign = ContentAlignment.MiddleCenter,
                     Location = new Point(badgeX, 34),
                     Size = new Size(badgeWidth, 28)
@@ -381,6 +385,41 @@ namespace SecureChat.Client.Forms.Chat
                 }).ToList();
 
                 BuildMemberRows(string.Empty);
+            }
+        }
+
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            if (IsDisposed) return;
+
+            ThemeRefreshHelper.ApplyTo(this);
+
+            void FixControls(Control parent)
+            {
+                foreach (Control c in parent.Controls)
+                {
+                    if (c.Tag as string == "accent-fg")
+                        c.ForeColor = TG.Blue;
+                    if (c.Tag as string == "sep")
+                        c.BackColor = TG.Divider;
+                    if (c.Tag as string == "role-badge" && c is Label badge)
+                    {
+                        badge.ForeColor = Color.FromArgb(0x9A, 0x77, 0xD5);
+                        badge.BackColor = Color.FromArgb(0xEF, 0xE8, 0xFF);
+                    }
+                    if (c.HasChildren)
+                        FixControls(c);
+                }
+            }
+            FixControls(this);
+
+            if (_txtSearch != null && !_txtSearch.IsDisposed)
+            {
+                _txtSearch.BackColor = TG.WindowBg;
+                if (!_txtSearch.Focused)
+                    _txtSearch.ForeColor = string.IsNullOrWhiteSpace(_txtSearch.Text) || _txtSearch.Text == "Search"
+                        ? TG.TextSecondary : TG.TextPrimary;
             }
         }
     }
