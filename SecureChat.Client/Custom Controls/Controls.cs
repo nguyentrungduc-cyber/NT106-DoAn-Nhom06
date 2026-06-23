@@ -118,7 +118,9 @@ namespace SecureChat.Client
                 // e.Graphics.FillPath(new SolidBrush(Color.White), path);
                 // e.Graphics.DrawPath(new Pen(NormalColor, 1.5f), path);
                 // Nếu dùng NormalColor = Transparent, hãy vẽ màu trắng làm nền
-                e.Graphics.FillPath(Brushes.White, path);
+                Color fillColor = this.Parent?.BackColor ?? Color.White;
+                using var fillBrush = new SolidBrush(fillColor);
+                e.Graphics.FillPath(fillBrush, path);
                 e.Graphics.DrawPath(new Pen(NormalColor, 1.5f), path);
 
 
