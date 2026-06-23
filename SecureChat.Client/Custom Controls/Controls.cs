@@ -442,8 +442,8 @@ namespace SecureChat.Client
             {
                 _showBack = value;
                 _btnBack.Visible = value;
-                if (value) _btnBack.BringToFront();
                 UpdateLayout();
+                if (value) _btnBack.BringToFront();
             }
         }
         public event EventHandler BackClicked { add => _btnBack.Click += value; remove => _btnBack.Click -= value; }
@@ -518,7 +518,8 @@ namespace SecureChat.Client
                 leftX += 44; // Width 36 + Margin 8
             }
 
-            _lblTitle.BringToFront();
+            if (!_showBack)
+                _lblTitle.BringToFront();
 
             int availableWidth = Math.Max(0, Width - leftX - 100);
 

@@ -1114,15 +1114,17 @@ namespace SecureChat.Client
             };*/
             _pnlChatHeader.Resize += (s, e) =>
             {
-                // Khoảng cách dành cho 4 nút (42px mỗi nút) = 168px
-                _lblChatName.Width = _pnlChatHeader.Width - 56 - 170;
-                _lblChatStatus.Width = _pnlChatHeader.Width - 56 - 170;
+                const int buttonArea = 168;
+                const int safetyPad = 30;
+                int labelWidth = _pnlChatHeader.Width - 56 - buttonArea - safetyPad;
+                _lblChatName.Width = Math.Max(0, labelWidth);
+                _lblChatStatus.Width = Math.Max(0, labelWidth);
 
                 int w = _pnlChatHeader.Width;
-                btnMore.Location = new Point(w - 42, 8);             // Cách mép 42
-                _btnToggleSidebar.Location = new Point(w - 84, 8);   // Cách mép 84 (Nút của bạn ở đây)
-                btnVideo.Location = new Point(w - 126, 8);           // Cách mép 126
-                btnSearch.Location = new Point(w - 168, 8);          // Cách mép 168
+                btnMore.Location = new Point(w - 42, 8);
+                _btnToggleSidebar.Location = new Point(w - 84, 8);
+                btnVideo.Location = new Point(w - 126, 8);
+                btnSearch.Location = new Point(w - 168, 8);
             };
 
 
