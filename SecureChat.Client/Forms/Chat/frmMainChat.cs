@@ -8266,19 +8266,35 @@ namespace SecureChat.Client
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.UserPaint |
-                ControlStyles.ResizeRedraw, true);
+                ControlStyles.SupportsTransparentBackColor, true);
             this.UpdateStyles();
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
+            // Vẽ wallpaper/màu nền theo AutoScrollPosition để không bị tear khi scroll
+            int offsetY = -this.AutoScrollPosition.Y;
+            int offsetX = -this.AutoScrollPosition.X;
+
             if (CachedWallpaper != null)
             {
-                // Vẽ wallpaper đúng 1 lần, không reset transform - tiết kiệm hơn
+                // Tile wallpaper theo scroll offset — không bị lộ trắng
+                int panelW = this.ClientSize.Width;
+                int panelH = this.ClientSize.Height;
+                int imgW = CachedWallpaper.Width;
+                int imgH = CachedWallpaper.Height;
+
+                // Vẽ wallpaper lấp đầy vùng hiển thị (stretched)
                 e.Graphics.DrawImage(CachedWallpaper,
-                    new Rectangle(0, 0, Width, Height),
-                    new Rectangle(0, 0, CachedWallpaper.Width, CachedWallpaper.Height),
+                    new Rectangle(0, 0, panelW, panelH),
+                    new Rectangle(offsetX % imgW, offsetY % imgH, imgW, imgH),
                     GraphicsUnit.Pixel);
+                // Phủ thêm nếu cần (wrap)
+                if (offsetY % imgH != 0 || offsetX % imgW != 0)
+                    e.Graphics.DrawImage(CachedWallpaper,
+                        new Rectangle(0, 0, panelW, panelH),
+                        new Rectangle(0, 0, imgW, imgH),
+                        GraphicsUnit.Pixel);
             }
             else
             {
@@ -8289,18 +8305,23 @@ namespace SecureChat.Client
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             const int WM_ERASEBKGND = 0x0014;
+            const int WM_VSCROLL    = 0x0115;
+            const int WM_MOUSEWHEEL = 0x020A;
 
             if (m.Msg == WM_ERASEBKGND)
             {
-                m.Result = (IntPtr)1; // suppress erase → tránh flicker
+                m.Result = (IntPtr)1;
                 return;
             }
-
             base.WndProc(ref m);
-            // ĐÃ BỎ: Invalidate() sau WM_VSCROLL/HSCROLL/MOUSEWHEEL
-            // Gọi Invalidate() sau mỗi scroll event là nguyên nhân chính gây giật:
-            // nó trigger vẽ lại toàn bộ background (kể cả wallpaper nặng) mỗi
-            // tick scroll. WinForms tự xử lý dirty region khi scroll, không cần.
+
+            // Khi scroll, phải Invalidate để OnPaintBackground vẽ lại wallpaper
+            // đúng offset mới (AutoScrollPosition). Không có dòng này sẽ lộ trắng.
+            if (CachedWallpaper != null &&
+                (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL))
+            {
+                this.Invalidate();
+            }
         }
     }
 }
