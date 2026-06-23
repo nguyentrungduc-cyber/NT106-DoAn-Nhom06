@@ -199,6 +199,10 @@ namespace SecureChat.Client
 
         public frmMainChat()
         {
+            // PHẢI chạy TRƯỚC InitUI() - để TG.* có màu đúng (dark/light) ngay khi
+            // UI được build, không build bằng màu light mặc định rồi vá lại sau.
+            NightModeService.Initialize();
+
             InitUI();
 
             // 1. Các thiết lập DoubleBuffer hiện tại của bạn
@@ -222,10 +226,9 @@ namespace SecureChat.Client
 
         private async void FrmMainChat_Load(object? sender, EventArgs e)
         {
-            NightModeService.Initialize();
             _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
-            // Áp dụng UI ngay nếu night mode đã được bật từ session trước
-            // (Initialize chỉ set TG.* static, không trigger OnNightModeChanged)
+            // Safety-net: UI đã build đúng màu từ constructor rồi, gọi lại đây
+            // chỉ để chắc ăn nếu có control nào tạo muộn hơn (vd lazy-load).
             if (NightModeService.IsEnabled)
                 OnNightModeChanged();
 
