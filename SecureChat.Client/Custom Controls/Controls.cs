@@ -204,16 +204,18 @@ namespace SecureChat.Client
                 using var fill = new SolidBrush(_avatarColor == default ? TG.Blue : _avatarColor);
                 g.FillEllipse(fill, rect);
 
-                // Vẽ chữ initials — dùng GraphicsUnit.Pixel để size nhất quán
+                // Vẽ chữ initials — dùng g.DrawString + AntiAlias để mượt hơn TextRenderer
                 string initials = GetInitials(DisplayName);
                 float fontSize = Math.Max(10f, size * 0.34f);
                 using var textFont = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-                TextRenderer.DrawText(
-                    g, initials, textFont, rect, Color.White,
-                    TextFormatFlags.HorizontalCenter |
-                    TextFormatFlags.VerticalCenter   |
-                    TextFormatFlags.SingleLine       |
-                    TextFormatFlags.NoPadding);
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                var sf = new System.Drawing.StringFormat
+                {
+                    Alignment     = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center,
+                    Trimming      = StringTrimming.None,
+                };
+                g.DrawString(initials, textFont, Brushes.White, rect, sf);
             }
 
             // Dot online
@@ -222,9 +224,10 @@ namespace SecureChat.Client
                 int dotSize = Math.Max(8, size / 5);
                 int dotX = rect.Right - dotSize + 1;
                 int dotY = rect.Bottom - dotSize + 1;
-                // Viền trắng
-                using var whiteBrush = new SolidBrush(Color.White);
-                g.FillEllipse(whiteBrush, dotX - 2, dotY - 2, dotSize + 4, dotSize + 4);
+                // Border = parent bg để không thấy viền răng cưa trắng trên nền tối
+                var borderColor = Parent?.BackColor ?? TG.WindowBg;
+                using var borderBrush = new SolidBrush(borderColor);
+                g.FillEllipse(borderBrush, dotX - 2, dotY - 2, dotSize + 4, dotSize + 4);
                 // Chấm xanh
                 using var greenBrush = new SolidBrush(Color.FromArgb(0x4D, 0xD9, 0x64));
                 g.FillEllipse(greenBrush, dotX, dotY, dotSize, dotSize);

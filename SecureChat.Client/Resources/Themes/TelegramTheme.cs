@@ -118,13 +118,18 @@ namespace SecureChat.Client
 
                 if (drawInitials)
                 {
-                    // Initials
+                    // Initials — dùng DrawString + AntiAlias thay TextRenderer để mượt hơn
                     string initials = GetInitials(displayName);
                     float fontSize = Math.Max(10f, r.Width * 0.34f);
                     using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-                    TextRenderer.DrawText(g, initials, font, r, Color.White,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                        TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    var sf = new System.Drawing.StringFormat
+                    {
+                        Alignment     = StringAlignment.Center,
+                        LineAlignment = StringAlignment.Center,
+                        Trimming      = StringTrimming.None,
+                    };
+                    g.DrawString(initials, font, Brushes.White, r, sf);
                 }
             }
         }

@@ -16,7 +16,7 @@ namespace SecureChat.Client.Components.Group
 
         private Panel _avatar = null!;
         private Image? _avatarImage;
-        private Label _lblInitial = null!;
+        private string _initialText = "?";  // text để DrawCircleAvatar vẽ antialiased
         private Label _lblName = null!;
         private Label _lblStatus = null!;
         private Label _lblRole = null!;
@@ -56,7 +56,7 @@ namespace SecureChat.Client.Components.Group
                     _avatarImage = value;
                     old?.Dispose();
                 }
-                _lblInitial.Visible = value == null;
+                _avatar.Invalidate(); // redraw với/không có ảnh
                 _avatar.Invalidate();
             }
         }
@@ -94,20 +94,14 @@ namespace SecureChat.Client.Components.Group
                 ?.SetValue(_avatar, true);
             _avatar.Paint += (_, pe) =>
             {
-                var rect = new Rectangle(0, 0, _avatar.Width, _avatar.Height);
-                TG.DrawCircleAvatar(pe.Graphics, rect, _avatarImage, "", _avatarColor, drawInitials: false);
+                var g = pe.Graphics;
+                g.SmoothingMode      = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.InterpolationMode  = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode    = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+                var rect = new Rectangle(1, 1, _avatar.Width - 2, _avatar.Height - 2);
+                TG.DrawCircleAvatar(g, rect, _avatarImage, _initialText, _avatarColor, drawInitials: true);
             };
-
-            _lblInitial = new Label
-            {
-                AutoSize = false,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 18f),
-                BackColor = Color.Transparent,
-            };
-            _avatar.Controls.Add(_lblInitial);
 
             _lblName = new Label
             {
@@ -203,7 +197,8 @@ namespace SecureChat.Client.Components.Group
 
         public void SetInitial(string text)
         {
-            _lblInitial.Text = text;
+            _initialText = text;
+            _avatar.Invalidate();
         }
 
         /// <summary>
