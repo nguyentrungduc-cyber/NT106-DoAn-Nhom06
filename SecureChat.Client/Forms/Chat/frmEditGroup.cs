@@ -92,8 +92,10 @@
                 TG.DrawCircleAvatar(e.Graphics, rect, _avatarImage, "", Color.FromArgb(0x5C, 0xA5, 0xEC), drawInitials: false);
                 if (_avatarImage == null)
                 {
-                    TextRenderer.DrawText(e.Graphics, "\U0001F4F7", new Font("Segoe UI Emoji", 24f), _avatar.ClientRectangle, Color.White,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    using var emojiFont = new Font("Segoe UI Emoji", 24f);
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    e.Graphics.DrawString("\U0001F4F7", emojiFont, Brushes.White, _avatar.ClientRectangle, sf);
                 }
             };
             _avatar.Click += (_, __) => PickAvatarImage();

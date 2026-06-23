@@ -50,22 +50,31 @@ namespace SecureChat.Client.Forms.Chat
 
             foreach (var emoji in Emojis)
             {
-                // Label renders emoji correctly via Graphics.DrawString (Button uses TextRenderer which shows squares)
-                var lbl = new Label
+                var emojiCopy = emoji;
+                // Dùng Panel + custom Paint thay Label để có TextRenderingHint.AntiAlias
+                var pnl = new Panel
                 {
-                    Text = emoji,
-                    Font = new Font("Segoe UI Emoji", 18f, FontStyle.Regular),
                     Size = new Size(42, 42),
-                    TextAlign = ContentAlignment.MiddleCenter,
                     Cursor = Cursors.Hand,
+                    BackColor = Color.Transparent,
                 };
-                lbl.Click += (s, e) =>
+                pnl.Paint += (s, pe) =>
                 {
-                    SelectedReaction = emoji;
+                    pe.Graphics.SmoothingMode     = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    pe.Graphics.TextRenderingHint  = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    using var f = new Font("Segoe UI Emoji", 18f);
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    pe.Graphics.DrawString(emojiCopy, f, Brushes.Black, pnl.ClientRectangle, sf);
+                };
+                pnl.MouseEnter += (_, __) => { pnl.BackColor = Color.FromArgb(30, 0, 120, 215); pnl.Invalidate(); };
+                pnl.MouseLeave += (_, __) => { pnl.BackColor = Color.Transparent; pnl.Invalidate(); };
+                pnl.Click += (s, e) =>
+                {
+                    SelectedReaction = emojiCopy;
                     DialogResult = DialogResult.OK;
                     Close();
                 };
-                flow.Controls.Add(lbl);
+                flow.Controls.Add(pnl);
             }
 
             Controls.Add(flow);

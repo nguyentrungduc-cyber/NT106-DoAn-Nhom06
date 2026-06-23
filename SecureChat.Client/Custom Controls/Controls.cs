@@ -92,8 +92,7 @@ namespace SecureChat.Client
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // --- DÒNG FIX QUAN TRỌNG ---
+            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             // Xóa sạch dấu vết cũ bằng màu của Panel cha để tránh bị "xanh phủ"
             if (this.Parent != null)
             {
