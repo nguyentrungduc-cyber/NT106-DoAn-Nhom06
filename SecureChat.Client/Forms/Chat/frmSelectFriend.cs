@@ -32,7 +32,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(420, 560);
             Opacity = 0;
@@ -131,6 +131,8 @@ namespace SecureChat.Client.Forms.Chat
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
             Controls.AddRange(new Control[] { lblTitle, btnClose, _txtSearch, sep, _pnlList, btnCancel });
+            ThemeRefreshHelper.Hook(this);
+            ThemeRefreshHelper.ApplyTo(this);
         }
 
         private async System.Threading.Tasks.Task LoadFriendsAsync()

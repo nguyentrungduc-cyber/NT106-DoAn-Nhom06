@@ -218,6 +218,8 @@ namespace SecureChat.Client
                 NotificationManager.StopFlash(this.Handle);
                 ApplyAdvancedSettings();
             };
+            NightModeService.ThemeChanged += OnNightModeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnNightModeChanged;
         }
 
         private async void FrmMainChat_Load(object? sender, EventArgs e)

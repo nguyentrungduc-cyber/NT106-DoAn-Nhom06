@@ -152,6 +152,7 @@ namespace SecureChat.Client.Forms.Call
                 _ = _audioHandler.StartAsync(inputDev, outputDev);
             };
             FormClosed += (_, __) => Cleanup();
+            ThemeRefreshHelper.Hook(this);
         }
 
         public frmVideoCall(string friendName, string callId, string conversationId, SignalRClient signalRClient, bool isGroupCall = false) : this(friendName)

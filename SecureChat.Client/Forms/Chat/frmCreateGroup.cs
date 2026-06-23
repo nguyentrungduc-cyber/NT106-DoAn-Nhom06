@@ -105,6 +105,7 @@ namespace SecureChat.Client.Forms.Chat
         {
             InitializeComponent();
             BuildUI();
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
         }
 
         protected override void OnShown(EventArgs e)

@@ -95,6 +95,8 @@ namespace SecureChat.Client.Forms.Call
             _btnReject.Location = new Point(200, 190);
             _btnReject.Click += (_, __) => Close();
             Controls.Add(_btnReject);
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
+            SecureChat.Client.Services.ThemeRefreshHelper.ApplyTo(this);
         }
     }
 }

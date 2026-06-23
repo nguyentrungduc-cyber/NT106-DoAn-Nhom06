@@ -206,6 +206,7 @@
                 btnCancel, btnSave
             });
             _ = LoadGroupInfoAsync();
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
         }
 
         private Panel BuildSettingsRow(string leftText, string rightText, out Label rightValue)

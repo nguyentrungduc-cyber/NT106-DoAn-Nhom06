@@ -95,6 +95,7 @@
             Controls.AddRange(new Control[] { lblTitle, pnlSearch, _pnlAdmins, _lblCount, btnClose });
 
             _ = LoadAdminsAsync();
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
         }
 
         private async Task LoadAdminsAsync()
