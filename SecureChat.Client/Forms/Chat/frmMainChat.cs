@@ -8228,82 +8228,54 @@ namespace SecureChat.Client
 
         private void UpdateCachedBackground()
         {
-            // Kiểm tra nếu Panel chưa có kích thước hoặc bị ẩn thì không làm gì cả
             if (_pnlMessages.ClientSize.Width <= 0 || _pnlMessages.ClientSize.Height <= 0) return;
 
-            // Bitmap kích thước đúng bằng ClientSize (vùng nhìn thấy, không bao gồm
-            // phần scroll ẩn). Wallpaper là background tĩnh của viewport — không scroll.
             int bmpW = _pnlMessages.ClientSize.Width;
             int bmpH = _pnlMessages.ClientSize.Height;
             Bitmap newBmp = new Bitmap(bmpW, bmpH);
 
             using (Graphics g = Graphics.FromImage(newBmp))
             {
-                // 2. Tô nền bằng màu mặc định trước (phòng trường hợp ảnh không phủ hết hoặc lỗi)
                 g.Clear(TG.ChatBg);
-
-                // 3. Lấy ảnh wallpaper (sử dụng hàm LoadWallpaper bạn đã viết)
                 var img = LoadWallpaper();
                 if (img != null)
                 {
-                    // Sử dụng lại logic "Center Crop" chuyên nghiệp của bạn
                     float scaleX = (float)bmpW / img.Width;
                     float scaleY = (float)bmpH / img.Height;
                     float scale = Math.Max(scaleX, scaleY);
-
                     int drawW = (int)(img.Width * scale);
                     int drawH = (int)(img.Height * scale);
-
                     int offsetX = (bmpW - drawW) / 2;
                     int offsetY = (bmpH - drawH) / 2;
-
                     g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                     g.SmoothingMode = SmoothingMode.HighQuality;
-
                     g.DrawImage(img, offsetX, offsetY, drawW, drawH);
                 }
             }
 
-            // 4. Cập nhật BackgroundImage cho Panel
-            // Giải phóng ảnh cũ để tránh tràn bộ nhớ (Memory Leak)
-            var oldBmp = _pnlMessages.CachedWallpaper;
-            _pnlMessages.CachedWallpaper = newBmp;
-            _pnlMessages.Invalidate();
-
-            if (oldBmp != null) oldBmp.Dispose();
+            // Dùng BackgroundImage thay vì custom Paint — WinForms tự xử lý
+            // repaint đúng cách với AutoScroll, không bị đường trắng hay rung.
+            var oldBmp = _pnlMessages.BackgroundImage as Bitmap;
+            _pnlMessages.BackgroundImage = newBmp;
+            _pnlMessages.BackgroundImageLayout = ImageLayout.Stretch;
+            _pnlMessages.CachedWallpaper = null;
+            oldBmp?.Dispose();
         }
 
     }
 
     public class ChatPanel : Panel
     {
+        // CachedWallpaper không còn dùng — wallpaper được set qua BackgroundImage
         public Bitmap? CachedWallpaper { get; set; }
 
         public ChatPanel()
         {
+            // OptimizedDoubleBuffer tại control level — không cần WS_EX_COMPOSITED
             this.SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
-                ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.UserPaint |
-                ControlStyles.SupportsTransparentBackColor, true);
+                ControlStyles.OptimizedDoubleBuffer, true);
             this.UpdateStyles();
-        }
-
-        protected override void OnPaintBackground(PaintEventArgs e)
-        {
-            if (CachedWallpaper != null)
-            {
-                // CachedWallpaper được tạo đúng kích thước ClientSize (vùng nhìn thấy).
-                // Luôn vẽ tại (0,0) trong client coordinates — không cần theo
-                // AutoScrollPosition vì wallpaper là background tĩnh của viewport,
-                // không scroll cùng với content.
-                e.Graphics.DrawImage(CachedWallpaper, 0, 0,
-                    ClientSize.Width, ClientSize.Height);
-            }
-            else
-            {
-                e.Graphics.Clear(BackColor);
-            }
         }
 
         protected override void WndProc(ref System.Windows.Forms.Message m)
@@ -8311,7 +8283,7 @@ namespace SecureChat.Client
             const int WM_ERASEBKGND = 0x0014;
             if (m.Msg == WM_ERASEBKGND)
             {
-                m.Result = (IntPtr)1;
+                m.Result = (IntPtr)1; // suppress → không xóa trắng trước khi paint
                 return;
             }
             base.WndProc(ref m);
