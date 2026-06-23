@@ -8255,7 +8255,7 @@ namespace SecureChat.Client
 
     public class ChatPanel : Panel
     {
-        public Bitmap CachedWallpaper { get; set; }
+        public Bitmap? CachedWallpaper { get; set; }
 
         public ChatPanel()
         {
@@ -8271,39 +8271,33 @@ namespace SecureChat.Client
         {
             if (CachedWallpaper != null)
             {
-                var state = e.Graphics.Save();
-                e.Graphics.ResetTransform();
-                e.Graphics.DrawImage(CachedWallpaper, 0, 0);
-                e.Graphics.Restore(state);
+                // Vẽ wallpaper đúng 1 lần, không reset transform - tiết kiệm hơn
+                e.Graphics.DrawImage(CachedWallpaper,
+                    new Rectangle(0, 0, Width, Height),
+                    new Rectangle(0, 0, CachedWallpaper.Width, CachedWallpaper.Height),
+                    GraphicsUnit.Pixel);
             }
             else
             {
-                var state = e.Graphics.Save();
-                e.Graphics.ResetTransform();
-                e.Graphics.Clear(this.BackColor);
-                e.Graphics.Restore(state);
+                e.Graphics.Clear(BackColor);
             }
         }
 
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             const int WM_ERASEBKGND = 0x0014;
-            const int WM_VSCROLL = 0x0115;
-            const int WM_HSCROLL = 0x0114;
-            const int WM_MOUSEWHEEL = 0x020A;
 
             if (m.Msg == WM_ERASEBKGND)
             {
-                m.Result = (IntPtr)1;
+                m.Result = (IntPtr)1; // suppress erase → tránh flicker
                 return;
             }
 
             base.WndProc(ref m);
-
-            if (m.Msg == WM_VSCROLL || m.Msg == WM_HSCROLL || m.Msg == WM_MOUSEWHEEL)
-            {
-                this.Invalidate();
-            }
+            // ĐÃ BỎ: Invalidate() sau WM_VSCROLL/HSCROLL/MOUSEWHEEL
+            // Gọi Invalidate() sau mỗi scroll event là nguyên nhân chính gây giật:
+            // nó trigger vẽ lại toàn bộ background (kể cả wallpaper nặng) mỗi
+            // tick scroll. WinForms tự xử lý dirty region khi scroll, không cần.
         }
     }
 }
