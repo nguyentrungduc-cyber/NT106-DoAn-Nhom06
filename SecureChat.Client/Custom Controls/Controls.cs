@@ -84,6 +84,14 @@ namespace SecureChat.Client
             ForeColor = Color.White;
         }
 
+        public void RefreshTheme()
+        {
+            NormalColor = TG.Blue;
+            HoverColor = TG.BlueHover;
+            PressColor = TG.BlueActive;
+            Invalidate();
+        }
+
         protected override void OnMouseEnter(EventArgs e) { _isHovered = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { _isHovered = false; Invalidate(); base.OnMouseLeave(e); }
         protected override void OnMouseDown(MouseEventArgs e) { _isPressed = true; Invalidate(); base.OnMouseDown(e); }
@@ -231,7 +239,9 @@ namespace SecureChat.Client
                 int dotSize = Math.Max(8, size / 5);
                 int dotX = size - dotSize;
                 int dotY = size - dotSize;
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0xFF, 0xFF, 0xFF)), dotX - 1, dotY - 1, dotSize + 2, dotSize + 2);
+                // Border màu = parent background (không hardcode trắng)
+                var borderColor = Parent?.BackColor ?? TG.WindowBg;
+                e.Graphics.FillEllipse(new SolidBrush(borderColor), dotX - 1, dotY - 1, dotSize + 2, dotSize + 2);
                 e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0x4D, 0xD9, 0x64)), dotX, dotY, dotSize, dotSize);
             }
         }
@@ -333,6 +343,16 @@ namespace SecureChat.Client
             _tb.TextChanged += (s, e) => UpdatePlaceholder();
 
             SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        }
+
+        public void RefreshTheme()
+        {
+            BackColor = TG.InputBg;
+            _tb.BackColor = TG.InputBg;
+            _tb.ForeColor = TG.TextPrimary;
+            _placeholderLabel.ForeColor = TG.TextHint;
+            _btnTogglePassword.ForeColor = TG.TextHint;
+            Invalidate();
         }
 
         public void SetPlaceholder(string text)

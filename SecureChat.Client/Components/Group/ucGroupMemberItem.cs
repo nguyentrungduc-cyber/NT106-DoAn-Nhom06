@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Components.Group
 {
@@ -39,7 +40,7 @@ namespace SecureChat.Client.Components.Group
             set
             {
                 _lblRole.Text = value;
-                LayoutDynamic(); // phải co lại Width của tên, không chỉ định vị lại badge
+                UpdateBadgeLayout();
                 Invalidate();
             }
         }
@@ -80,25 +81,32 @@ namespace SecureChat.Client.Components.Group
             BuildUI();
         }
 
+        public void OnNightModeChanged()
+        {
+            _lblName.ForeColor = TG.TextPrimary;
+            _lblStatus.ForeColor = TG.TextSecondary;
+            Invalidate();
+        }
+
         private void BuildUI()
         {
             _avatar = new PictureBox
             {
                 Size = new Size(AVATAR_SIZE, AVATAR_SIZE),
-                Location = new Point(LEFT_PAD, 20),
+                Location = new Point(LEFT_PAD, 14),
                 BackColor = _avatarColor,
                 SizeMode = PictureBoxSizeMode.Zoom,
             };
             _avatar.SizeChanged += (_, __) => ClipCircle(_avatar);
-            ClipCircle(_avatar);
+            _avatar.Paint += (_, __) => ClipCircle(_avatar);
 
             _lblInitial = new Label
             {
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 18f),
+                ForeColor = TG.TitleBarFg,
+                Font = new Font("Segoe UI Semibold", 16f),
                 BackColor = Color.Transparent,
             };
             _avatar.Controls.Add(_lblInitial);
@@ -106,25 +114,23 @@ namespace SecureChat.Client.Components.Group
             _lblName = new Label
             {
                 AutoSize = false,
-                Location = new Point(TEXT_LEFT, 18),
-                Size = new Size(280, 32),
-                Font = new Font("Segoe UI Semibold", 12f),
-                ForeColor = C_TEXT,
+                Location = new Point(TEXT_LEFT, 14),
+                Size = new Size(240, 26),
+                Font = new Font("Segoe UI Semibold", 11f),
+                ForeColor = TG.TextPrimary,
                 Text = "Name",
                 BackColor = Color.Transparent,
-                AutoEllipsis = true,
             };
 
             _lblStatus = new Label
             {
                 AutoSize = false,
-                Location = new Point(TEXT_LEFT, 54),
-                Size = new Size(280, 28),
-                Font = new Font("Segoe UI", 10f),
-                ForeColor = C_SUBTEXT,
+                Location = new Point(TEXT_LEFT, 40),
+                Size = new Size(240, 24),
+                Font = new Font("Segoe UI", 9.5f),
+                ForeColor = TG.TextSecondary,
                 Text = "last seen...",
                 BackColor = Color.Transparent,
-                AutoEllipsis = true,
             };
 
             _badge = new Panel
@@ -135,12 +141,13 @@ namespace SecureChat.Client.Components.Group
                 Padding = new Padding(0),
                 Visible = false,
             };
+            _badge.Paint += (_, __) => { /* no background */ };
 
             _lblRole = new Label
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI Semibold", 9f),
-                ForeColor = C_ROLE,
+                ForeColor = Color.FromArgb(0x7D, 0x5F, 0xC9),
                 Text = string.Empty,
                 BackColor = Color.Transparent,
             };
@@ -152,29 +159,16 @@ namespace SecureChat.Client.Components.Group
             Resize += (_, __) => { LayoutDynamic(); };
             LayoutDynamic();
 
-            MouseEnter += (_, __) => BackColor = C_BG_HOVER;
+            MouseEnter += (_, __) => BackColor = TG.SidebarHover;
             MouseLeave += (_, __) => BackColor = Color.Transparent;
         }
 
         private void LayoutDynamic()
         {
-            int fullWidth = Width - TEXT_LEFT - RIGHT_PAD;
-            if (fullWidth < 80) fullWidth = 80;
-
-            int nameWidth = fullWidth;
-
-            // Badge nằm cùng dòng với TÊN (không phải dòng status, status ở dòng dưới)
-            // -> chỉ tên cần nhường chỗ, status dùng full width.
-            bool hasRole = !string.IsNullOrWhiteSpace(_lblRole?.Text);
-            if (hasRole && _badge != null)
-            {
-                var textSize = TextRenderer.MeasureText(_lblRole.Text, _lblRole.Font);
-                int badgeW = textSize.Width + _badge.Padding.Horizontal + 8; // gap tách tên và badge
-                nameWidth = Math.Max(40, fullWidth - badgeW);
-            }
-
-            _lblName.Width = nameWidth;
-            _lblStatus.Width = fullWidth;
+            int textWidth = Width - TEXT_LEFT - RIGHT_PAD;
+            if (textWidth < 80) textWidth = 80;
+            _lblName.Width = textWidth;
+            _lblStatus.Width = textWidth;
             UpdateBadgeLayout();
         }
 
@@ -200,18 +194,28 @@ namespace SecureChat.Client.Components.Group
             _lblInitial.Text = text;
         }
 
-        /// <summary>
-        /// Force tính lại layout (Width tên/status co theo badge). Gọi method này
-        /// sau khi đã set xong Role + Width thật, để không phụ thuộc vào việc event
-        /// Resize có fire đúng thứ tự hay không.
-        /// </summary>
-        public void RefreshLayout() => LayoutDynamic();
-
         private static void ClipCircle(PictureBox pb)
         {
             using var path = new GraphicsPath();
             path.AddEllipse(0, 0, pb.Width, pb.Height);
             pb.Region = new Region(path);
+        }
+
+        private static void DrawBadge(Graphics g, Rectangle bounds)
+        {
+            // No background drawing; role is plain text now
+        }
+
+        private static GraphicsPath RoundedRect(Rectangle r, int radius)
+        {
+            int d = radius * 2;
+            var p = new GraphicsPath();
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
         }
     }
 }

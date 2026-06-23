@@ -1,10 +1,11 @@
 using System;
-using System.Collections.Generic; //  cho phép dùng List<T>.
-using System.Drawing; //  làm việc với màu sắc (Color), font, hình ảnh.
-using System.Drawing.Drawing2D; // vẽ nâng cao như SmoothingMode, AntiAlias.
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Forms; // tạo giao diện desktop (Form, Panel, Label, Button...).
+using System.Windows.Forms;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client
 {
@@ -124,9 +125,9 @@ namespace SecureChat.Client
             // Chuỗi "  Danh sách  " truyền vào constructor chính là thuộc tính Text của TabPage, và WinForms tự dùng Text đó để vẽ chữ lên tabstrip.
             // WinForms không tự vẽ nữa — thay vào đó hàm DrawTabItem() tự lấy tab.Text ra để vẽ.
             _tabs = new TabControl();
-            _tabContacts = new TabPage("  Danh sách  ") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            _tabRequests = new TabPage("  Lời mời    ") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            _tabSearch = new TabPage("  Tìm kiếm  ") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            _tabContacts = new TabPage("  Danh sách  ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabRequests = new TabPage("  Lời mời    ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabSearch = new TabPage("  Tìm kiếm  ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
 
 
             _contactSubTabs = new TabControl();
@@ -142,6 +143,7 @@ namespace SecureChat.Client
             _lblSearchHint = new Label();
 
             InitializeComponent();
+            ThemeRefreshHelper.Hook(this);
             this.Load += async (s, e) => await LoadContactsFromApiAsync();
         }
 
@@ -316,7 +318,7 @@ namespace SecureChat.Client
             FormBorderStyle = FormBorderStyle.FixedSingle; // Viền cố định, không kéo được
             // FormBorderStyle = FormBorderStyle.Sizable; // Cho phép kéo thay đổi kích thước
 
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             MaximizeBox = false; // chặn nút phóng to
             Font = TG.FontRegular(9.5f);
 
@@ -364,7 +366,7 @@ namespace SecureChat.Client
             var pnlContent = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
             pnlContent.Controls.Add(_tabs);
 
@@ -402,7 +404,7 @@ namespace SecureChat.Client
             bool selected = e.Index == _tabs.SelectedIndex;
 
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.FillRectangle(Brushes.White, e.Bounds); // chỉnh màu trắng cho bên trong các tab cha thay vì màu xám
+            e.Graphics.FillRectangle(new SolidBrush(TG.WindowBg), e.Bounds);
 
             if (selected)
             {
@@ -459,7 +461,7 @@ namespace SecureChat.Client
                 bool sel = e.Index == _contactSubTabs.SelectedIndex;
 
                 e.Graphics.FillRectangle(
-                    sel ? new SolidBrush(Color.FromArgb(0xE3, 0xF2, 0xFD)) : Brushes.White,
+                    sel ? new SolidBrush(TG.SidebarHover) : new SolidBrush(TG.WindowBg),
                     e.Bounds
                 );
 
@@ -480,9 +482,9 @@ namespace SecureChat.Client
             };
 
             // Tạo tab "Bạn bè" với nền trắng.
-            var tpFriends = new TabPage("Bạn bè") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            var tpFriends = new TabPage("Bạn bè") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
             // Tạo tab "Nhóm" với nền trắng.
-            var tpGroups = new TabPage("Nhóm") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            var tpGroups = new TabPage("Nhóm") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
             // Thêm cả 2 tab này vào thanh điều hướng chính.
             _contactSubTabs.TabPages.AddRange(new[] { tpFriends, tpGroups });
 
@@ -490,12 +492,12 @@ namespace SecureChat.Client
 
             _pnlFriends.AutoScroll = true;
 
-            _pnlFriends.BackColor = Color.White;
+            _pnlFriends.BackColor = TG.WindowBg;
             _pnlFriends.Resize += Pnl_UpdateRowsWidth;
 
             _pnlGroups.Dock = DockStyle.Fill;
             _pnlGroups.AutoScroll = true;
-            _pnlGroups.BackColor = Color.White;
+            _pnlGroups.BackColor = TG.WindowBg;
             _pnlGroups.Resize += Pnl_UpdateRowsWidth;
 
             BuildFriendList(_friends, _pnlFriends);
@@ -569,7 +571,7 @@ namespace SecureChat.Client
             {
                 Height = 62,
                 Width = initialWidth,
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Cursor = Cursors.Hand
             };
 
@@ -623,7 +625,7 @@ namespace SecureChat.Client
                 Radius = TG.RadiusSmall,
 
                 // NormalColor = Color.Transparent,
-                NormalColor = Color.White,
+                NormalColor = TG.WindowBg,
 
                 TextColor = TG.Blue,
                 Cursor = Cursors.Hand
@@ -637,7 +639,7 @@ namespace SecureChat.Client
                 Height = 28,
                 Font = TG.FontSemiBold(13f),
                 Radius = TG.RadiusSmall,
-                NormalColor = Color.White,
+                NormalColor = TG.WindowBg,
                 TextColor = TG.TextSecondary,
                 Cursor = Cursors.Hand
             };
@@ -900,16 +902,16 @@ namespace SecureChat.Client
                 {
                     // Chỉ trả về màu trắng nếu chuột thực sự rời khỏi vùng của Panel
                     if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
-                        setHoverColor(Color.White);
+                        setHoverColor(TG.WindowBg);
                 };
             }
 
             // pnl.MouseEnter += (s, e) => setHoverColor(TG.SidebarHover);
-            // pnl.MouseLeave += (s, e) => setHoverColor(Color.White);
+            // pnl.MouseLeave += (s, e) => setHoverColor(TG.WindowBg);
 
             // Trong hàm BuildFriendRow, đoạn xử lý Hover:
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }
@@ -917,7 +919,7 @@ namespace SecureChat.Client
 
         private Panel BuildGroupRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 62, Width = initialWidth, BackColor = Color.White, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 62, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
 
             var avatar = new AvatarControl { Size = new Size(44, 44), Location = new Point(10, 9), ShowOnline = false };
             avatar.SetName(c.DisplayName);
@@ -1009,11 +1011,11 @@ namespace SecureChat.Client
                 ctrl.MouseLeave += (s, e) =>
                 {
                     if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
-                        pnl.BackColor = Color.White;
+                        pnl.BackColor = TG.WindowBg;
                 };
             }
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }
@@ -1035,7 +1037,7 @@ namespace SecureChat.Client
             {
                 var t = _requestSubTabs.TabPages[e.Index];
                 bool sel = e.Index == _requestSubTabs.SelectedIndex;
-                e.Graphics.FillRectangle(sel ? new SolidBrush(Color.FromArgb(0xE3, 0xF2, 0xFD)) : Brushes.White, e.Bounds);
+                e.Graphics.FillRectangle(sel ? new SolidBrush(TG.SidebarHover) : new SolidBrush(TG.WindowBg), e.Bounds);
                 using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                 e.Graphics.DrawString(t.Text, TG.FontSemiBold(9f), new SolidBrush(sel ? TG.Blue : TG.TextSecondary), e.Bounds, sf);
             };
@@ -1044,9 +1046,9 @@ namespace SecureChat.Client
             int outgoingCount = _requests.FindAll(r => !r.IsIncoming).Count;
             int blockedCount = _blockedUsers.Count;  // ✅ FIX: Thêm đếm số blocked users
 
-            _tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            _tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            _tpBlocked = new TabPage($"Đã chặn ({blockedCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            _tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpBlocked = new TabPage($"Đã chặn ({blockedCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
 
             _requestSubTabs.TabPages.AddRange(new[] { _tpIncoming, _tpSent, _tpBlocked });
 
@@ -1058,7 +1060,7 @@ namespace SecureChat.Client
             LoadBlockedUsers();  // ✅ FIX: Gọi hàm load dữ liệu
 
             // ============ TAB "Đã nhận" ============
-            _pnlIncoming = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+            _pnlIncoming = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.WindowBg };
             _pnlIncoming.Resize += Pnl_UpdateRowsWidth;
             int y = 0;
             int initInWidth = _pnlIncoming.ClientSize.Width > 0 ? _pnlIncoming.ClientSize.Width : 360;
@@ -1072,7 +1074,7 @@ namespace SecureChat.Client
             _tpIncoming.Controls.Add(_pnlIncoming);
 
             // ============ TAB "Đã gửi" ============
-            _pnlSentRequests = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+            _pnlSentRequests = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.WindowBg };
             _pnlSentRequests.Resize += Pnl_UpdateRowsWidth;
             y = 0;
             int initSentWidth = _pnlSentRequests.ClientSize.Width > 0 ? _pnlSentRequests.ClientSize.Width : 360;
@@ -1104,7 +1106,7 @@ namespace SecureChat.Client
 
         private Panel BuildRequestRow(FriendRequestItem req, bool isIncoming, int initialWidth)
         {
-            var pnl = new Panel { Height = 86, Width = initialWidth, BackColor = Color.White };
+            var pnl = new Panel { Height = 86, Width = initialWidth, BackColor = TG.WindowBg };
 
             var avatar = new AvatarControl { Size = new Size(44, 44), Location = new Point(12, 10) };
             avatar.SetName(req.DisplayName);
@@ -1227,7 +1229,7 @@ namespace SecureChat.Client
 
         private void BuildSearchTab()
         {
-            var pnlSearch = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = Color.White, Padding = new Padding(12, 8, 12, 6) };
+            var pnlSearch = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = TG.WindowBg, Padding = new Padding(12, 8, 12, 6) };
 
             _tbSearch.Height = 36;
             _tbSearch.Dock = DockStyle.Fill;
@@ -1258,7 +1260,7 @@ namespace SecureChat.Client
 
             _pnlSearchResults.Dock = DockStyle.Fill;
             _pnlSearchResults.AutoScroll = true;
-            _pnlSearchResults.BackColor = Color.White;
+            _pnlSearchResults.BackColor = TG.WindowBg;
             _pnlSearchResults.Resize += Pnl_UpdateRowsWidth;
             _pnlSearchResults.Controls.Add(_lblSearchHint);
 
@@ -1365,7 +1367,7 @@ namespace SecureChat.Client
 
         private Panel BuildSearchRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = Color.White, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
 
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10), ShowOnline = c.IsOnline };
             avatar.SetName(c.DisplayName);
@@ -1400,16 +1402,16 @@ namespace SecureChat.Client
             switch (c.Status)
             {
                 case FriendStatus.Friend:
-                    statusCtrl = new Label { Text = "✓ Bạn bè", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x2E, 0x7D, 0x32), BackColor = Color.FromArgb(0xE8, 0xF5, 0xE9), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter, Padding = new Padding(6, 0, 6, 0), BorderStyle = BorderStyle.FixedSingle };
+                    statusCtrl = new Label { Text = "✓ Bạn bè", Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.FromArgb(40, TG.AccentGreen.R, TG.AccentGreen.G, TG.AccentGreen.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter, Padding = new Padding(6, 0, 6, 0), BorderStyle = BorderStyle.FixedSingle };
                     break;
                 case FriendStatus.PendingOutgoing:
-                    statusCtrl = new Label { Text = "Đã gửi", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0xE6, 0x5C, 0x00), BackColor = Color.FromArgb(0xFF, 0xF3, 0xE0), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Đã gửi", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.FromArgb(40, TG.TextSecondary.R, TG.TextSecondary.G, TG.TextSecondary.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingIncoming:
-                    statusCtrl = new Label { Text = "Chờ duyệt", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x15, 0x65, 0xC0), BackColor = Color.FromArgb(0xE3, 0xF2, 0xFD), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Chờ duyệt", Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.FromArgb(40, TG.Blue.R, TG.Blue.G, TG.Blue.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.Blocked:
-                    statusCtrl = new Label { Text = "Đã chặn", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x75, 0x75, 0x75), BackColor = Color.FromArgb(0xF5, 0xF5, 0xF5), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Đã chặn", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = TG.Divider, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 default:
                     var btn = new TelegramButton { Text = "+ Kết bạn", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
@@ -1477,11 +1479,11 @@ namespace SecureChat.Client
                 ctrl.MouseLeave += (s, e) =>
                 {
                     if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
-                        pnl.BackColor = Color.White;
+                        pnl.BackColor = TG.WindowBg;
                 };
             }
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }
@@ -1556,7 +1558,7 @@ namespace SecureChat.Client
 
         private Panel BuildBlockedUserRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = Color.White, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
 
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10) };
             avatar.SetName(c.DisplayName);
@@ -1655,11 +1657,11 @@ namespace SecureChat.Client
                 ctrl.MouseLeave += (s, e) =>
                 {
                     if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
-                        pnl.BackColor = Color.White;
+                        pnl.BackColor = TG.WindowBg;
                 };
             }
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }

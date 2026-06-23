@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 using SecureChat.Client.Models;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Profile
 {
@@ -11,10 +12,7 @@ namespace SecureChat.Client.Forms.Profile
     {
         private void InitializeComponent() { /* built in code */ }
 
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x7D, 0x8B, 0x98);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x2A, 0xAB, 0xEE);
+        // Colors read from TG at paint time
 
         private readonly ProfileModel _profile;
 
@@ -31,6 +29,8 @@ namespace SecureChat.Client.Forms.Profile
 
         public frmMyProfile(ProfileModel profile)
         {
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             _profile = profile ?? throw new ArgumentNullException(nameof(profile));
             InitializeComponent();
             BuildUI();
@@ -49,7 +49,8 @@ namespace SecureChat.Client.Forms.Profile
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 480);
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f, GraphicsUnit.Point);
             DoubleBuffered = true;
 
@@ -85,14 +86,14 @@ namespace SecureChat.Client.Forms.Profile
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI Semibold", 13.5f, GraphicsUnit.Point),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 BackColor = Color.Transparent,
             };
             _lblStatus = new Label
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f, GraphicsUnit.Point),
-                ForeColor = C_ACCENT,
+                ForeColor = TG.TextBlue,
                 BackColor = Color.Transparent,
             };
 
@@ -100,7 +101,7 @@ namespace SecureChat.Client.Forms.Profile
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f, GraphicsUnit.Point),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 BackColor = Color.Transparent,
             };
 
@@ -108,7 +109,7 @@ namespace SecureChat.Client.Forms.Profile
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9.5f, GraphicsUnit.Point),
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 BackColor = Color.Transparent,
                 Text = "Email",
             };
@@ -117,7 +118,7 @@ namespace SecureChat.Client.Forms.Profile
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10.5f, GraphicsUnit.Point),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 BackColor = Color.Transparent,
             };
 
@@ -125,7 +126,7 @@ namespace SecureChat.Client.Forms.Profile
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9.5f, GraphicsUnit.Point),
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 BackColor = Color.Transparent,
                 Text = "Username",
             };
@@ -239,7 +240,7 @@ namespace SecureChat.Client.Forms.Profile
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 TabStop = false,
                 Cursor = Cursors.Hand,
@@ -247,8 +248,8 @@ namespace SecureChat.Client.Forms.Profile
                 Padding = new Padding(8, 2, 8, 2),
             };
             b.FlatAppearance.BorderSize = 0;
-            b.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xF2, 0xF5, 0xF9);
-            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xE8, 0xEF, 0xF6);
+            b.FlatAppearance.MouseOverBackColor = TG.SidebarHover;
+            b.FlatAppearance.MouseDownBackColor = TG.SidebarHover;
             return b;
         }
 
@@ -296,5 +297,30 @@ namespace SecureChat.Client.Forms.Profile
                 _lblUsernameType.Location = new Point(_lblUsername.Left, _lblUsername.Bottom + 6);
             }
         }
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {
+            foreach (Control c in controls)
+            {
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+                if (c.ForeColor != Color.White && c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }
+        }
+
     }
 }

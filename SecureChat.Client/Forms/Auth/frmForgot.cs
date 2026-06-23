@@ -58,6 +58,7 @@ namespace SecureChat.Client
         {
             _authService = authService;
             InitializeComponent();
+            ThemeRefreshHelper.Hook(this);
             ShowStep(1);
         }
 
@@ -70,7 +71,7 @@ namespace SecureChat.Client
             //  FormBorderStyle = FormBorderStyle.FixedSingle;
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = TG.FontRegular(9.5f);
 
             // Header
@@ -85,7 +86,7 @@ namespace SecureChat.Client
 
             // Step indicator
             // Panel nằm ngang chứa 3 chấm tròn, cao 48px
-            var pnlSteps = new Panel { Height = 48, BackColor = Color.White };
+            var pnlSteps = new Panel { Height = 48, BackColor = TG.WindowBg };
             for (int i = 0; i < 3; i++) // Vòng lặp tạo 3 chấm
             {
                 int idx = i; // tránh bug closure
@@ -201,7 +202,7 @@ namespace SecureChat.Client
                     TextAlign = HorizontalAlignment.Center,
                     BorderStyle = BorderStyle.FixedSingle,
                     Size = new Size(42, 50),
-                    BackColor = Color.White,
+                    BackColor = TG.InputBg,
                 };
 
                 box.KeyPress += (s, e) =>
@@ -294,7 +295,7 @@ namespace SecureChat.Client
             });
 
             // Panel bọc ngoài fill toàn form, padding 28px hai bên.Mỗi lần resize → tính lại layout.
-            _pnlMain = new Panel { BackColor = Color.White, Padding = new Padding(28, 12, 28, 20) };
+            _pnlMain = new Panel { BackColor = TG.WindowBg, Padding = new Padding(28, 12, 28, 20) };
             _pnlMain.Controls.AddRange(new Control[] { _lblStepTitle, _lblStepDesc, pnlSteps, _pnlContent, _lblError, _btnNext });
             _pnlMain.Dock = DockStyle.Fill;
             _pnlMain.Resize += (s, e) => DoLayout(_pnlMain);

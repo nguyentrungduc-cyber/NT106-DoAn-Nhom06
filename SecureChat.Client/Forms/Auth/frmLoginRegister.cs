@@ -33,6 +33,7 @@ namespace SecureChat.Client
             // Bật DoubleBuffered để giảm flickering khi resize hoặc đổi mode
             this.DoubleBuffered = true;
             InitializeComponent();
+            ThemeRefreshHelper.Hook(this);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

@@ -1,4 +1,5 @@
 using System;
+using SecureChat.Client.Services;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -13,13 +14,16 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmClearHistory(string chatName)
         {
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             Text = "Clear history";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(400, 290);
 
@@ -27,7 +31,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = $"Are you sure you want to delete all\r\nmessages in \"{chatName}\"?",
                 Font = new Font("Segoe UI", 16f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 26),
                 Size = new Size(340, 76)
             };
@@ -36,7 +40,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "This action cannot be undone.",
                 Font = new Font("Segoe UI", 13f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 112),
                 Size = new Size(300, 34)
             };
@@ -45,13 +49,13 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Delete for everyone",
                 Font = new Font("Segoe UI", 13f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 168),
                 Size = new Size(260, 32),
                 AutoSize = false
             };
 
-            var btnCancel = BuildActionButton("Cancel", Color.FromArgb(0x1F, 0x88, 0xD8));
+            var btnCancel = BuildActionButton("Cancel", TG.Blue);
             btnCancel.Location = new Point(222, 238);
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
@@ -88,5 +92,30 @@ namespace SecureChat.Client.Forms.Chat
             btn.FlatAppearance.BorderSize = 0;
             return btn;
         }
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {
+            foreach (Control c in controls)
+            {
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+                if (c.ForeColor != Color.White && c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }
+        }
+
     }
 }
