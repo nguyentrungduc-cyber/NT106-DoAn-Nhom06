@@ -3839,8 +3839,14 @@ namespace SecureChat.Client
                         member.OnNightModeChanged();
                     else if (c is Label lbl)
                     {
-                        // Các label trong BuildDirectSidebar/BuildGroupSidebar
-                        if (lbl.ForeColor != Color.FromArgb(0x21, 0xA1, 0x66)) // giữ màu "Online" xanh
+                        Color fg = lbl.ForeColor;
+                        // Giữ màu "Online" xanh
+                        if (fg == Color.FromArgb(0x21, 0xA1, 0x66)) continue;
+                        // Bảo toàn secondary text nếu đang là màu TextSecondary (ở cả 2 theme)
+                        if (fg == Color.FromArgb(0x70, 0x70, 0x70) ||   // TextSecondary_L
+                            fg == Color.FromArgb(0xA3, 0xAD, 0xB8))     // TextSecondary_D
+                            lbl.ForeColor = TG.TextSecondary;
+                        else
                             lbl.ForeColor = TG.TextPrimary;
                         lbl.BackColor = Color.Transparent;
                     }
@@ -3848,7 +3854,19 @@ namespace SecureChat.Client
                     {
                         p.BackColor = TG.WindowBg;
                         foreach (Control pc in p.Controls)
-                            if (pc is Label pl) pl.ForeColor = TG.TextPrimary;
+                        {
+                            if (pc is ucGroupMemberItem mi)
+                                mi.OnNightModeChanged();
+                            else if (pc is Label pl)
+                            {
+                                Color fg = pl.ForeColor;
+                                if (fg == Color.FromArgb(0x70, 0x70, 0x70) ||
+                                    fg == Color.FromArgb(0xA3, 0xAD, 0xB8))
+                                    pl.ForeColor = TG.TextSecondary;
+                                else
+                                    pl.ForeColor = TG.TextPrimary;
+                            }
+                        }
                         p.Invalidate();
                     }
                 }
@@ -4350,37 +4368,44 @@ namespace SecureChat.Client
 
                     btnMore.Click += (s, e) =>
                     {
-                        var menu = new ContextMenuStrip();
-                        menu.Font = TG.FontRegular(9.5f);
+                        var menu = new ContextMenuStrip
+                        {
+                            Font = TG.FontRegular(9.5f),
+                            BackColor = TG.SidebarBg,
+                            ForeColor = TG.TextPrimary,
+                            ShowImageMargin = false,
+                            Renderer = new ToolStripProfessionalRenderer(new ChatMenuColorTable())
+                        };
 
                         // ── Mute submenu ──
                         var itemMute = new ToolStripMenuItem("  🔇  Mute");
-                        itemMute.ForeColor = TG.TextName;
+                        itemMute.ForeColor = TG.TextPrimary;
 
                         var muteOptions = new[]
                         {
-                            ("5 phút",    5),
-                            ("30 phút",   30),
-                            ("1 giờ",     60),
-                            ("1 ngày",    60 * 24),
-                            ("Vĩnh viễn", 60 * 24 * 365 * 10),
+                            ("5 min",      5),
+                            ("30 min",    30),
+                            ("1 hour",    60),
+                            ("1 day",     60 * 24),
+                            ("Permanent", 60 * 24 * 365 * 10),
                         };
 
                         foreach (var (label, minutes) in muteOptions)
                         {
                             var min = minutes;
                             var sub = new ToolStripMenuItem($"  {label}");
+                            sub.ForeColor = TG.TextPrimary;
                             sub.Click += async (_, __) => await MuteMemberAsync(memberId, memberName, min);
                             itemMute.DropDownItems.Add(sub);
                         }
 
                         // ── Unmute ──
-                        var itemUnmute = new ToolStripMenuItem("  🔔  Bỏ mute");
-                        itemUnmute.ForeColor = TG.TextName;
+                        var itemUnmute = new ToolStripMenuItem("  🔔  Unmute");
+                        itemUnmute.ForeColor = TG.TextPrimary;
                         itemUnmute.Click += async (_, __) => await UnmuteMemberAsync(memberId, memberName);
 
                         // ── Kick ──
-                        var itemKick = new ToolStripMenuItem("  👢  Kick khỏi nhóm");
+                        var itemKick = new ToolStripMenuItem("  👢  Remove from group");
                         itemKick.ForeColor = Color.FromArgb(0xE2, 0x4B, 0x4A);
                         itemKick.Click += async (_, __) => await KickMemberAsync(memberId, memberName);
 
