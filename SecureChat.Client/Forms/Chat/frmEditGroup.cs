@@ -1,4 +1,6 @@
-﻿namespace SecureChat.Client.Forms.Chat
+﻿using SecureChat.Client.Services;
+
+namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmEditGroup : Form
     {
@@ -12,6 +14,11 @@
         private readonly Label _lblChatHistoryValue;
         private readonly Label _lblAdminsValue;
         private readonly Label _lblMembersValue;
+        private Label _lblName = null!;
+        private Panel _nameUnderline = null!;
+        private Panel _sectionSeparator = null!;
+        private Button _btnCancel = null!;
+        private Button _btnSave = null!;
 
         private readonly System.Windows.Forms.Timer _fadeTimer;
         private bool _disposed;
@@ -42,7 +49,7 @@
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA);
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(520, 720);
             DoubleBuffered = true;
@@ -64,7 +71,7 @@
             {
                 Text = "Edit group",
                 Font = new Font("Segoe UI Semibold", 18f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(20, 18),
                 Size = new Size(260, 38)
             };
@@ -102,11 +109,11 @@
             avatarHost.Click += (_, __) => PickAvatarImage();
             avatarHost.Controls.Add(_avatar);
 
-            var lblName = new Label
+            _lblName = new Label
             {
                 Text = "Group name",
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
+                ForeColor = TG.Blue,
                 Location = new Point(150, 86),
                 Size = new Size(170, 28)
             };
@@ -116,15 +123,15 @@
                 Text = currentName,
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 16f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(150, 116),
                 Size = new Size(320, 36),
-                BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA)
+                BackColor = TG.WindowBg
             };
 
-            var nameUnderline = new Panel
+            _nameUnderline = new Panel
             {
-                BackColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
+                BackColor = TG.Blue,
                 Location = new Point(150, 156),
                 Size = new Size(280, 2)
             };
@@ -133,7 +140,7 @@
             {
                 Text = "Description (optional)",
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = Color.FromArgb(0x9A, 0xA6, 0xB3),
+                ForeColor = TG.TextSecondary,
                 Location = new Point(28, 186),
                 Size = new Size(240, 26),
                 BackColor = Color.Transparent,
@@ -144,11 +151,11 @@
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = Color.FromArgb(0x3B, 0x4A, 0x5A),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(28, 214),
                 Size = new Size(460, 58),
                 Multiline = true,
-                BackColor = Color.FromArgb(0xF7, 0xF8, 0xFA)
+                BackColor = TG.WindowBg
             };
             _txtDescription.TextChanged += (_, __) => _lblDescPlaceholder.Visible = string.IsNullOrWhiteSpace(_txtDescription.Text);
             _lblDescPlaceholder.Click += (_, __) => _txtDescription.Focus();
@@ -157,9 +164,10 @@
             {
                 Location = new Point(0, 286),
                 Size = new Size(520, 312),
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
-            section.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = Color.FromArgb(0xE6, 0xEB, 0xF1) });
+            _sectionSeparator = new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = TG.Divider };
+            section.Controls.Add(_sectionSeparator);
 
             var rowGroupType = BuildSettingsRow("\u2699\uFE0F  Group type", _groupType, out _lblGroupTypeValue);
             rowGroupType.Location = new Point(0, 8);
@@ -179,13 +187,13 @@
 
             section.Controls.AddRange(new Control[] { rowGroupType, rowHistory, rowAdmins, rowMembers });
 
-            var btnCancel = BuildBottomButton("Cancel", Color.FromArgb(0x2A, 0xAB, 0xEE));
-            btnCancel.Location = new Point(300, 676);
-            btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
+            _btnCancel = BuildBottomButton("Cancel", TG.Blue);
+            _btnCancel.Location = new Point(300, 676);
+            _btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
-            var btnSave = BuildBottomButton("Save", Color.FromArgb(0x2A, 0xAB, 0xEE), bold: true);
-            btnSave.Location = new Point(392, 676);
-            btnSave.Click += (_, __) =>
+            _btnSave = BuildBottomButton("Save", TG.Blue, bold: true);
+            _btnSave.Location = new Point(392, 676);
+            _btnSave.Click += (_, __) =>
             {
                 var n = _txtName.Text.Trim();
                 if (string.IsNullOrWhiteSpace(n))
@@ -201,12 +209,13 @@
 
             Controls.AddRange(new Control[]
             {
-                lblTitle, avatarHost, lblName, _txtName, nameUnderline,
+                lblTitle, avatarHost, _lblName, _txtName, _nameUnderline,
                 _lblDescPlaceholder, _txtDescription, section,
-                btnCancel, btnSave
+                _btnCancel, _btnSave
             });
             _ = LoadGroupInfoAsync();
-            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
         }
 
         private Panel BuildSettingsRow(string leftText, string rightText, out Label rightValue)
@@ -214,7 +223,7 @@
             var pnl = new Panel
             {
                 Size = new Size(520, 46),
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Cursor = Cursors.Hand
             };
 
@@ -222,7 +231,7 @@
             {
                 Text = leftText,
                 Font = new Font("Segoe UI Emoji", 10.5f),
-                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(30, 8),
                 Size = new Size(330, 30),
                 BackColor = Color.Transparent
@@ -232,24 +241,26 @@
             {
                 Text = rightText,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = Color.FromArgb(0x2A, 0xAB, 0xEE),
+                ForeColor = TG.Blue,
                 TextAlign = ContentAlignment.MiddleRight,
                 Location = new Point(360, 8),
                 Size = new Size(130, 30),
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                Tag = "accent-fg"
             };
 
             var sep = new Panel
             {
                 Location = new Point(30, 45),
                 Size = new Size(460, 1),
-                BackColor = Color.FromArgb(0xEE, 0xF2, 0xF7)
+                BackColor = TG.Divider,
+                Tag = "sep"
             };
 
             pnl.Controls.AddRange(new Control[] { left, rightValue, sep });
 
-            pnl.MouseEnter += (_, __) => pnl.BackColor = Color.FromArgb(0xF7, 0xFA, 0xFD);
-            pnl.MouseLeave += (_, __) => pnl.BackColor = Color.White;
+            pnl.MouseEnter += (_, __) => pnl.BackColor = TG.SidebarHover;
+            pnl.MouseLeave += (_, __) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }
@@ -411,6 +422,34 @@
             }
             catch { }
         }
-    }
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            if (IsDisposed) return;
 
+            ThemeRefreshHelper.ApplyTo(this);
+
+            _lblName.ForeColor = TG.Blue;
+            _nameUnderline.BackColor = TG.Blue;
+            _lblDescPlaceholder.ForeColor = TG.TextSecondary;
+            _sectionSeparator.BackColor = TG.Divider;
+            _btnCancel.ForeColor = TG.Blue;
+            _btnSave.ForeColor = TG.Blue;
+
+            void FixControls(Control parent)
+            {
+                foreach (Control c in parent.Controls)
+                {
+                    if (c.Tag as string == "accent-fg")
+                        c.ForeColor = TG.Blue;
+                    if (c.Tag as string == "sep")
+                        c.BackColor = TG.Divider;
+                    if (c.HasChildren)
+                        FixControls(c);
+                }
+            }
+            FixControls(this);
+        }
+    }
+    
 }
