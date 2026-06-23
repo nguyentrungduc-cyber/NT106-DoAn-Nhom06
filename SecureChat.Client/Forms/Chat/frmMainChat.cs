@@ -35,6 +35,7 @@ namespace SecureChat.Client
 
         // ── Sidebar controls ───────────────────────
         private Button _btnHamburger; // nút ☰ mở menu
+        private Panel _pnlSearch = null!;
         private TelegramTextBox _tbSearch; // ô tìm kiếm
         private Panel _pnlConvList; // danh sách cuộc trò chuyện
         private Panel _pnlEmptyState; // trạng thái trống khi chưa có cuộc trò chuyện
@@ -704,11 +705,11 @@ namespace SecureChat.Client
             };
 
             // ── Search ────────────────────────────────
-            var pnlSearch = new Panel { Height = 44, Dock = DockStyle.Top, BackColor = TG.SidebarBg, Padding = new Padding(8, 6, 8, 4) };
+            _pnlSearch = new Panel { Height = 44, Dock = DockStyle.Top, BackColor = TG.SidebarBg, Padding = new Padding(8, 6, 8, 4) };
             _tbSearch = new TelegramTextBox { Height = 32, Dock = DockStyle.Fill };
             _tbSearch.SetPlaceholder("🔍  Search");
             _tbSearch.TextChanged += (_, __) => BuildConvList();
-            pnlSearch.Controls.Add(_tbSearch);
+            _pnlSearch.Controls.Add(_tbSearch);
 
             // ── Conversation list ─────────────────────
             _pnlConvList = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.SidebarBg };
@@ -751,7 +752,7 @@ namespace SecureChat.Client
 
             _pnlSidebar.Controls.Add(_pnlEmptyState);
             _pnlSidebar.Controls.Add(_pnlConvList);
-            _pnlSidebar.Controls.Add(pnlSearch);
+            _pnlSidebar.Controls.Add(_pnlSearch);
             _pnlSidebar.Controls.Add(_pnlSidebarHeader);
 
             UpdateEmptyStateUI();
@@ -3683,6 +3684,7 @@ namespace SecureChat.Client
 
             // Sidebar panel + controls missing from original toggle
             if (_pnlSidebar != null) _pnlSidebar.BackColor = TG.SidebarBg;
+            if (_pnlSearch != null) _pnlSearch.BackColor = TG.SidebarBg;
             if (_btnHamburger != null) _btnHamburger.ForeColor = TG.TitleBarFg;
             if (_tbSearch != null) _tbSearch.RefreshTheme();
             if (_pnlEmptyState != null) _pnlEmptyState.BackColor = TG.SidebarBg;
