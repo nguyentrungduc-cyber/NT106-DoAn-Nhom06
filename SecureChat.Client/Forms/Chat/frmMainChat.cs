@@ -1155,9 +1155,7 @@ namespace SecureChat.Client
             _pnlChatEmpty.Resize += (_, __) => LayoutChatEmptyState();
 
 
-            typeof(Panel).InvokeMember("DoubleBuffered",
-            System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-            null, _pnlMessages, new object[] { true });
+            // DoubleBuffered set trong ChatPanel constructor qua SetStyle — không cần InvokeMember
             // _pnlMessages.Paint += PaintChatBackground;
             // Click vào vùng chat → đóng settings menu
             _pnlMessages.Click += (s, e) => { if (_settingsVisible) HideSettingsMenu(); };
@@ -5543,7 +5541,9 @@ namespace SecureChat.Client
                 return WrapForwardIfNeeded(panel, messageId, isOut);
             }
 
-            var pnl = new Panel { BackColor = Color.Transparent };
+            // KHÔNG dùng Transparent — với AutoScroll Panel, Transparent kích hoạt
+            // cascade repaint lên parent mỗi khi scroll → flicker. Dùng TG.ChatBg.
+            var pnl = new Panel { BackColor = TG.ChatBg };
             int pad = 12;
 
             const int avatarAreaW = 44;
@@ -8253,12 +8253,10 @@ namespace SecureChat.Client
                 }
             }
 
-            // Dùng BackgroundImage thay vì custom Paint — WinForms tự xử lý
-            // repaint đúng cách với AutoScroll, không bị đường trắng hay rung.
-            var oldBmp = _pnlMessages.BackgroundImage as Bitmap;
-            _pnlMessages.BackgroundImage = newBmp;
-            _pnlMessages.BackgroundImageLayout = ImageLayout.Stretch;
-            _pnlMessages.CachedWallpaper = null;
+            var oldBmp = _pnlMessages.CachedWallpaper;
+            _pnlMessages.CachedWallpaper = newBmp;
+            _pnlMessages.BackgroundImage = null; // không dùng BackgroundImage
+            _pnlMessages.Invalidate();
             oldBmp?.Dispose();
         }
 
@@ -8266,27 +8264,45 @@ namespace SecureChat.Client
 
     public class ChatPanel : Panel
     {
-        // CachedWallpaper không còn dùng — wallpaper được set qua BackgroundImage
         public Bitmap? CachedWallpaper { get; set; }
 
         public ChatPanel()
         {
-            // OptimizedDoubleBuffer tại control level — không cần WS_EX_COMPOSITED
             this.SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
-                ControlStyles.OptimizedDoubleBuffer, true);
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.UserPaint |
+                ControlStyles.ResizeRedraw, true);
             this.UpdateStyles();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            // Vẽ wallpaper tại (0,0) trong client coords — KHÔNG theo AutoScrollPosition.
+            // Wallpaper là nền cố định của viewport, không scroll cùng content.
+            // Bubble panel children dùng màu thật (không Transparent) nên không
+            // kích hoạt cascade repaint → hết flicker.
+            if (CachedWallpaper != null)
+                e.Graphics.DrawImage(CachedWallpaper, 0, 0, ClientSize.Width, ClientSize.Height);
+            else
+                e.Graphics.Clear(BackColor);
         }
 
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             const int WM_ERASEBKGND = 0x0014;
-            if (m.Msg == WM_ERASEBKGND)
-            {
-                m.Result = (IntPtr)1; // suppress → không xóa trắng trước khi paint
-                return;
-            }
+            const int WM_VSCROLL    = 0x0115;
+            const int WM_MOUSEWHEEL = 0x020A;
+
+            if (m.Msg == WM_ERASEBKGND) { m.Result = (IntPtr)1; return; }
+
             base.WndProc(ref m);
+
+            // Phải Invalidate sau scroll để OnPaintBackground vẽ lại wallpaper.
+            // Wallpaper là tĩnh trong viewport nên chỉ vùng NEWLY EXPOSED cần repaint.
+            // Dùng Invalidate(clipRect) để chỉ vẽ lại vùng lộ ra, không toàn bộ panel.
+            if (CachedWallpaper != null && (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL))
+                this.Invalidate();
         }
     }
 }
