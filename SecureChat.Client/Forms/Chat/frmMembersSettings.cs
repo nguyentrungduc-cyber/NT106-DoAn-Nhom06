@@ -1,4 +1,5 @@
 ﻿using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.DTOs;
 
 namespace SecureChat.Client.Forms.Chat
@@ -130,6 +131,7 @@ namespace SecureChat.Client.Forms.Chat
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             BuildMemberRows(string.Empty);
+            UiLocalization.ApplyToForm(this);
         }
 
         private void BuildMemberRows(string keyword)

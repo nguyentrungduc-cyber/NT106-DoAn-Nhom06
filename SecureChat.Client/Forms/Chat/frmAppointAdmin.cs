@@ -1,5 +1,6 @@
 using System;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -167,6 +168,7 @@ namespace SecureChat.Client.Forms.Chat
 
             BuildMembersList();
             UpdateBottomButtonState();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void StartFadeIn()

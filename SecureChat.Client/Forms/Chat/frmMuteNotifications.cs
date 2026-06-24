@@ -1,6 +1,7 @@
 using System.Drawing.Drawing2D;
 using System.Drawing;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -161,6 +162,7 @@ namespace SecureChat.Client.Forms.Chat
                 _rbUnmuted, _rbMuteForever, _rbMuteFor, _cbDuration,
                 btnCancel, btnSave
             });
+            UiLocalization.ApplyToForm(this);
         }
 
         private void SyncMuteForControlState()

@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using SecureChat.Client;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -129,6 +130,7 @@ namespace SecureChat.Client.Forms.Chat
                 y += 4;
                 AppendInfoField("Bio", bio, ref y);
             }
+            UiLocalization.ApplyToForm(this);
         }
 
         private void AppendInfoField(string label, string value, ref int y)

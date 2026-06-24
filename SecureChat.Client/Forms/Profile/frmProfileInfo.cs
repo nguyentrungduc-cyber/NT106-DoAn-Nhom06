@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using SecureChat.Client.Models;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using System.IO;
 
 namespace SecureChat.Client.Forms.Profile
@@ -41,6 +42,7 @@ namespace SecureChat.Client.Forms.Profile
             LoadProfile(profile);
             Resize += (_, __) => LayoutDynamic();
             LayoutDynamic();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void BuildUI()

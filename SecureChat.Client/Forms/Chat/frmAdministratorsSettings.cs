@@ -1,4 +1,5 @@
 ﻿using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -119,6 +120,7 @@ namespace SecureChat.Client.Forms.Chat
             _ = LoadAdminsAsync();
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            UiLocalization.ApplyToForm(this);
         }
 
         private async Task LoadAdminsAsync()

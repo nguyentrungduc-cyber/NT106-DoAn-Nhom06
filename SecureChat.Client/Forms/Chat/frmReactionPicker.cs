@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -80,5 +81,6 @@ namespace SecureChat.Client.Forms.Chat
             }
 
             Controls.Add(flow);
+            UiLocalization.ApplyToForm(this);
         }    }
 }

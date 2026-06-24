@@ -1,4 +1,5 @@
 ﻿using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -216,6 +217,7 @@ namespace SecureChat.Client.Forms.Chat
             _ = LoadGroupInfoAsync();
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            UiLocalization.ApplyToForm(this);
         }
 
         private Panel BuildSettingsRow(string leftText, string rightText, out Label rightValue)

@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 
 namespace SecureChat.Client.Forms.Chat
@@ -154,6 +155,7 @@ namespace SecureChat.Client.Forms.Chat
 
             Controls.AddRange(new Control[] { header, lblTitle, _lblInfo, btnAppoint, btnCancel, btnLeave });
             RefreshOwnerPreview();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void OpenAppointAdminDialog()

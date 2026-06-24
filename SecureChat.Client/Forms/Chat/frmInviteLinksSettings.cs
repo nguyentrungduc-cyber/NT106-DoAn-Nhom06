@@ -1,4 +1,5 @@
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -155,6 +156,7 @@ namespace SecureChat.Client.Forms.Chat
                 lblTitle, lblPrimary, pnlLink, btnCopy, btnShare,
                 sep, rowNewLink, pnlHint, _lblLinksCount, btnDone
             });
+            UiLocalization.ApplyToForm(this);
         }
 
         private void CreateNewLink()

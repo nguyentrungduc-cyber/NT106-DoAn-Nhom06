@@ -1,5 +1,6 @@
 ﻿using SecureChat.Client.Components.Group;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using System.Drawing.Drawing2D;
 using System.Linq;
 
@@ -46,7 +47,8 @@ namespace SecureChat.Client.Forms.Chat
             InitializeComponent();
             BuildUI();
             ThemeRefreshHelper.Hook(this);
-            // Dữ liệu nhóm sẽ được load từ bên ngoài qua LoadGroup(...)
+            // D? li?u nh�m s? du?c load t? b�n ngo�i qua LoadGroup(...)
+            UiLocalization.ApplyToForm(this);
         }
 
         private void BuildUI()

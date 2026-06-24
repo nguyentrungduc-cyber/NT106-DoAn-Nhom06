@@ -1,4 +1,5 @@
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmGroupTypeSettings : Form
@@ -135,6 +136,7 @@ namespace SecureChat.Client.Forms.Chat
                 lblTitle, _rbPublic, lblPublicDesc, _rbPrivate, lblPrivateDesc,
                 sep, lblPrimaryLink, pnlLink, btnCopy, btnShare, btnCancel, btnSave
             });
+            UiLocalization.ApplyToForm(this);
         }
 
         private static Button BuildBlueButton(string text, Point location)

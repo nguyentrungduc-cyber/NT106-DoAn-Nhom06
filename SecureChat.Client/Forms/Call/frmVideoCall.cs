@@ -14,6 +14,7 @@ using System.Windows.Forms;
 using SecureChat.Client.Media;
 using SecureChat.Client.Services;
 using SecureChat.Client.Services.RealTime;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Models;
 using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
@@ -153,6 +154,8 @@ namespace SecureChat.Client.Forms.Call
             };
             FormClosed += (_, __) => Cleanup();
             ThemeRefreshHelper.Hook(this);
+            UiLocalization.ApplyToForm(this);
+            LocalizationService.LanguageChanged += OnLanguageChanged;
         }
 
         public frmVideoCall(string friendName, string callId, string conversationId, SignalRClient signalRClient, bool isGroupCall = false) : this(friendName)
@@ -1204,6 +1207,12 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         //  CLEANUP
         // ═════════════════════════════════════════════════════════════════════════
+        private void OnLanguageChanged()
+        {
+            if (InvokeRequired) { BeginInvoke(new Action(OnLanguageChanged)); return; }
+            lblStatus.Text = LocalizationService.Translate(lblStatus.Text);
+        }
+
         private void Cleanup()
         {
             if (_cleanupDone) return;
@@ -1264,6 +1273,7 @@ namespace SecureChat.Client.Forms.Call
             previewSnapTimer.Stop();
             previewSnapTimer.Dispose();
             _cts.Dispose();
+            LocalizationService.LanguageChanged -= OnLanguageChanged;
         }
 
         private void NotifyUserInteraction()

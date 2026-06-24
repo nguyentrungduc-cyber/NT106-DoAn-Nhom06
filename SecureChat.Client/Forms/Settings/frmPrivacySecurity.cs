@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using SecureChat.Client.Services;
 using SecureChat.Client.Services.Api;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.DTOs;
 
 namespace SecureChat.Client.Forms.Settings
@@ -40,6 +41,7 @@ namespace SecureChat.Client.Forms.Settings
             BuildUI();
             ThemeRefreshHelper.Hook(this);
             Load += async (_, __) => await LoadSettingsAsync();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void InitializeComponent() { }

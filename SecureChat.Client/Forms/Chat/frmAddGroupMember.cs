@@ -1,5 +1,6 @@
 using System;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -46,6 +47,7 @@ namespace SecureChat.Client.Forms.Chat
 
             BuildUI();
             Shown += async (_, __) => await LoadFriendsAsync();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void BuildUI()
