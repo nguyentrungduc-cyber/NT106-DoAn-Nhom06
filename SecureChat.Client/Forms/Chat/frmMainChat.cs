@@ -211,7 +211,7 @@ namespace SecureChat.Client
             this.DoubleBuffered = true;
 
             // 1. Kích hoạt cho Panel chính (Nơi chứa hình nền và tin nhắn)
-            EnableDoubleBuffering(_pnlMessages);
+            // ChatPanel đã set ControlStyles trong constructor — không cần EnableDoubleBuffering
 
             // 2. Ép vẽ lại toàn bộ khi cuộn để xóa sạch sọc ngang
             // _pnlMessages.Scroll += (s, e) => _pnlMessages.Invalidate(false); // false = không xóa nền cũ trước khi vẽ lại
@@ -1331,11 +1331,9 @@ namespace SecureChat.Client
             _pnlRightSidebar.Controls.Add(_sbBody);
             _pnlRightSidebar.Controls.Add(_sbHeader);
 
-            // _pnlMessages.Resize += (s, e) => _pnlMessages.Invalidate(); // bỏ vì đã có PaintChatBackground tự xử lý.
-            _pnlMessages.Resize += (s, e) =>
+            // Resize _pnlChat (parent wallpaper panel) → rebuild cached bitmap
+            _pnlChat.Resize += (s, e) =>
             {
-                // Debounce: chỉ UpdateCachedBackground sau khi resize dừng 150ms
-                // Tránh tạo/huỷ bitmap liên tục mỗi pixel resize → giật khi phóng to
                 _resizeDebounceTimer?.Stop();
                 _resizeDebounceTimer ??= new System.Windows.Forms.Timer { Interval = 150 };
                 _resizeDebounceTimer.Tick -= ResizeDebounce_Tick;
@@ -5543,11 +5541,9 @@ namespace SecureChat.Client
                 return WrapForwardIfNeeded(panel, messageId, isOut);
             }
 
-            // Bubble wrapper chiếm full width của _pnlMessages.
-            // Dùng BubbleWrapperPanel thay vì Panel thường — tự vẽ background
-            // từ CachedWallpaper của parent thay vì yêu cầu parent repaint
-            // (tránh cascade repaint → flicker khi scroll).
-            var pnl = new BubbleWrapperPanel(_pnlMessages);
+            // Bubble wrapper — Panel thường với BackColor=Transparent
+            // Wallpaper vẽ trực tiếp trên _pnlChat (parent), xuyên qua ChatPanel transparent
+            var pnl = new Panel { BackColor = Color.Transparent };
             int pad = 12;
 
             const int avatarAreaW = 44;
@@ -8224,6 +8220,21 @@ namespace SecureChat.Client
             }
         }
 
+        private void PnlChat_Paint(object? sender, PaintEventArgs e)
+        {
+            // Vẽ wallpaper lên _pnlChat (parent của _pnlMessages)
+            // _pnlMessages là Transparent → wallpaper hiện xuyên qua khi scroll
+            if (_chatWallpaperBmp != null)
+            {
+                e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                e.Graphics.DrawImage(_chatWallpaperBmp, _pnlChat.ClientRectangle);
+            }
+            else
+            {
+                e.Graphics.Clear(TG.ChatBg);
+            }
+        }
+
         private void ResizeDebounce_Tick(object? sender, EventArgs e)
         {
             _resizeDebounceTimer?.Stop();
@@ -8232,10 +8243,10 @@ namespace SecureChat.Client
 
         private void UpdateCachedBackground()
         {
-            if (_pnlMessages.ClientSize.Width <= 0 || _pnlMessages.ClientSize.Height <= 0) return;
+            if (_pnlChat.ClientSize.Width <= 0 || _pnlChat.ClientSize.Height <= 0) return;
 
-            int bmpW = _pnlMessages.ClientSize.Width;
-            int bmpH = _pnlMessages.ClientSize.Height;
+            int bmpW = _pnlChat.ClientSize.Width;
+            int bmpH = _pnlChat.ClientSize.Height;
             Bitmap newBmp = new Bitmap(bmpW, bmpH);
 
             using (Graphics g = Graphics.FromImage(newBmp))
@@ -8252,15 +8263,13 @@ namespace SecureChat.Client
                     int offsetX = (bmpW - drawW) / 2;
                     int offsetY = (bmpH - drawH) / 2;
                     g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                    g.SmoothingMode = SmoothingMode.HighQuality;
                     g.DrawImage(img, offsetX, offsetY, drawW, drawH);
                 }
             }
 
-            var oldBmp = _pnlMessages.CachedWallpaper;
-            _pnlMessages.CachedWallpaper = newBmp;
-            _pnlMessages.BackgroundImage = null; // không dùng BackgroundImage
-            _pnlMessages.Invalidate();
+            var oldBmp = _chatWallpaperBmp;
+            _chatWallpaperBmp = newBmp;
+            _pnlChat.Invalidate(); // chỉ invalidate _pnlChat — không invalidate _pnlMessages
             oldBmp?.Dispose();
         }
 
@@ -8316,7 +8325,8 @@ namespace SecureChat.Client
 
     public class ChatPanel : Panel
     {
-        public Bitmap? CachedWallpaper { get; set; } // unused, kept for compat
+        // CachedWallpaper đã bỏ — wallpaper vẽ trực tiếp lên _pnlChat (parent) qua PnlChat_Paint
+        // _pnlMessages là Transparent → wallpaper xuyên qua khi scroll không cần bitmap riêng
 
         public ChatPanel()
         {
@@ -8325,6 +8335,17 @@ namespace SecureChat.Client
                 ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.SupportsTransparentBackColor, true);
             this.UpdateStyles();
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                // WS_EX_TRANSPARENT: cho phép paint parent xuyên qua
+                var cp = base.CreateParams;
+                cp.ExStyle |= 0x20; // WS_EX_TRANSPARENT
+                return cp;
+            }
         }
 
         protected override void WndProc(ref System.Windows.Forms.Message m)
