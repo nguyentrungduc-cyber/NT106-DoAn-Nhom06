@@ -3719,7 +3719,9 @@ namespace SecureChat.Client
 
             _pnlMessages.BackColor = TG.ChatBg;
             _pnlMessages.CachedWallpaper = null;
+            _wallpaperSource = null; // clear cache để load lại wallpaper đúng theme
             if (_pnlChat != null) _pnlChat.BackColor = TG.ChatBg;
+            DoRebuildBackground(); // rebuild ngay (không debounce) sau khi đổi theme
 
             foreach (Control c in _pnlMessages.Controls)
             {
@@ -7845,53 +7847,65 @@ namespace SecureChat.Client
 
         private Bitmap _cachedBackground;
 
+        // Cache source wallpaper để không đọc disk mỗi lần resize
+        private Image? _wallpaperSource;
+        private System.Windows.Forms.Timer? _resizeDebounce;
+
         private void UpdateCachedBackground()
         {
-            // Kiểm tra nếu Panel chưa có kích thước hoặc bị ẩn thì không làm gì cả
             if (_pnlMessages.Width <= 0 || _pnlMessages.Height <= 0) return;
 
-            // 1. Tạo một Bitmap mới khớp hoàn toàn với kích thước hiện tại của Panel
-            Bitmap newBmp = new Bitmap(_pnlMessages.Width, _pnlMessages.Height);
+            // Debounce: đợi 80ms sau khi resize dừng mới rebuild
+            // Tránh tạo Bitmap hàng chục lần trong khi user đang kéo cửa sổ
+            if (_resizeDebounce == null)
+            {
+                _resizeDebounce = new System.Windows.Forms.Timer { Interval = 80 };
+                _resizeDebounce.Tick += (_, __) =>
+                {
+                    _resizeDebounce.Stop();
+                    DoRebuildBackground();
+                };
+            }
+            _resizeDebounce.Stop();
+            _resizeDebounce.Start();
+        }
 
+        private void DoRebuildBackground()
+        {
+            if (_pnlMessages.Width <= 0 || _pnlMessages.Height <= 0) return;
+
+            // Load source một lần, cache lại
+            if (_wallpaperSource == null)
+                _wallpaperSource = LoadWallpaper();
+
+            Bitmap newBmp = new Bitmap(_pnlMessages.Width, _pnlMessages.Height);
             using (Graphics g = Graphics.FromImage(newBmp))
             {
-                // 2. Tô nền bằng màu mặc định trước (phòng trường hợp ảnh không phủ hết hoặc lỗi)
-                g.Clear(Color.FromArgb(0xDB, 0xE8, 0xD5));
+                // Màu nền fallback khớp theme hiện tại
+                g.Clear(TG.ChatBg);
 
-                // 3. Lấy ảnh wallpaper (sử dụng hàm LoadWallpaper bạn đã viết)
-                var img = LoadWallpaper();
-                if (img != null)
+                if (_wallpaperSource != null)
                 {
-                    // Sử dụng lại logic "Center Crop" chuyên nghiệp của bạn
-                    float scaleX = (float)_pnlMessages.Width / img.Width;
-                    float scaleY = (float)_pnlMessages.Height / img.Height;
-                    float scale = Math.Max(scaleX, scaleY);
+                    float scaleX = (float)_pnlMessages.Width / _wallpaperSource.Width;
+                    float scaleY = (float)_pnlMessages.Height / _wallpaperSource.Height;
+                    float scale  = Math.Max(scaleX, scaleY);
 
-                    int drawW = (int)(img.Width * scale);
-                    int drawH = (int)(img.Height * scale);
-
-                    int offsetX = (_pnlMessages.Width - drawW) / 2;
-                    int offsetY = (_pnlMessages.Height - drawH) / 2;
+                    int drawW = (int)(_wallpaperSource.Width  * scale);
+                    int drawH = (int)(_wallpaperSource.Height * scale);
+                    int offX  = (_pnlMessages.Width  - drawW) / 2;
+                    int offY  = (_pnlMessages.Height - drawH) / 2;
 
                     g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                    g.SmoothingMode = SmoothingMode.HighQuality;
-
-                    g.DrawImage(img, offsetX, offsetY, drawW, drawH);
+                    g.SmoothingMode     = SmoothingMode.HighQuality;
+                    g.DrawImage(_wallpaperSource, offX, offY, drawW, drawH);
                 }
             }
 
-            // 4. Cập nhật BackgroundImage cho Panel
-            // Giải phóng ảnh cũ để tránh tràn bộ nhớ (Memory Leak)
-            var oldBmp = _pnlMessages.BackgroundImage;
-            // Xóa 2 dòng code này đi:
-            // _pnlMessages.BackgroundImage = newBmp;
-            // _pnlMessages.BackgroundImageLayout = ImageLayout.None;
-
-            // Thay bằng 2 dòng này:
+            // Dispose đúng: giải phóng CachedWallpaper cũ (không phải BackgroundImage)
+            var oldBmp = _pnlMessages.CachedWallpaper;
             _pnlMessages.CachedWallpaper = newBmp;
-            _pnlMessages.Invalidate(); // Ra lệnh cho Panel vẽ lại nền lập tức
-
-            if (oldBmp != null) oldBmp.Dispose();
+            _pnlMessages.Invalidate();
+            oldBmp?.Dispose();
         }
 
     }
@@ -7912,20 +7926,22 @@ namespace SecureChat.Client
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
+            var state = e.Graphics.Save();
+            e.Graphics.ResetTransform();
+
             if (CachedWallpaper != null)
             {
-                var state = e.Graphics.Save();
-                e.Graphics.ResetTransform();
-                e.Graphics.DrawImage(CachedWallpaper, 0, 0);
-                e.Graphics.Restore(state);
+                // Stretch toàn bộ ClientRectangle — loại bỏ đường kẻ mờ khi bitmap
+                // nhỏ hơn panel do resize chưa kịp rebuild
+                e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+                e.Graphics.DrawImage(CachedWallpaper, ClientRectangle);
             }
             else
             {
-                var state = e.Graphics.Save();
-                e.Graphics.ResetTransform();
-                e.Graphics.Clear(this.BackColor);
-                e.Graphics.Restore(state);
+                e.Graphics.Clear(BackColor);
             }
+
+            e.Graphics.Restore(state);
         }
 
         protected override void WndProc(ref System.Windows.Forms.Message m)
