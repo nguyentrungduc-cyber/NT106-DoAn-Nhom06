@@ -3,20 +3,21 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Client.Helpers;
 using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Shared
 {
     /// <summary>
-    /// Modal dialog Telegram-style để hiển thị thông báo lỗi / thông tin /
-    /// thành công thay cho <see cref="MessageBox"/> mặc định.
+    /// Modal dialog Telegram-style for displaying error / info /
+    /// success notifications instead of the default <see cref="MessageBox"/>.
     ///
-    /// Cách dùng nhanh:
+    /// Quick usage:
     /// <code>
-    /// frmError.ShowError(this, "Sai mật khẩu", "Vui lòng kiểm tra lại.");
-    /// frmError.ShowApi(this, errorMessageFromServer);   // tự parse JSON
-    /// frmError.ShowSuccess(this, "Đăng ký thành công");
+    /// frmError.ShowError(this, "Error", "Something went wrong.");
+    /// frmError.ShowApi(this, errorMessageFromServer);
+    /// frmError.ShowSuccess(this, "Success");
     /// </code>
     /// </summary>
     public sealed class frmError : Form
@@ -36,7 +37,7 @@ namespace SecureChat.Client.Forms.Shared
         private frmError(DialogKind kind, string title, string message)
         {
             _kind = kind;
-            _title = string.IsNullOrWhiteSpace(title) ? "Thông báo" : title;
+            _title = string.IsNullOrWhiteSpace(title) ? "Notification" : title;
             _message = message ?? string.Empty;
             BuildUi();
             NightModeService.ThemeChanged += OnThemeChanged;
@@ -58,9 +59,9 @@ namespace SecureChat.Client.Forms.Shared
             => Show(owner, DialogKind.Warning, title, message);
 
         /// <summary>
-        /// Parse chuỗi error gốc (kể cả JSON từ server) rồi show dialog đỏ.
+        /// Parse the raw error string (including JSON from server) and show a red dialog.
         /// </summary>
-        public static DialogResult ShowApi(IWin32Window? owner, string? rawError, string fallback = "Đã xảy ra lỗi không xác định.")
+        public static DialogResult ShowApi(IWin32Window? owner, string? rawError, string fallback = "An error occurred.")
         {
             var (title, message) = ApiErrorParser.Parse(rawError, fallback);
             return ShowError(owner, title, message);
@@ -169,7 +170,7 @@ namespace SecureChat.Client.Forms.Shared
             };
             var btnOk = new TelegramButton
             {
-                Text = "ĐÃ HIỂU",
+                Text = "Close",
                 Height = 40,
                 Font = TG.FontSemiBold(10.5f),
                 Radius = TG.RadiusSmall,
@@ -200,6 +201,8 @@ namespace SecureChat.Client.Forms.Shared
             AcceptButton = btnOk;
             CancelButton = btnOk;
             btnOk.Focus();
+
+            UiLocalization.ApplyToForm(this);
         }
 
         private static (Color HeaderBg, Color AccentColor, string IconGlyph) GetPalette(DialogKind kind)

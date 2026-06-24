@@ -1,5 +1,6 @@
 using SecureChat.Client.Components.Chat;
 using SecureChat.Client.Forms.Profile;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Client.Services;
 using SecureChat.Client.Settings;
 using SecureChat.DTOs;
@@ -228,10 +229,9 @@ namespace SecureChat.Client
         {
             NightModeService.Initialize();
             _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
-            // Áp dụng UI ngay nếu night mode đã được bật từ session trước
-            // (Initialize chỉ set TG.* static, không trigger OnNightModeChanged)
             if (NightModeService.IsEnabled)
                 OnNightModeChanged();
+            UiLocalization.ApplyToForm(this);
 
             try
             {

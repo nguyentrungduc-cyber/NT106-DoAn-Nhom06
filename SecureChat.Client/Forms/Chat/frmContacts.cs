@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Client.Services;
 
 namespace SecureChat.Client
@@ -144,7 +145,7 @@ namespace SecureChat.Client
 
             InitializeComponent();
             ThemeRefreshHelper.Hook(this);
-            this.Load += async (s, e) => await LoadContactsFromApiAsync();
+            this.Load += async (s, e) => { await LoadContactsFromApiAsync(); UiLocalization.ApplyToForm(this); };
         }
 
 
