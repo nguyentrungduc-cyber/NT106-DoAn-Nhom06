@@ -145,6 +145,7 @@ namespace SecureChat.Client
         // Timer to refresh UI for countdown display
         private System.Windows.Forms.Timer? _countdownRefreshTimer;
         private System.Windows.Forms.Timer? _resizeDebounceTimer;
+        private Bitmap? _chatWallpaperBmp; // wallpaper vẽ bởi _pnlChat
 
         // Local audio recorder service (NAudio)
         private SecureChat.Client.Services.AudioRecorderService? _audioRecorder;
@@ -999,7 +1000,8 @@ namespace SecureChat.Client
         private void BuildChatArea()
         {
             // chứa toàn bộ Header, danh sách tin nhắn và thanh nhập liệu.
-            _pnlChat = new Panel { BackColor = TG.SidebarBg };
+            _pnlChat = new Panel { BackColor = TG.ChatBg };
+            _pnlChat.Paint += PnlChat_Paint;
 
             // ── Chat Header ───────────────────────────
             _pnlChatHeader = new Panel { Height = 52, BackColor = TG.SidebarBg, Dock = DockStyle.Top };
@@ -1130,10 +1132,10 @@ namespace SecureChat.Client
             // ── Messages area  - Vùng hiển thị tin nhắn ─────────────────────────
             _pnlMessages = new ChatPanel
             {
-                Dock = DockStyle.Fill, // chiếm trọn phần diện tích còn lại
+                Dock = DockStyle.Fill,
                 AutoScroll = true,
                 Padding = new Padding(12, 8, 12, 8),
-                BackColor = TG.ChatBg,
+                BackColor = Color.Transparent, // lộ wallpaper từ _pnlChat (parent)
             };
 
             _pnlChatEmpty = new Panel
@@ -5541,9 +5543,11 @@ namespace SecureChat.Client
                 return WrapForwardIfNeeded(panel, messageId, isOut);
             }
 
-            // KHÔNG dùng Transparent — với AutoScroll Panel, Transparent kích hoạt
-            // cascade repaint lên parent mỗi khi scroll → flicker. Dùng TG.ChatBg.
-            var pnl = new Panel { BackColor = TG.ChatBg };
+            // Bubble wrapper chiếm full width của _pnlMessages.
+            // Dùng BubbleWrapperPanel thay vì Panel thường — tự vẽ background
+            // từ CachedWallpaper của parent thay vì yêu cầu parent repaint
+            // (tránh cascade repaint → flicker khi scroll).
+            var pnl = new BubbleWrapperPanel(_pnlMessages);
             int pad = 12;
 
             const int avatarAreaW = 44;
@@ -8262,47 +8266,72 @@ namespace SecureChat.Client
 
     }
 
+    /// <summary>
+    /// Panel cuộn chứa bubble tin nhắn. KHÔNG vẽ wallpaper ở đây —
+    /// wallpaper được vẽ bởi _pnlChat (parent) qua UpdateCachedBackground.
+    /// Panel này BackColor=Transparent để lộ wallpaper từ parent,
+    /// nhưng child bubble panels dùng màu thật (TG.ChatBg) để tránh
+    /// cascade Transparent repaint gây flicker khi scroll.
+    /// </summary>
+    /// <summary>
+    /// Panel bọc ngoài mỗi bubble tin nhắn — chiếm full width của ChatPanel.
+    /// Tự vẽ background từ CachedWallpaper của parent (không yêu cầu parent
+    /// repaint) → tránh cascade repaint → hết flicker khi scroll.
+    /// </summary>
+    internal class BubbleWrapperPanel : Panel
+    {
+        private readonly ChatPanel _parent;
+
+        public BubbleWrapperPanel(ChatPanel parent)
+        {
+            _parent = parent;
+            SetStyle(
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.UserPaint, true);
+            UpdateStyles();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (_parent.CachedWallpaper != null)
+            {
+                // Panel này nằm tại (0, this.Top) trong scroll content.
+                // AutoScrollPosition.Y là âm (ví dụ -200 khi scroll xuống 200px).
+                // Vị trí của panel trong viewport = this.Top + AutoScrollPosition.Y
+                // Wallpaper vẽ theo viewport (0,0) → cần translate ngược lại.
+                int panelTopInViewport = this.Top + _parent.AutoScrollPosition.Y;
+                // Vẽ wallpaper tại (0, -panelTopInViewport) trong local coords của panel
+                // → đúng vùng wallpaper hiển thị dưới vị trí này trong viewport
+                e.Graphics.DrawImage(_parent.CachedWallpaper,
+                    0, -panelTopInViewport,
+                    _parent.ClientSize.Width, _parent.ClientSize.Height);
+            }
+            else
+            {
+                e.Graphics.Clear(_parent.BackColor);
+            }
+        }
+    }
+
     public class ChatPanel : Panel
     {
-        public Bitmap? CachedWallpaper { get; set; }
+        public Bitmap? CachedWallpaper { get; set; } // unused, kept for compat
 
         public ChatPanel()
         {
             this.SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.UserPaint |
-                ControlStyles.ResizeRedraw, true);
+                ControlStyles.SupportsTransparentBackColor, true);
             this.UpdateStyles();
-        }
-
-        protected override void OnPaintBackground(PaintEventArgs e)
-        {
-            // Vẽ wallpaper tại (0,0) trong client coords — KHÔNG theo AutoScrollPosition.
-            // Wallpaper là nền cố định của viewport, không scroll cùng content.
-            // Bubble panel children dùng màu thật (không Transparent) nên không
-            // kích hoạt cascade repaint → hết flicker.
-            if (CachedWallpaper != null)
-                e.Graphics.DrawImage(CachedWallpaper, 0, 0, ClientSize.Width, ClientSize.Height);
-            else
-                e.Graphics.Clear(BackColor);
         }
 
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             const int WM_ERASEBKGND = 0x0014;
-            const int WM_VSCROLL    = 0x0115;
-            const int WM_MOUSEWHEEL = 0x020A;
-
             if (m.Msg == WM_ERASEBKGND) { m.Result = (IntPtr)1; return; }
-
             base.WndProc(ref m);
-
-            // Phải Invalidate sau scroll để OnPaintBackground vẽ lại wallpaper.
-            // Wallpaper là tĩnh trong viewport nên chỉ vùng NEWLY EXPOSED cần repaint.
-            // Dùng Invalidate(clipRect) để chỉ vẽ lại vùng lộ ra, không toàn bộ panel.
-            if (CachedWallpaper != null && (m.Msg == WM_VSCROLL || m.Msg == WM_MOUSEWHEEL))
-                this.Invalidate();
         }
     }
 }
