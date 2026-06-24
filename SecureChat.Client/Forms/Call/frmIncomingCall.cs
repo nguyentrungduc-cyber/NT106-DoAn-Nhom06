@@ -38,20 +38,9 @@ namespace SecureChat.Client.Forms.Call
             };
             _pnlAvatar.Paint += (s, e) =>
             {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var br = new SolidBrush(TgBlue);
-                e.Graphics.FillEllipse(br, 0, 0, _pnlAvatar.Width - 1, _pnlAvatar.Height - 1);
-                using var brush = new SolidBrush(Color.White);
-                var initial = callerName.Length > 0 ? callerName[0].ToString().ToUpperInvariant() : "?";
-                using var font = new Font("Segoe UI", 28f, FontStyle.Bold);
-                var size = e.Graphics.MeasureString(initial, font);
-                e.Graphics.DrawString(initial, font, brush,
-                    (_pnlAvatar.Width - size.Width) / 2,
-                    (_pnlAvatar.Height - size.Height) / 2);
+                var rect = new Rectangle(0, 0, _pnlAvatar.Width, _pnlAvatar.Height);
+                TG.DrawCircleAvatar(e.Graphics, rect, null, callerName, TgBlue);
             };
-            using var path = new GraphicsPath();
-            path.AddEllipse(0, 0, _pnlAvatar.Width, _pnlAvatar.Height);
-            _pnlAvatar.Region = new Region(path);
             Controls.Add(_pnlAvatar);
 
             _lblCaller = new Label
@@ -106,6 +95,8 @@ namespace SecureChat.Client.Forms.Call
             _btnReject.Location = new Point(200, 190);
             _btnReject.Click += (_, __) => Close();
             Controls.Add(_btnReject);
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
+            SecureChat.Client.Services.ThemeRefreshHelper.ApplyTo(this);
         }
     }
 }

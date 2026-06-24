@@ -125,9 +125,9 @@ namespace SecureChat.Client
             // Chuỗi "  Danh sách  " truyền vào constructor chính là thuộc tính Text của TabPage, và WinForms tự dùng Text đó để vẽ chữ lên tabstrip.
             // WinForms không tự vẽ nữa — thay vào đó hàm DrawTabItem() tự lấy tab.Text ra để vẽ.
             _tabs = new TabControl();
-            _tabContacts = new TabPage("  Danh sách  ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
-            _tabRequests = new TabPage("  Lời mời    ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
-            _tabSearch = new TabPage("  Tìm kiếm  ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabContacts = new TabPage("  Contacts  ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabRequests = new TabPage("  Requests  ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabSearch = new TabPage("  Search    ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
 
 
             _contactSubTabs = new TabControl();
@@ -285,7 +285,7 @@ namespace SecureChat.Client
                             {
                                 Type = ContactType.Group,
                                 ConversationId = c.ConversationID,
-                                DisplayName = c.Name ?? "Nhóm",
+                                DisplayName = c.Name ?? "Group",
                                 MemberCount = c.MemberCount,
                             }).ToList();
                     }
@@ -310,7 +310,7 @@ namespace SecureChat.Client
 
         private void InitializeComponent()
         {
-            Text = "Danh bạ";
+            Text = "Contacts";
             Size = new Size(440, 620);
             MinimumSize = new Size(360, 560);
             StartPosition = FormStartPosition.CenterParent;
@@ -325,7 +325,7 @@ namespace SecureChat.Client
             // 1. Header (đặt trước để WinForms tính docking đúng)
             var header = new TelegramHeader
             {
-                Title = "Danh bạ",
+                Title = "Contacts",
                 ShowBack = true,
                 Dock = DockStyle.Top
             };
@@ -482,9 +482,9 @@ namespace SecureChat.Client
             };
 
             // Tạo tab "Bạn bè" với nền trắng.
-            var tpFriends = new TabPage("Bạn bè") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            var tpFriends = new TabPage("Friends") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
             // Tạo tab "Nhóm" với nền trắng.
-            var tpGroups = new TabPage("Nhóm") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            var tpGroups = new TabPage("Groups") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
             // Thêm cả 2 tab này vào thanh điều hướng chính.
             _contactSubTabs.TabPages.AddRange(new[] { tpFriends, tpGroups });
 
@@ -648,15 +648,18 @@ namespace SecureChat.Client
             {
                 var menu = new ContextMenuStrip();
                 menu.Font = TG.FontRegular(9.5f);
-                menu.RenderMode = ToolStripRenderMode.System;
+                menu.BackColor = TG.SidebarBg;
+                menu.ForeColor = TG.TextPrimary;
+                menu.Renderer = new ToolStripProfessionalRenderer(new ContactsMenuColorTable());
 
-                var itemUnfriend = new ToolStripMenuItem("  🙍  Hủy kết bạn");
+                var itemUnfriend = new ToolStripMenuItem("  🙍  Unfriend");
                 itemUnfriend.ForeColor = TG.TextName;
+                itemUnfriend.BackColor = TG.SidebarBg;
                 itemUnfriend.Click += async (_, __) =>
                 {
                     var confirm = MessageBox.Show(
-                        $"Hủy kết bạn với {c.DisplayName}?",
-                        "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                        $"Unfriend {c.DisplayName}?",
+                        "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                     if (confirm != DialogResult.Yes) return;
 
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -664,16 +667,17 @@ namespace SecureChat.Client
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
                     else
-                        MessageBox.Show("Hủy kết bạn thất bại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show("Unfriend failed.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 };
 
-                var itemBlock = new ToolStripMenuItem("  🚫  Chặn người này");
+                var itemBlock = new ToolStripMenuItem("  🚫  Block user");
                 itemBlock.ForeColor = Color.FromArgb(0xE2, 0x4B, 0x4A);
+                itemBlock.BackColor = TG.SidebarBg;
                 itemBlock.Click += async (_, __) =>
                 {
                     var confirm = MessageBox.Show(
-                        $"Chặn {c.DisplayName}? Người này sẽ không thể nhắn tin cho bạn.",
-                        "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        $"Block {c.DisplayName}? This person will not be able to message you.",
+                        "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                     if (confirm != DialogResult.Yes) return;
 
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -684,7 +688,7 @@ namespace SecureChat.Client
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
                     else
-                        MessageBox.Show("Chặn người dùng thất bại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show("Block user failed.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 };
 
                 menu.Items.Add(itemUnfriend);
@@ -736,7 +740,7 @@ namespace SecureChat.Client
                         if (!otherUserRes.IsSuccessStatusCode)
                         {
                             btnMsg.Enabled = true;
-                            MessageBox.Show("Không thể lấy thông tin người dùng.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            MessageBox.Show("Could not get user information.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             return;
                         }
                         var otherUser = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.UserResponse>(
@@ -744,7 +748,7 @@ namespace SecureChat.Client
                         if (otherUser == null || string.IsNullOrWhiteSpace(otherUser.PublicKey))
                         {
                             btnMsg.Enabled = true;
-                            MessageBox.Show("Người dùng chưa thiết lập khóa mã hóa.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            MessageBox.Show("User has not set up encryption key.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             return;
                         }
 
@@ -754,7 +758,7 @@ namespace SecureChat.Client
                     catch (Exception ex)
                     {
                         btnMsg.Enabled = true;
-                        MessageBox.Show($"Không thể tạo khóa mã hóa: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show($"Cannot create encryption key: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
@@ -786,7 +790,7 @@ namespace SecureChat.Client
                     {
                         var errBody = await res.Content.ReadAsStringAsync();
                         btnMsg.Enabled = true;
-                        MessageBox.Show($"Lỗi {(int)res.StatusCode}: {errBody}", "Debug");
+                        MessageBox.Show($"Error {(int)res.StatusCode}: {errBody}", "Debug");
                         return;
                     }
 
@@ -808,8 +812,8 @@ namespace SecureChat.Client
                 catch (Exception ex)
                 {
                     btnMsg.Enabled = true;
-                    MessageBox.Show($"Không thể mở cuộc trò chuyện:\n{ex.Message}",
-                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Cannot open conversation:\n{ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
 
@@ -938,7 +942,7 @@ namespace SecureChat.Client
 
             var lblSub = new Label
             {
-                Text = $"{c.MemberCount} thành viên",
+                Text = $"{c.MemberCount} members",
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -970,8 +974,8 @@ namespace SecureChat.Client
                 catch (Exception ex)
                 {
                     btnMsg.Enabled = true;
-                    MessageBox.Show($"Không thể mở cuộc trò chuyện:\n{ex.Message}",
-                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Cannot open conversation:\n{ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
             // Khi click vào avatar hoặc tên người dùng, tự động kích hoạt nút tin nhắn
@@ -1046,9 +1050,9 @@ namespace SecureChat.Client
             int outgoingCount = _requests.FindAll(r => !r.IsIncoming).Count;
             int blockedCount = _blockedUsers.Count;  // ✅ FIX: Thêm đếm số blocked users
 
-            _tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
-            _tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
-            _tpBlocked = new TabPage($"Đã chặn ({blockedCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpIncoming = new TabPage($"Received ({incomingCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpSent = new TabPage($"Sent ({outgoingCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpBlocked = new TabPage($"Blocked ({blockedCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
 
             _requestSubTabs.TabPages.AddRange(new[] { _tpIncoming, _tpSent, _tpBlocked });
 
@@ -1125,7 +1129,7 @@ namespace SecureChat.Client
 
             var lblSub = new Label
             {
-                Text = req.MutualCount > 0 ? $"Bạn bè chung: {req.MutualCount}" : "@" + req.Username,
+                Text = req.MutualCount > 0 ? $"Mutual friends: {req.MutualCount}" : "@" + req.Username,
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -1138,8 +1142,8 @@ namespace SecureChat.Client
             if (isIncoming)
             {
                 int btnWidth = (initialWidth - 88) / 2;
-                var btnAccept = new TelegramButton { Text = "Chấp nhận", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(64, 54), Width = btnWidth };
-                var btnDecline = new TelegramButton { Text = "Từ chối", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64 + btnWidth + 8, 54), Width = btnWidth };
+                var btnAccept = new TelegramButton { Text = "Accept", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(64, 54), Width = btnWidth };
+                var btnDecline = new TelegramButton { Text = "Decline", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64 + btnWidth + 8, 54), Width = btnWidth };
 
                 btnAccept.Click += async (s, e) =>
                 {
@@ -1151,7 +1155,7 @@ namespace SecureChat.Client
                         _tabs.Refresh();
                         await LoadContactsFromApiAsync();
                     }
-                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                    else MessageBox.Show("Operation failed.", "Error");
                 };
                 btnDecline.Click += async (s, e) =>
                 {
@@ -1159,7 +1163,7 @@ namespace SecureChat.Client
                     var res = await http.PutAsync($"api/friends/requests/{req.RequestId}/decline", null);
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
-                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                    else MessageBox.Show("Operation failed.", "Error");
                 };
 
                 pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnAccept, btnDecline });
@@ -1177,14 +1181,14 @@ namespace SecureChat.Client
             }
             else
             {
-                var btnCancel = new TelegramButton { Text = "Hủy lời mời", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64, 54), Width = initialWidth - 76 };
+                var btnCancel = new TelegramButton { Text = "Cancel Request", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64, 54), Width = initialWidth - 76 };
                 btnCancel.Click += async (s, e) =>
                 {
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
                     var res = await http.DeleteAsync($"api/friends/requests/{req.RequestId}");
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
-                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                    else MessageBox.Show("Operation failed.", "Error");
                 };
 
                 pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnCancel });
@@ -1204,7 +1208,7 @@ namespace SecureChat.Client
 
         private static void RemoveRequest(Panel row, bool isAccepted)
         {
-            string msg = isAccepted ? "Đã chấp nhận lời mời kết bạn!" : "Đã từ chối lời mời.";
+            string msg = isAccepted ? "Friend request accepted!" : "Request declined.";
             MessageBox.Show(msg, "SecureChat", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             Control container = row.Parent;
@@ -1233,7 +1237,7 @@ namespace SecureChat.Client
 
             _tbSearch.Height = 36;
             _tbSearch.Dock = DockStyle.Fill;
-            _tbSearch.SetPlaceholder("🔍  Tìm theo tên hoặc @username...");
+            _tbSearch.SetPlaceholder("🔍  Search by name or @username...");
             _tbSearch.TextChanged += (s, e) =>
             {
                 _searchDebounceTimer?.Stop();
@@ -1250,7 +1254,7 @@ namespace SecureChat.Client
             };
             pnlSearch.Controls.Add(_tbSearch);
 
-            _lblSearchHint.Text = "Nhập tên hoặc username để tìm kiếm";
+            _lblSearchHint.Text = "Enter name or username to search";
             _lblSearchHint.Font = TG.FontRegular(9.5f);
             _lblSearchHint.ForeColor = TG.TextHint;
             _lblSearchHint.AutoSize = false;
@@ -1280,7 +1284,7 @@ namespace SecureChat.Client
             // Hiển thị trạng thái đang tìm
             var lblLoading = new Label
             {
-                Text = "Đang tìm kiếm...",
+                Text = "Searching...",
                 Font = TG.FontRegular(9f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -1341,8 +1345,8 @@ namespace SecureChat.Client
             var lblHdr = new Label
             {
                 Text = results.Count > 0
-                    ? $"Kết quả cho \"{query}\""
-                    : $"Không tìm thấy kết quả cho \"{query}\"",
+                    ? $"Results for \"{query}\""
+                    : $"No results found for \"{query}\"",
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -1402,23 +1406,23 @@ namespace SecureChat.Client
             switch (c.Status)
             {
                 case FriendStatus.Friend:
-                    statusCtrl = new Label { Text = "✓ Bạn bè", Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.FromArgb(40, TG.AccentGreen.R, TG.AccentGreen.G, TG.AccentGreen.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter, Padding = new Padding(6, 0, 6, 0), BorderStyle = BorderStyle.FixedSingle };
+                    statusCtrl = new Label { Text = "✓ Friends", Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingOutgoing:
-                    statusCtrl = new Label { Text = "Đã gửi", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.FromArgb(40, TG.TextSecondary.R, TG.TextSecondary.G, TG.TextSecondary.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Sent", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingIncoming:
-                    statusCtrl = new Label { Text = "Chờ duyệt", Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.FromArgb(40, TG.Blue.R, TG.Blue.G, TG.Blue.B), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Pending", Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.Blocked:
-                    statusCtrl = new Label { Text = "Đã chặn", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = TG.Divider, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = "Blocked", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 default:
-                    var btn = new TelegramButton { Text = "+ Kết bạn", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
+                    var btn = new TelegramButton { Text = "+ Add Friend", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
                     btn.Click += async (s, e) =>
                     {
                         btn.Enabled = false;
-                        btn.Text = "Đang gửi...";
+                        btn.Text = "Sending...";
                         try
                         {
                             var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -1429,21 +1433,21 @@ namespace SecureChat.Client
                             if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.Conflict)
                             {
                                 c.Status = FriendStatus.PendingOutgoing;
-                                btn.Text = "Đã gửi";
+                                btn.Text = "Sent";
                                 btn.ForeColor = System.Drawing.Color.FromArgb(0xE6, 0x5C, 0x00);
                                 await LoadContactsFromApiAsync();
                             }
                             else
                             {
                                 var errorBody = await res.Content.ReadAsStringAsync();
-                                btn.Text = "+ Kết bạn";
+                                btn.Text = "+ Add Friend";
                                 btn.Enabled = true;
-                                MessageBox.Show($"Lỗi {(int)res.StatusCode}: {errorBody}", "Gửi thất bại");
+                                MessageBox.Show($"Error {(int)res.StatusCode}: {errorBody}", "Send failed");
                             }
                         }
                         catch
                         {
-                            btn.Text = "+ Kết bạn";
+                            btn.Text = "+ Add Friend";
                             btn.Enabled = true;
                         }
                     };
@@ -1513,8 +1517,8 @@ namespace SecureChat.Client
                 _pnlSentRequests.Controls.Add(row);
                 y += 86;
             }
-            _tpIncoming.Text = $"Đã nhận ({_requests.Count(r => r.IsIncoming)})";
-            _tpSent.Text = $"Đã gửi ({_requests.Count(r => !r.IsIncoming)})";
+            _tpIncoming.Text = $"Received ({_requests.Count(r => r.IsIncoming)})";
+            _tpSent.Text = $"Sent ({_requests.Count(r => !r.IsIncoming)})";
             _requestSubTabs.Invalidate();
 
         }
@@ -1524,14 +1528,14 @@ namespace SecureChat.Client
             _pnlBlockedUsers.Controls.Clear();
 
             // Cập nhật số đếm trên tab
-            _tpBlocked.Text = $"Đã chặn ({_blockedUsers.Count})";
+            _tpBlocked.Text = $"Blocked ({_blockedUsers.Count})";
             _requestSubTabs.Invalidate();
 
             if (_blockedUsers.Count == 0)
             {
                 var lbl = new Label
                 {
-                    Text = "Chưa chặn ai",
+                    Text = "No blocked users",
                     Font = TG.FontRegular(9f),
                     ForeColor = TG.TextSecondary,
                     AutoSize = false,
@@ -1579,20 +1583,20 @@ namespace SecureChat.Client
 
             var lblStatus = new Label
             {
-                Text = "🚫 Đã chặn",
+                Text = "🚫 Blocked",
                 Font = TG.FontRegular(8f),
-                ForeColor = Color.FromArgb(0x75, 0x75, 0x75),
+                ForeColor = TG.TextSecondary,
                 AutoSize = false,
                 Height = 24,
                 Width = 80,
                 Location = new Point(initialWidth - 92, 16),
                 TextAlign = ContentAlignment.MiddleCenter,
-                BackColor = Color.FromArgb(0xF5, 0xF5, 0xF5),
+                BackColor = Color.Transparent,
             };
 
             var btnUnblock = new TelegramButton
             {
-                Text = "Bỏ chặn",
+                Text = "Unblock",
                 Height = 28,
                 Width = 80,
                 Radius = TG.RadiusSmall,
@@ -1605,7 +1609,7 @@ namespace SecureChat.Client
                 {
                     if (string.IsNullOrWhiteSpace(c.BlockId))
                     {
-                        MessageBox.Show("BlockId is empty; cannot unblock.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show("BlockId is empty; cannot unblock.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
@@ -1622,12 +1626,12 @@ namespace SecureChat.Client
                     }
                     else
                     {
-                        MessageBox.Show($"Bỏ chặn thất bại ({(int)res.StatusCode}): {body}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show($"Unblock failed ({(int)res.StatusCode}): {body}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Bỏ chặn thất bại: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Unblock failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
 
@@ -1664,6 +1668,18 @@ namespace SecureChat.Client
             pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
+        }
+
+        private sealed class ContactsMenuColorTable : ProfessionalColorTable
+        {
+            public override Color MenuItemSelected           => TG.SidebarHover;
+            public override Color MenuItemBorder             => TG.Divider;
+            public override Color ToolStripDropDownBackground => TG.SidebarBg;
+            public override Color SeparatorDark              => TG.Divider;
+            public override Color SeparatorLight             => TG.Divider;
+            public override Color ImageMarginGradientBegin   => TG.SidebarBg;
+            public override Color ImageMarginGradientMiddle  => TG.SidebarBg;
+            public override Color ImageMarginGradientEnd     => TG.SidebarBg;
         }
     }
 }

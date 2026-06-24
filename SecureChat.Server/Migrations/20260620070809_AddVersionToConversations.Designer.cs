@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureChat.Models;
 
@@ -11,9 +12,11 @@ using SecureChat.Models;
 namespace SecureChat.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260620070809_AddVersionToConversations")]
+    partial class AddVersionToConversations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -175,19 +178,6 @@ namespace SecureChat.Server.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("varchar(8)")
                         .HasColumnName("created_by");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1024)
-                        .HasColumnType("varchar(1024)")
-                        .HasColumnName("description");
-
-                    b.Property<byte>("GroupType")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("group_type");
-
-                    b.Property<byte>("HistoryMode")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("history_mode");
 
                     b.Property<DateTime?>("LastActivityAt")
                         .HasColumnType("datetime(6)")
@@ -806,30 +796,6 @@ namespace SecureChat.Server.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("SecureChat.Models.UserPresence", b =>
-                {
-                    b.Property<string>("UserID")
-                        .HasMaxLength(8)
-                        .HasColumnType("varchar(8)")
-                        .HasColumnName("user_id");
-
-                    b.Property<int>("ActiveSessionCount")
-                        .HasColumnType("int")
-                        .HasColumnName("active_session_count");
-
-                    b.Property<DateTime?>("LastSeenUtc")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("last_seen_utc");
-
-                    b.Property<byte>("Status")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("status");
-
-                    b.HasKey("UserID");
-
-                    b.ToTable("UserPresence");
-                });
-
             modelBuilder.Entity("SecureChat.Models.UserPrivacySettings", b =>
                 {
                     b.Property<string>("UserID")
@@ -1204,17 +1170,6 @@ namespace SecureChat.Server.Migrations
                     b.Navigation("Member");
 
                     b.Navigation("Message");
-                });
-
-            modelBuilder.Entity("SecureChat.Models.UserPresence", b =>
-                {
-                    b.HasOne("SecureChat.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("SecureChat.Models.UserPrivacySettings", b =>

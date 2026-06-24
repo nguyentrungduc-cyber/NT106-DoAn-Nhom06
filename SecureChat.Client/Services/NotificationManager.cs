@@ -40,7 +40,12 @@ namespace SecureChat.Client.Services
         private const int PopupHeight = 88;
         private const int CornerRadius = 10;
 
-        // Colors read from TG at paint time
+        private static readonly Color C_AvatarBorder = Color.FromArgb(0xE8, 0xEC, 0xF1);
+        private static readonly Color C_AccentBorder = Color.FromArgb(0x33, 0x99, 0xFF);
+        private static readonly Color C_Bg = Color.FromArgb(0xFF, 0xFF, 0xFF);
+        private static readonly Color C_Title = Color.FromArgb(0x1F, 0x2D, 0x3D);
+        private static readonly Color C_Body = Color.FromArgb(0x7A, 0x8A, 0x99);
+        private static readonly Color C_Time = Color.FromArgb(0xAA, 0xAA, 0xAA);
 
         public static void FlashWindow(IntPtr handle)
         {
@@ -182,6 +187,12 @@ namespace SecureChat.Client.Services
                 }
             };
 
+            // Show() TRƯỚC khi add vào _activePopups/Reposition — Form cần có
+            // Handle (window handle) đã tạo thì BeginInvoke mới hoạt động được.
+            // Gọi sau cùng từng gây InvalidOperationException khi tạo nhiều
+            // popup liên tiếp (vd nhiều thông báo realtime khi tạo nhóm mới).
+            popup.Show();
+
             lock (_popupLock)
             {
                 _activePopups.Add(popup);
@@ -193,8 +204,6 @@ namespace SecureChat.Client.Services
                 }
                 RepositionPopups();
             }
-
-            popup.Show();
         }
 
         private static void RepositionPopups()
@@ -206,6 +215,7 @@ namespace SecureChat.Client.Services
             for (int i = 0; i < _activePopups.Count; i++)
             {
                 var p = _activePopups[i];
+                if (!p.IsHandleCreated) continue; // tránh InvalidOperationException nếu Form chưa tạo handle
                 int offset = (_activePopups.Count - 1 - i) * (PopupHeight + PopupSpacing);
                 p.BeginInvoke(new Action(() =>
                 {
@@ -267,7 +277,7 @@ namespace SecureChat.Client.Services
                 TopMost = true;
                 Width = PopupWidth;
                 Height = PopupHeight;
-                BackColor = TG.WindowBg;
+                BackColor = Color.White;
                 Opacity = 0;
 
                 _popupFont = new Font("Segoe UI", 9f, FontStyle.Regular);
@@ -283,7 +293,7 @@ namespace SecureChat.Client.Services
                 var borderPanel = new Panel
                 {
                     Dock = DockStyle.Fill,
-                    BackColor = TG.CAccent,
+                    BackColor = C_AccentBorder,
                     Padding = new Padding(0, 0, 0, 0)
                 };
 
@@ -291,13 +301,13 @@ namespace SecureChat.Client.Services
                 {
                     Width = 4,
                     Dock = DockStyle.Left,
-                    BackColor = TG.CAccent
+                    BackColor = C_AccentBorder
                 };
 
                 _contentPanel = new Panel
                 {
                     Dock = DockStyle.Fill,
-                    BackColor = TG.WindowBg,
+                    BackColor = C_Bg,
                     Cursor = Cursors.Hand,
                     Padding = new Padding(12, 10, 12, 10)
                 };
@@ -314,34 +324,15 @@ namespace SecureChat.Client.Services
                 var avatarBmp = new Bitmap(38, 38);
                 using (var g = Graphics.FromImage(avatarBmp))
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    var rect = new Rectangle(0, 0, 37, 37);
-                    if (avatarImage != null)
-                    {
-                        using var path = new GraphicsPath();
-                        path.AddEllipse(rect);
-                        g.SetClip(path);
-                        g.DrawImage(avatarImage, rect);
-                        g.ResetClip();
-                    }
-                    else
-                    {
-                        g.FillEllipse(new SolidBrush(avatarColor), rect);
-                        float fontSize = 14f;
-                        using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-                        TextRenderer.DrawText(g, initials, font, rect, Color.White,
-                            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
-                    }
-                    using var borderPen = new Pen(TG.Divider, 1f);
-                    g.DrawEllipse(borderPen, rect);
+                    var rect = new Rectangle(0, 0, 38, 38);
+                    TG.DrawCircleAvatar(g, rect, avatarImage, displayNameForInitials, avatarColor);
                 }
                 _avatarCtrl.Image = avatarBmp;
 
                 var lblTitle = new Label
                 {
                     Text = title,
-                    ForeColor = TG.TextPrimary,
+                    ForeColor = C_Title,
                     Font = new Font("Segoe UI Semibold", 10f, FontStyle.Regular),
                     AutoSize = true,
                     Location = new Point(56, 10),
@@ -353,7 +344,7 @@ namespace SecureChat.Client.Services
                 var lblTime = new Label
                 {
                     Text = timeStr,
-                    ForeColor = TG.TextSecondary,
+                    ForeColor = C_Time,
                     Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
                     AutoSize = true,
                     Location = new Point(PopupWidth - 74, 12),
@@ -367,7 +358,7 @@ namespace SecureChat.Client.Services
                 var lblBody = new Label
                 {
                     Text = displayBody,
-                    ForeColor = TG.TextSecondary,
+                    ForeColor = C_Body,
                     Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
                     AutoSize = false,
                     Size = new Size(PopupWidth - 80, 36),

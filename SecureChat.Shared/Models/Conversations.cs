@@ -10,6 +10,9 @@ namespace SecureChat.Models
 		[Key, Column("conversation_id"), MaxLength(8)]
 		public string ConversationID { get; set; } = "";
 
+		[Column("version")]
+		public int Version { get; set; }
+
 		[Column("conversation_type")]
 		public ConversationType Type { get; set; } = ConversationType.Direct;
 
@@ -27,6 +30,15 @@ namespace SecureChat.Models
 
 		[Column("last_activity_at")]
 		public DateTime? LastActivityAt { get; set; }
+
+		[Column("description"), MaxLength(1024)]
+		public string? Description { get; set; }
+
+		[Column("group_type")]
+		public GroupVisibility GroupType { get; set; } = GroupVisibility.Private;
+
+		[Column("history_mode")]
+		public HistoryMode HistoryMode { get; set; } = HistoryMode.Visible;
 
 		[Column("created_at")]
 		public DateTime CreatedAt { get; set; }

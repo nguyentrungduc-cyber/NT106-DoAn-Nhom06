@@ -1,5 +1,4 @@
-using SecureChat.Client.Services;
-using System.Drawing;
+﻿using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -7,20 +6,25 @@ namespace SecureChat.Client.Forms.Chat
     {
         private readonly TextBox _txtName;
         private readonly TextBox _txtDescription;
-        private readonly PictureBox _avatar;
+        private readonly Panel _avatar;
+        private Image? _avatarImage;
 
         private readonly Label _lblDescPlaceholder;
         private readonly Label _lblGroupTypeValue;
         private readonly Label _lblChatHistoryValue;
-        private readonly Label _lblInviteLinksValue;
         private readonly Label _lblAdminsValue;
         private readonly Label _lblMembersValue;
+        private Label _lblName = null!;
+        private Panel _nameUnderline = null!;
+        private Panel _sectionSeparator = null!;
+        private Button _btnCancel = null!;
+        private Button _btnSave = null!;
 
         private readonly System.Windows.Forms.Timer _fadeTimer;
+        private bool _disposed;
 
         private string _groupType = "Private";
         private string _chatHistory = "Hidden";
-        private int _inviteLinksCount = 0;
         private int _adminsCount = 0;
         private int _membersCount = 0;
         private readonly string _conversationId; // Thêm biến lưu ID nhóm
@@ -30,15 +34,12 @@ namespace SecureChat.Client.Forms.Chat
         public string DescriptionText => _txtDescription.Text.Trim();
         public string GroupType => _groupType;
         public string ChatHistoryMode => _chatHistory;
-        public int InviteLinksCount => _inviteLinksCount;
         public int AdminsCount => _adminsCount;
         public int MembersCount => _membersCount;
-        public Image? GroupAvatar => _avatar.Image;
+        public Image? GroupAvatar => _avatarImage;
 
         public frmEditGroup(string conversationId, string currentName)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             _conversationId = conversationId; // Gán ID nhóm
             GroupName = currentName;
 
@@ -49,7 +50,6 @@ namespace SecureChat.Client.Forms.Chat
             MinimizeBox = false;
             ControlBox = false;
             BackColor = TG.WindowBg;
-            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(520, 720);
             DoubleBuffered = true;
@@ -84,37 +84,36 @@ namespace SecureChat.Client.Forms.Chat
                 Cursor = Cursors.Hand
             };
 
-            _avatar = new PictureBox
+            _avatar = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = TG.Blue,
-                // Fill the full circular frame when user selects an image.
-                SizeMode = PictureBoxSizeMode.StretchImage,
+                BackColor = Color.Transparent,
                 Cursor = Cursors.Hand
             };
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_avatar, true);
             _avatar.Paint += (_, e) =>
             {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                if (_avatar.Image == null)
+                var rect = new Rectangle(0, 0, _avatar.Width, _avatar.Height);
+                TG.DrawCircleAvatar(e.Graphics, rect, _avatarImage, "", Color.FromArgb(0x5C, 0xA5, 0xEC), drawInitials: false);
+                if (_avatarImage == null)
                 {
-                    e.Graphics.FillEllipse(new SolidBrush(TG.Blue), 0, 0, _avatar.Width - 1, _avatar.Height - 1);
-                    TextRenderer.DrawText(e.Graphics, "\U0001F4F7", new Font("Segoe UI Emoji", 24f), _avatar.ClientRectangle, Color.White,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    using var emojiFont = new Font("Segoe UI Emoji", 24f);
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    e.Graphics.DrawString("\U0001F4F7", emojiFont, Brushes.White, _avatar.ClientRectangle, sf);
                 }
-
-                using var path = new System.Drawing.Drawing2D.GraphicsPath();
-                path.AddEllipse(0, 0, _avatar.Width, _avatar.Height);
-                _avatar.Region = new Region(path);
             };
             _avatar.Click += (_, __) => PickAvatarImage();
             avatarHost.Click += (_, __) => PickAvatarImage();
             avatarHost.Controls.Add(_avatar);
 
-            var lblName = new Label
+            _lblName = new Label
             {
                 Text = "Group name",
                 Font = new Font("Segoe UI", 11f),
-                ForeColor = TG.TextBlue,
+                ForeColor = TG.Blue,
                 Location = new Point(150, 86),
                 Size = new Size(170, 28)
             };
@@ -130,9 +129,9 @@ namespace SecureChat.Client.Forms.Chat
                 BackColor = TG.WindowBg
             };
 
-            var nameUnderline = new Panel
+            _nameUnderline = new Panel
             {
-                BackColor = TG.TextBlue,
+                BackColor = TG.Blue,
                 Location = new Point(150, 156),
                 Size = new Size(280, 2)
             };
@@ -167,7 +166,8 @@ namespace SecureChat.Client.Forms.Chat
                 Size = new Size(520, 312),
                 BackColor = TG.WindowBg
             };
-            section.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = TG.Divider });
+            _sectionSeparator = new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = TG.Divider };
+            section.Controls.Add(_sectionSeparator);
 
             var rowGroupType = BuildSettingsRow("\u2699\uFE0F  Group type", _groupType, out _lblGroupTypeValue);
             rowGroupType.Location = new Point(0, 8);
@@ -177,27 +177,23 @@ namespace SecureChat.Client.Forms.Chat
             rowHistory.Location = new Point(0, 54);
             BindRowAction(rowHistory, OpenChatHistorySettings);
 
-            var rowInvite = BuildSettingsRow("\U0001F517  Invite links", _inviteLinksCount.ToString(), out _lblInviteLinksValue);
-            rowInvite.Location = new Point(0, 100);
-            BindRowAction(rowInvite, OpenInviteLinksSettings);
-
             var rowAdmins = BuildSettingsRow("\U0001F6E1\uFE0F  Administrators", _adminsCount.ToString(), out _lblAdminsValue);
-            rowAdmins.Location = new Point(0, 146);
+            rowAdmins.Location = new Point(0, 100);
             BindRowAction(rowAdmins, OpenAdministratorsSettings);
 
             var rowMembers = BuildSettingsRow("\U0001F465  Members", _membersCount.ToString(), out _lblMembersValue);
-            rowMembers.Location = new Point(0, 192);
+            rowMembers.Location = new Point(0, 146);
             BindRowAction(rowMembers, OpenMembersSettings);
 
-            section.Controls.AddRange(new Control[] { rowGroupType, rowHistory, rowInvite, rowAdmins, rowMembers });
+            section.Controls.AddRange(new Control[] { rowGroupType, rowHistory, rowAdmins, rowMembers });
 
-            var btnCancel = BuildBottomButton("Cancel", TG.TextBlue);
-            btnCancel.Location = new Point(300, 676);
-            btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
+            _btnCancel = BuildBottomButton("Cancel", TG.Blue);
+            _btnCancel.Location = new Point(300, 676);
+            _btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
-            var btnSave = BuildBottomButton("Save", TG.TextBlue, bold: true);
-            btnSave.Location = new Point(392, 676);
-            btnSave.Click += (_, __) =>
+            _btnSave = BuildBottomButton("Save", TG.Blue, bold: true);
+            _btnSave.Location = new Point(392, 676);
+            _btnSave.Click += (_, __) =>
             {
                 var n = _txtName.Text.Trim();
                 if (string.IsNullOrWhiteSpace(n))
@@ -213,11 +209,13 @@ namespace SecureChat.Client.Forms.Chat
 
             Controls.AddRange(new Control[]
             {
-                lblTitle, avatarHost, lblName, _txtName, nameUnderline,
+                lblTitle, avatarHost, _lblName, _txtName, _nameUnderline,
                 _lblDescPlaceholder, _txtDescription, section,
-                btnCancel, btnSave
+                _btnCancel, _btnSave
             });
             _ = LoadGroupInfoAsync();
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
         }
 
         private Panel BuildSettingsRow(string leftText, string rightText, out Label rightValue)
@@ -243,18 +241,20 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = rightText,
                 Font = new Font("Segoe UI", 10.5f),
-                ForeColor = TG.TextBlue,
+                ForeColor = TG.Blue,
                 TextAlign = ContentAlignment.MiddleRight,
                 Location = new Point(360, 8),
                 Size = new Size(130, 30),
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                Tag = "accent-fg"
             };
 
             var sep = new Panel
             {
                 Location = new Point(30, 45),
                 Size = new Size(460, 1),
-                BackColor = TG.Divider
+                BackColor = TG.Divider,
+                Tag = "sep"
             };
 
             pnl.Controls.AddRange(new Control[] { left, rightValue, sep });
@@ -290,28 +290,19 @@ namespace SecureChat.Client.Forms.Chat
             _lblChatHistoryValue.Text = _chatHistory;
         }
 
-        private void OpenInviteLinksSettings()
-        {
-            using var dlg = new frmInviteLinksSettings(_inviteLinksCount);
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-
-            _inviteLinksCount = dlg.LinksCount;
-            _lblInviteLinksValue.Text = _inviteLinksCount.ToString();
-        }
-
         private void OpenAdministratorsSettings()
         {
             using var dlg = new frmAdministratorsSettings(_conversationId, _adminsCount);
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            dlg.ShowDialog(this);
 
-            _adminsCount = dlg.AdministratorsCount;
-            _lblAdminsValue.Text = _adminsCount.ToString();
+            _ = LoadGroupInfoAsync();
         }
         private void OpenMembersSettings()
         {
-            // Truyền _conversationId sang frmMembersSettings thay vì truyền mảng dữ liệu giả
             using var dlg = new frmMembersSettings(_conversationId);
             dlg.ShowDialog(this);
+
+            _ = LoadGroupInfoAsync();
         }
 
         private void PickAvatarImage()
@@ -328,8 +319,8 @@ namespace SecureChat.Client.Forms.Chat
             {
                 using var fs = new FileStream(ofd.FileName, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var img = Image.FromStream(fs);
-                _avatar.Image?.Dispose();
-                _avatar.Image = new Bitmap(img);
+                _avatarImage?.Dispose();
+                _avatarImage = new Bitmap(img);
                 _avatar.Invalidate();
                 NewAvatarPath = ofd.FileName;
             }
@@ -357,46 +348,108 @@ namespace SecureChat.Client.Forms.Chat
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            _disposed = true;
             _fadeTimer.Stop();
             _fadeTimer.Dispose();
-            _avatar.Image?.Dispose();
-            _avatar.Image = null;
+            _avatarImage?.Dispose();
+            _avatarImage = null;
             base.OnFormClosed(e);
         }
 
         private async Task LoadGroupInfoAsync()
         {
-            // Gọi API lấy danh sách thành viên của nhóm này
-            var (ok, members, err) = await SecureChat.Client.Services.ApiClient.Instance
-                .GetAsync<List<SecureChat.DTOs.MemberResponse>>($"api/conversations/{_conversationId}/members");
+            var (ok, view, err) = await SecureChat.Client.Services.ApiClient.Instance
+                .GetAsync<SecureChat.DTOs.ConversationViewResponse>($"api/conversations/{_conversationId}/view");
 
-            if (ok && members != null)
+            if (!ok || view?.Metadata == null || !this.IsHandleCreated)
+                return;
+
+            var meta = view.Metadata;
+            this.Invoke(new Action(() =>
             {
-                // 1. Cập nhật tổng số thành viên thật
-                _membersCount = members.Count;
+                if (_disposed) return;
 
-                // Đoạn này dùng Invoke để đảm bảo an toàn khi cập nhật Giao diện (UI) từ luồng bất đồng bộ (Task)
-                if (this.IsHandleCreated)
+                if (!string.IsNullOrWhiteSpace(meta.Description))
                 {
-                    this.Invoke(new Action(() =>
-                    {
-                        _lblMembersValue.Text = _membersCount.ToString();
-
-                        // 2. Đếm số Owner (Admin)
-                        _adminsCount = members.Count(m =>
-                            m.Role == SecureChat.Models.MemberRole.Owner);
-
-                        _lblAdminsValue.Text = _adminsCount.ToString();
-                    }));
+                    _txtDescription.Text = meta.Description;
+                    _lblDescPlaceholder.Visible = false;
                 }
-            }
+
+                if (meta.GroupType.HasValue)
+                {
+                    _groupType = meta.GroupType.Value == SecureChat.Models.GroupVisibility.Public ? "Public" : "Private";
+                    _lblGroupTypeValue.Text = _groupType;
+                }
+
+                if (meta.ChatHistoryMode.HasValue)
+                {
+                    _chatHistory = meta.ChatHistoryMode.Value == SecureChat.Models.HistoryMode.Visible ? "Visible" : "Hidden";
+                    _lblChatHistoryValue.Text = _chatHistory;
+                }
+
+                _membersCount = meta.MemberCount;
+                _lblMembersValue.Text = _membersCount.ToString();
+                _adminsCount = meta.AdminCount;
+                _lblAdminsValue.Text = _adminsCount.ToString();
+
+                if (!string.IsNullOrWhiteSpace(meta.AvatarURL))
+                {
+                    _ = LoadAvatarAsync(meta.AvatarURL);
+                }
+            }));
         }
 
-
+        private async Task LoadAvatarAsync(string avatarUrl)
+        {
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var resolvedUrl = avatarUrl.StartsWith("http")
+                    ? avatarUrl
+                    : $"{SecureChat.Client.Services.ApiClient.Instance.GetBaseUrl()}/{avatarUrl.TrimStart('/')}";
+                var imgRes = await http.GetAsync(resolvedUrl);
+                if (!imgRes.IsSuccessStatusCode || _disposed) return;
+                using var imgStream = await imgRes.Content.ReadAsStreamAsync();
+                var img = new System.Drawing.Bitmap(imgStream);
+                if (_disposed) { img.Dispose(); return; }
+                this.Invoke(new Action(() =>
+                {
+                    if (_disposed) { img.Dispose(); return; }
+                    _avatarImage?.Dispose();
+                    _avatarImage = img;
+                    _avatar.Invalidate();
+                }));
+            }
+            catch { }
+        }
         private void OnThemeChanged()
         {
             if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            ThemeRefreshHelper.ApplyTo(this);  // ← delegate hết cho helper
+            if (IsDisposed) return;
+
+            ThemeRefreshHelper.ApplyTo(this);
+
+            _lblName.ForeColor = TG.Blue;
+            _nameUnderline.BackColor = TG.Blue;
+            _lblDescPlaceholder.ForeColor = TG.TextSecondary;
+            _sectionSeparator.BackColor = TG.Divider;
+            _btnCancel.ForeColor = TG.Blue;
+            _btnSave.ForeColor = TG.Blue;
+
+            void FixControls(Control parent)
+            {
+                foreach (Control c in parent.Controls)
+                {
+                    if (c.Tag as string == "accent-fg")
+                        c.ForeColor = TG.Blue;
+                    if (c.Tag as string == "sep")
+                        c.BackColor = TG.Divider;
+                    if (c.HasChildren)
+                        FixControls(c);
+                }
+            }
+            FixControls(this);
         }
     }
+    
 }

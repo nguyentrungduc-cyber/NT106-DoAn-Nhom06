@@ -1,4 +1,5 @@
-using SecureChat.Client.Services;
+﻿using SecureChat.Client.Services;
+using SecureChat.DTOs;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -7,19 +8,20 @@ namespace SecureChat.Client.Forms.Chat
 
         // Thêm biến này để lưu trữ ID của nhóm hiện tại
         private readonly string _conversationId;
+        private HashSet<string> _existingUserIds = new();
+        private bool _isAdding;
         public sealed record MemberItemData(string Name, string Status, string Role, Color AvatarColor, string Initials);
 
         private System.Windows.Forms.Timer _fadeTimer;
         private TextBox _txtSearch;
         private Panel _pnlList;
-        private List<MemberItemData> _allMembers;
+        private List<MemberItemData> _allMembers = new();
 
         public IReadOnlyList<MemberItemData> Members => _allMembers;
 
         public frmMembersSettings(string conversationId)
         {
-            ThemeRefreshHelper.Hook(this);
-            _conversationId = conversationId;  // Gán vào biến
+            _conversationId = conversationId;
             _ = LoadMembersAsync();
             Text = "Members";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -71,6 +73,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 12f),
+                BackColor = TG.WindowBg,
                 ForeColor = TG.TextSecondary,
                 Location = new Point(56, 15),
                 Size = new Size(420, 26),
@@ -98,22 +101,24 @@ namespace SecureChat.Client.Forms.Chat
                 BuildMemberRows(_txtSearch.Text.Trim());
             };
 
-            var sep = new Panel { Location = new Point(0, 51), Size = new Size(500, 1), BackColor = TG.Divider };
+            var sep = new Panel { Location = new Point(0, 51), Size = new Size(500, 1), BackColor = TG.Divider, Tag = "sep" };
             searchWrap.Controls.AddRange(new Control[] { lblSearchIcon, _txtSearch, sep });
 
             _pnlList = new Panel
             {
                 Location = new Point(0, 114),
-                Size = new Size(500, 560),
+                Size = new Size(500, ClientSize.Height - 114 - 66),
                 AutoScroll = true,
                 BackColor = TG.WindowBg
             };
 
             var btnAdd = BuildBottomButton("Add members", TG.Blue, true, 140);
+            btnAdd.Tag = "accent-fg";
             btnAdd.Location = new Point(20, 690);
             btnAdd.Click += (_, __) => AddMember();
 
             var btnClose = BuildBottomButton("Close", TG.Blue, false, 90);
+            btnClose.Tag = "accent-fg";
             btnClose.Location = new Point(390, 690);
             btnClose.Click += (_, __) => DialogResult = DialogResult.OK;
 
@@ -122,6 +127,8 @@ namespace SecureChat.Client.Forms.Chat
                 lblTitle, searchWrap, _pnlList, btnAdd, btnClose
             });
 
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             BuildMemberRows(string.Empty);
         }
 
@@ -152,34 +159,25 @@ namespace SecureChat.Client.Forms.Chat
 
         private Panel BuildMemberRow(MemberItemData m)
         {
+            const int rowWidth = 500;
+            const int rightMargin = 20;
+            const int badgeWidth = 90;
+            const int badgeX = rowWidth - rightMargin - badgeWidth;
+            const int nameX = 92;
+            const int nameWidth = badgeX - nameX - 8;
+
             var row = new Panel
             {
                 Size = new Size(500, 84),
                 BackColor = TG.WindowBg
             };
 
-            var avatar = new Panel
+            var avatar = new AvatarControl
             {
-                Location = new Point(20, 14),
-                Size = new Size(52, 52),
-                BackColor = m.AvatarColor
+                Location = new Point(20, 20),
+                Size = new Size(56, 56),
             };
-            avatar.Paint += (_, e) =>
-            {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using var path = new System.Drawing.Drawing2D.GraphicsPath();
-                path.AddEllipse(0, 0, avatar.Width, avatar.Height);
-                avatar.Region = new Region(path);
-            };
-            var lblInitial = new Label
-            {
-                Text = m.Initials,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 16f)
-            };
-            avatar.Controls.Add(lblInitial);
+            avatar.SetName(m.Name);
 
             var lblName = new Label
             {
@@ -211,9 +209,10 @@ namespace SecureChat.Client.Forms.Chat
                     Font = new Font("Segoe UI Semibold", 11f),
                     ForeColor = Color.FromArgb(0x9A, 0x77, 0xD5),
                     BackColor = Color.FromArgb(0xEF, 0xE8, 0xFF),
+                    Tag = "role-badge",
                     TextAlign = ContentAlignment.MiddleCenter,
-                    Location = new Point(420, 30),
-                    Size = new Size(64, 28)
+                    Location = new Point(badgeX, 34),
+                    Size = new Size(badgeWidth, 28)
                 };
                 badge.Paint += (_, e) =>
                 {
@@ -232,47 +231,108 @@ namespace SecureChat.Client.Forms.Chat
             return row;
         }
 
-        // SỬA LẠI HÀM AddMember() trong frmMembersSettings.cs
         private async void AddMember()
         {
-            // 1. Mở Form chọn bạn bè (Giả sử bạn có frmSelectFriend trả về ID)
-            // using var frm = new frmSelectFriend();
-            // if (frm.ShowDialog() != DialogResult.OK) return;
-            // string targetUserId = frm.SelectedUserId;
-
-            string targetUserId = "ID_LAY_TU_FORM_CHON_BAN_BE"; // Tạm thời để string cho bạn dễ hình dung
-
-            // Lưu ý: Cần thuật toán sinh khóa AES mới cho user này rồi mã hóa bằng Public Key của họ.
-            // Ở đây dùng string tạm, bạn nhớ thay bằng hàm Crypto thực tế nhé.
-            string encryptedKeyForNewMember = "KHOA_AES_DA_MA_HOA_BANG_PUBLIC_KEY_CUA_NEW_MEMBER";
-
-            var req = new SecureChat.DTOs.AddMemberRequest(
-                UserID: targetUserId,
-                EncryptedKey: encryptedKeyForNewMember,
-                Role: SecureChat.Models.MemberRole.Member
-            );
-
-            // Vô hiệu hóa nút trong lúc chờ API (tránh spam click)
-            var btn = (Button)ActiveControl;
-            btn.Enabled = false;
-            btn.Text = "Adding...";
-
-            var (ok, res, err) = await ApiClient.Instance.PostAsync<SecureChat.DTOs.AddMemberRequest, object>($"api/conversations/{_conversationId}/members", req);
-
-            btn.Enabled = true;
-            btn.Text = "Add members";
-
-            if (!ok)
-            {
-                MessageBox.Show($"Không thể thêm thành viên: {err}", "Lỗi Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            // 1. Open picker (no re-entrancy risk — modal dialog blocks clicks)
+            using var picker = new frmSelectFriend(_existingUserIds);
+            if (picker.ShowDialog(this) != DialogResult.OK) return;
+            if (string.IsNullOrWhiteSpace(picker.SelectedUserId))
                 return;
+
+            var targetUserId = picker.SelectedUserId;
+
+            // 2. Guard — prevent double-submit while API call is in flight
+            if (_isAdding) return;
+            _isAdding = true;
+            try
+            {
+                // 3. Re-check membership — member may have been added while
+                //    picker was open (by another admin or SignalR event).
+                if (_existingUserIds.Contains(targetUserId))
+                {
+                    MessageBox.Show(this, "This user is already a member.",
+                        "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                // 4. Validate public key — RSA-encrypt will fail if empty
+                if (string.IsNullOrWhiteSpace(picker.SelectedUserPublicKey))
+                {
+                    MessageBox.Show(this, "This friend does not have a public key. Cannot share group key.",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 5. Get fresh encrypted conversation key for the new member
+                //    (always fresh — cache is cleared inside the method to
+                //     avoid stale key after rekey).
+                var decryptor = new MessageDecryptor();
+                string? encryptedKey;
+                try
+                {
+                    encryptedKey = await decryptor.EncryptConversationKeyForMemberAsync(
+                        _conversationId, picker.SelectedUserPublicKey);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, $"Failed to encrypt group key: {ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(encryptedKey))
+                {
+                    MessageBox.Show(this, "Cannot retrieve group encryption key. Try again.",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                var req = new AddMemberRequest(
+                    UserID: targetUserId,
+                    EncryptedKey: encryptedKey,
+                    Role: SecureChat.Models.MemberRole.Member
+                );
+
+                // 6. Show progress in title bar
+                var titleBackup = Text;
+                Text = "Adding member...";
+
+                var (ok, res, err) = await ApiClient.Instance.PostAsync<AddMemberRequest, object>(
+                    $"api/conversations/{_conversationId}/members", req);
+
+                Text = titleBackup;
+
+                if (!ok)
+                {
+                    string userMsg = err switch
+                    {
+                        string e when e.Contains("Conflict") || e.Contains("already a member") =>
+                            "This user is already a member.",
+                        string e when e.Contains("Forbidden") || e.Contains("403") =>
+                            "You don't have permission to add members.",
+                        string e when e.Contains("Not Found") || e.Contains("404") =>
+                            "User or conversation not found.",
+                        string e when e.Contains("timeout") || e.Contains("timed out") =>
+                            "Request timed out. Please check your connection and try again.",
+                        _ => $"Cannot add member: {err}"
+                    };
+                    MessageBox.Show(this, userMsg, "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 7. Success — refresh member list from API (authoritative).
+                _ = RefreshMembersAsync();
             }
+            finally
+            {
+                _isAdding = false;
+            }
+        }
 
-            MessageBox.Show("Thêm thành viên thành công!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-            // 2. Gọi API tải lại danh sách thành viên mới (hoặc load lại form)
-            // Nếu bạn muốn tải lại, bạn có thể gọi lại 1 hàm FetchMembers() chứa logic lấy danh sách từ API ở đây, 
-            // sau đó gán lại vào _allMembers và gọi BuildMemberRows(_txtSearch.Text.Trim());
+        private async System.Threading.Tasks.Task RefreshMembersAsync()
+        {
+            await LoadMembersAsync();
         }
 
         private static Button BuildBottomButton(string text, Color color, bool bold, int width)
@@ -300,29 +360,67 @@ namespace SecureChat.Client.Forms.Chat
 
         private async Task LoadMembersAsync()
         {
-            // Gọi API lấy danh sách thành viên thật từ database
-            var (ok, res, err) = await SecureChat.Client.Services.ApiClient.Instance
-                .GetAsync<List<SecureChat.DTOs.MemberResponse>>($"api/conversations/{_conversationId}/members");
+            var (ok, view, err) = await SecureChat.Client.Services.ApiClient.Instance
+                .GetAsync<ConversationViewResponse>($"api/conversations/{_conversationId}/view");
 
-            if (ok && res != null)
+            if (ok && view?.Members != null)
             {
-                // Chuyển đổi dữ liệu từ API (res) sang định dạng _allMembers của Form
-                _allMembers = res.Select(m =>
+                _existingUserIds = view.Members
+                    .Select(m => m.UserID)
+                    .ToHashSet();
+
+                _allMembers = view.Members.Select(m =>
                 {
                     var status = (m.User?.ShowOnlineStatus == true)
                         ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User?.LastSeenUtc)
                         : "offline";
                     return new MemberItemData(
-                        m.User?.Username ?? "Unknown",
+                        m.User?.DisplayName ?? m.Nickname ?? "Unknown",
                         status,
                         m.Role.ToString(),
-                        TG.Blue, // Màu mặc định
-                        (m.User?.Username ?? "U").Substring(0, 1).ToUpper()
+                        TG.Blue,
+                        (m.User?.DisplayName ?? "U").Length > 0
+                            ? m.User!.DisplayName[..1].ToUpper()
+                            : "U"
                     );
                 }).ToList();
 
-                // Vẽ lại danh sách lên màn hình
                 BuildMemberRows(string.Empty);
+            }
+        }
+
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            if (IsDisposed) return;
+
+            ThemeRefreshHelper.ApplyTo(this);
+
+            void FixControls(Control parent)
+            {
+                foreach (Control c in parent.Controls)
+                {
+                    if (c.Tag as string == "accent-fg")
+                        c.ForeColor = TG.Blue;
+                    if (c.Tag as string == "sep")
+                        c.BackColor = TG.Divider;
+                    if (c.Tag as string == "role-badge" && c is Label badge)
+                    {
+                        badge.ForeColor = Color.FromArgb(0x9A, 0x77, 0xD5);
+                        badge.BackColor = Color.FromArgb(0xEF, 0xE8, 0xFF);
+                    }
+                    if (c.HasChildren)
+                        FixControls(c);
+                }
+            }
+            FixControls(this);
+
+            if (_txtSearch != null && !_txtSearch.IsDisposed)
+            {
+                _txtSearch.BackColor = TG.WindowBg;
+                if (!_txtSearch.Focused)
+                    _txtSearch.ForeColor = string.IsNullOrWhiteSpace(_txtSearch.Text) || _txtSearch.Text == "Search"
+                        ? TG.TextSecondary : TG.TextPrimary;
             }
         }
     }

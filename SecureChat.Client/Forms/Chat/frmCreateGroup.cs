@@ -1,4 +1,4 @@
-using SecureChat.Client.Components.Group;
+﻿using SecureChat.Client.Components.Group;
 using SecureChat.Client.Services;
 using System.Drawing.Drawing2D;
 
@@ -37,12 +37,14 @@ namespace SecureChat.Client.Forms.Chat
         private const int BOTTOM_HEIGHT = 60;
         private const int CONTENT_HEIGHT = FORM_HEIGHT - BOTTOM_HEIGHT;
         private const int SCROLLBAR_WIDTH = 18;
+        private static Color C_AVATAR_D => Color.FromArgb(0x5C, 0xA5, 0xEC);
 
         // ═══════════════════════════════════════════════════
         //  CONTROLS – Step 1
         // ═══════════════════════════════════════════════════
         private Panel _pnlStep1;
-        private PictureBox _pbAvatar;
+        private Panel _pbAvatar;
+        private Image? _avatarImage;
         private Panel _pnlCamOverlay;
         private TextBox _txtGroupName;
         private Panel _pnlUnderline;
@@ -95,8 +97,9 @@ namespace SecureChat.Client.Forms.Chat
         public frmCreateGroup()
         {
             InitializeComponent();
-            ThemeRefreshHelper.Hook(this);
             BuildUI();
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
         }
 
         protected override void OnShown(EventArgs e)
@@ -185,6 +188,7 @@ namespace SecureChat.Client.Forms.Chat
 
             // "Group name" heading
             var lblHead = Label("Group name", 10f, TG.TextSecondary);
+            lblHead.Tag = "sub";
             lblHead.TextAlign = ContentAlignment.MiddleCenter;
             lblHead.Size = new Size(FORM_WIDTH, 28);
             lblHead.Location = new Point(0, 22);
@@ -192,15 +196,21 @@ namespace SecureChat.Client.Forms.Chat
             // Avatar
             const int AVA = 82;
             int avaL = (FORM_WIDTH - AVA) / 2;
-            _pbAvatar = new PictureBox
+            _pbAvatar = new Panel
             {
                 Size = new Size(AVA, AVA),
                 Location = new Point(avaL, 66),
-                BackColor = TG.Blue,
-                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Transparent,
                 Cursor = Cursors.Hand,
             };
-            ClipCircle(_pbAvatar);
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_pbAvatar, true);
+            _pbAvatar.Paint += (_, pe) =>
+            {
+                var rect = new Rectangle(0, 0, _pbAvatar.Width, _pbAvatar.Height);
+                TG.DrawCircleAvatar(pe.Graphics, rect, _avatarImage, "", C_AVATAR_D, drawInitials: false);
+            };
 
             _pnlCamOverlay = new Panel
             {
@@ -248,7 +258,7 @@ namespace SecureChat.Client.Forms.Chat
                 BackColor = Color.Transparent,
             };
             _pnlUnderline.Paint += (_, e) =>
-                e.Graphics.Clear(_txtGroupName.Focused ? TG.TextBlue : TG.Divider);
+                e.Graphics.Clear(_txtGroupName.Focused ? TG.Blue : TG.Divider);
 
             _pnlStep1.Controls.AddRange(new Control[]
             {
@@ -301,24 +311,26 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 52),
                 Size = new Size(FORM_WIDTH, 50),
-                BackColor = TG.InputBg,
+                BackColor = TG.SidebarHover,
             };
             var lblIcon = Label("🔍", 13f, TG.TextSecondary);
+            lblIcon.Tag = "sub";
             lblIcon.Size = new Size(42, 50);
             lblIcon.Location = new Point(6, 0);
             lblIcon.TextAlign = ContentAlignment.MiddleCenter;
-            lblIcon.BackColor = TG.InputBg;
+            lblIcon.BackColor = TG.SidebarHover;
 
             var lblPH = Label("Search", 12f, TG.TextSecondary);
+            lblPH.Tag = "sub";
             lblPH.Location = new Point(50, 13);
             lblPH.Size = new Size(200, 24);
-            lblPH.BackColor = TG.InputBg;
+            lblPH.BackColor = TG.SidebarHover;
 
             _txtSearch = new TextBox
             {
                 Location = new Point(50, 10),
                 Size = new Size(FORM_WIDTH - 62, 30),
-                BackColor = TG.InputBg,
+                BackColor = TG.SidebarHover,
                 ForeColor = TG.TextPrimary,
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 12f),
@@ -366,7 +378,7 @@ namespace SecureChat.Client.Forms.Chat
             var sep = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = TG.Divider };
 
             _btnAction = FlatBtn("Next", 84, 36);
-            _btnAction.ForeColor = TG.TextBlue;
+            _btnAction.ForeColor = TG.Blue;
             _btnAction.Enabled = false;
             _btnAction.Click += BtnAction_Click;
 
@@ -404,7 +416,7 @@ namespace SecureChat.Client.Forms.Chat
                 Text = "Add Members";
                 _btnAction.Text = "Create";
                 _btnAction.Enabled = true;
-                _btnAction.ForeColor = TG.TextBlue;
+                _btnAction.ForeColor = TG.Blue;
                 RefreshCount();
                 BeginInvoke((Action)(() => _txtSearch.Focus()));
             }
@@ -432,7 +444,7 @@ namespace SecureChat.Client.Forms.Chat
         {
             bool ok = !string.IsNullOrWhiteSpace(_txtGroupName?.Text);
             _btnAction.Enabled = ok;
-            _btnAction.ForeColor = ok ? TG.TextBlue : TG.TextSecondary;
+            _btnAction.ForeColor = ok ? TG.Blue : TG.TextSecondary;
         }
 
         // ═══════════════════════════════════════════════════
@@ -521,10 +533,10 @@ namespace SecureChat.Client.Forms.Chat
             ResultAvatarPath = dlg.FileName;
             try
             {
-                var old = _pbAvatar.Image;
-                _pbAvatar.Image = Image.FromFile(ResultAvatarPath);
+                var old = _avatarImage;
+                _avatarImage = Image.FromFile(ResultAvatarPath);
                 old?.Dispose();
-                _pbAvatar.BackColor = TG.SidebarBg;
+                _pbAvatar.Invalidate();
                 _pnlCamOverlay.Invalidate();
             }
             catch { /* ảnh không hợp lệ – bỏ qua */ }
@@ -547,20 +559,13 @@ namespace SecureChat.Client.Forms.Chat
             RoundRect(g, pen, cx - 16, cy - 9, 32, 20, 4);   // body
             g.DrawEllipse(pen, cx - 7, cy - 7, 14, 14);       // lens
             RoundRect(g, pen, cx - 5, cy - 15, 10, 7, 2);     // top bump
-            using var dot = new SolidBrush(TG.TitleBarFg);
+            using var dot = new SolidBrush(Color.White);
             g.FillEllipse(dot, cx + 8, cy - 11, 4, 4);        // flash
         }
 
         // ═══════════════════════════════════════════════════
         //  DRAWING HELPERS
         // ═══════════════════════════════════════════════════
-        private static void ClipCircle(PictureBox pb)
-        {
-            var p = new GraphicsPath();
-            p.AddEllipse(0, 0, pb.Width, pb.Height);
-            pb.Region = new Region(p);
-        }
-
         private static void RoundRect(Graphics g, Pen pen, int x, int y, int w, int h, int r)
         {
             int d = r * 2;
@@ -600,6 +605,55 @@ namespace SecureChat.Client.Forms.Chat
             b.FlatAppearance.MouseOverBackColor = Color.FromArgb(22, 255, 255, 255);
             b.FlatAppearance.MouseDownBackColor = Color.FromArgb(44, 255, 255, 255);
             return b;
+        }
+
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            if (IsDisposed) return;
+
+            void SetSub(Control root)
+            {
+                foreach (Control c in root.Controls)
+                {
+                    if (c.Tag as string == "sub")
+                        c.ForeColor = TG.TextSecondary;
+                    if (c.HasChildren)
+                        SetSub(c);
+                }
+            }
+
+            BackColor = TG.WindowBg;
+            _pnlStep1.BackColor = TG.WindowBg;
+            _pnlStep2.BackColor = TG.WindowBg;
+            _pnlBottom.BackColor = TG.WindowBg;
+            _pnlUserList.BackColor = TG.WindowBg;
+            _flpChips.BackColor = TG.WindowBg;
+            _txtGroupName.BackColor = TG.WindowBg;
+            _txtGroupName.ForeColor = TG.TextPrimary;
+            _txtSearch.BackColor = TG.SidebarHover;
+            _txtSearch.ForeColor = TG.TextPrimary;
+            _pnlSearch.BackColor = TG.SidebarHover;
+
+            foreach (Control c in _pnlSearch.Controls)
+            {
+                if (c.BackColor != Color.Transparent)
+                    c.BackColor = TG.SidebarHover;
+            }
+
+            foreach (Control c in _pnlBottom.Controls)
+            {
+                if (c is Panel p && p.Height == 1)
+                    p.BackColor = TG.Divider;
+            }
+
+            _btnCancel.ForeColor = TG.TextSecondary;
+            UpdateActionButton();
+            _lblPlaceholder.ForeColor = TG.TextSecondary;
+            _lblMemberCount.ForeColor = TG.TextSecondary;
+            SetSub(this);
+            _pnlUnderline.Invalidate();
+            Invalidate(true);
         }
     }
 }

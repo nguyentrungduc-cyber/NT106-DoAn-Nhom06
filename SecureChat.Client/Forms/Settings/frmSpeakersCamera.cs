@@ -8,6 +8,7 @@ using System.Management;
 using System.Text;
 using System.Windows.Forms;
 using NAudio.CoreAudioApi;
+using NAudio.Wave;
 using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Settings
@@ -36,6 +37,10 @@ namespace SecureChat.Client.Forms.Settings
         private readonly Dictionary<string, int> _cameraNameToIndex = new(StringComparer.OrdinalIgnoreCase);
         private bool _isRenderingFrame;
 
+        private MicrophoneMonitor _micMonitor = null!;
+        private Panel _micMeterHost = null!;
+        private volatile bool _meterUpdatePending;
+
         private SpeakersCameraSettings _settings = null!;
 
         public frmSpeakersCamera()
@@ -48,9 +53,11 @@ namespace SecureChat.Client.Forms.Settings
             {
                 _settings = SpeakersCameraSettings.Load();
                 BindSettingsToUI();
+                StartMicMeter();
             };
             Shown += (_, __) => BeginInvoke(new Action(StartCameraPreview));
             FormClosed += (_, __) => StopCameraPreview();
+            FormClosed += (_, __) => StopMicMeter();
         }
 
         protected override void Dispose(bool disposing)
@@ -58,6 +65,7 @@ namespace SecureChat.Client.Forms.Settings
             if (disposing)
             {
                 StopCameraPreview();
+                StopMicMeter();
             }
             base.Dispose(disposing);
         }
@@ -349,27 +357,153 @@ namespace SecureChat.Client.Forms.Settings
             return y + row.Height;
         }
 
+        private static readonly float[] _barShape =
+        {
+            0.90f, 1.00f, 0.85f, 0.70f, 0.55f, 0.65f, 0.80f, 0.95f,
+            1.00f, 0.85f, 0.65f, 0.50f, 0.60f, 0.75f, 0.90f, 1.00f,
+            0.80f, 0.60f, 0.45f, 0.55f, 0.70f, 0.95f, 1.00f, 0.75f
+        };
+
         private int AddMicMeter(int y)
         {
-            var host = new Panel { Height = 44, BackColor = TG.WindowBg };
-            host.Paint += (_, e) =>
+            _micMeterHost = new Panel { Height = 44, BackColor = TG.WindowBg };
+            _micMeterHost.Paint += (_, e) =>
             {
                 int startX = 28;
-                int top = 16;
-                int barW = 4;
-                int gap = 6;
-                int count = Math.Max(20, (host.Width - 56) / (barW + gap));
-                using var brush = new SolidBrush(Color.FromArgb(0xDB, 0xE6, 0xEF));
-                for (int i = 0; i < count; i++)
+                int top = 12;
+                int barW = 3;
+                int gap = 5;
+                int barCount = Math.Max(20, (_micMeterHost.Width - 56) / (barW + gap));
+                int maxHeight = 24;
+
+                float level = _micMonitor?.Level ?? 0f;
+                float peakLevel = _micMonitor?.PeakLevel ?? 0f;
+                int activeBars = (int)(level * barCount);
+                if (activeBars < 0) activeBars = 0;
+                if (activeBars > barCount) activeBars = barCount;
+
+                int peakBar = (int)(peakLevel * barCount);
+                if (peakBar < 0) peakBar = 0;
+                if (peakBar >= barCount) peakBar = barCount - 1;
+
+                var inactiveColor = TG.SidebarHover;
+                var inactiveBrush = new SolidBrush(inactiveColor);
+
+                for (int i = 0; i < barCount; i++)
                 {
-                    e.Graphics.FillRectangle(brush, startX + i * (barW + gap), top, barW, 22);
+                    float x = startX + i * (barW + gap);
+                    float t = (float)i / barCount;
+
+                    if (i < activeBars)
+                    {
+                        float shape = _barShape[i % _barShape.Length];
+                        float heightScale = 0.3f + 0.7f * level;
+                        float barHeight = Math.Max(3f, maxHeight * shape * heightScale);
+                        float yPos = top + (maxHeight - barHeight);
+
+                        Color barColor;
+                        if (t < 0.6f)
+                            barColor = TG.CAccent;
+                        else if (t < 0.85f)
+                            barColor = Color.FromArgb(0xFF, 0xA7, 0x26);
+                        else
+                            barColor = Color.FromArgb(0xE5, 0x3E, 0x3E);
+
+                        using var brush = new SolidBrush(barColor);
+                        e.Graphics.FillRectangle(brush, x, yPos, barW, barHeight);
+                    }
+                    else
+                    {
+                        e.Graphics.FillRectangle(inactiveBrush, x, top + maxHeight - 2, barW, 2);
+                    }
+
+                    if (i == peakBar)
+                    {
+                        using var peakBrush = new SolidBrush(TG.TextPrimary);
+                        e.Graphics.FillRectangle(peakBrush, x, top - 1, barW, 3);
+                    }
                 }
+
+                inactiveBrush.Dispose();
             };
 
             var sep = new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = TG.Divider };
-            host.Controls.Add(sep);
-            _content.Controls.Add(host);
-            return y + host.Height;
+            _micMeterHost.Controls.Add(sep);
+            _content.Controls.Add(_micMeterHost);
+            return y + _micMeterHost.Height;
+        }
+
+        private void StartMicMeter()
+        {
+            try
+            {
+                _micMonitor = new MicrophoneMonitor();
+                _micMonitor.LevelChanged += OnMicLevelChanged;
+                _micMonitor.PeakChanged += OnMicPeakChanged;
+
+                int deviceNumber = 0;
+                if (!string.IsNullOrWhiteSpace(_settings.InputDevice) &&
+                    !string.Equals(_settings.InputDevice, "Default", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var enumerator = new MMDeviceEnumerator();
+                    var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+                    for (int i = 0; i < devices.Count; i++)
+                    {
+                        if (string.Equals(devices[i].FriendlyName, _settings.InputDevice, StringComparison.OrdinalIgnoreCase))
+                        {
+                            deviceNumber = i;
+                            break;
+                        }
+                    }
+                }
+
+                _micMonitor.Start(deviceNumber);
+            }
+            catch { }
+        }
+
+        private void RestartMicMeter()
+        {
+            StopMicMeter();
+            StartMicMeter();
+        }
+
+        private void StopMicMeter()
+        {
+            try
+            {
+                if (_micMonitor != null)
+                {
+                    _micMonitor.LevelChanged -= OnMicLevelChanged;
+                    _micMonitor.PeakChanged -= OnMicPeakChanged;
+                    _micMonitor.Dispose();
+                    _micMonitor = null!;
+                }
+            }
+            catch { }
+        }
+
+        private void OnMicLevelChanged(float level)
+        {
+            try
+            {
+                if (_micMeterHost == null || _micMeterHost.IsDisposed || !_micMeterHost.IsHandleCreated)
+                    return;
+
+                if (_meterUpdatePending) return;
+                _meterUpdatePending = true;
+
+                _micMeterHost.BeginInvoke(new Action(() =>
+                {
+                    _meterUpdatePending = false;
+                    _micMeterHost.Invalidate();
+                }));
+            }
+            catch { _meterUpdatePending = false; }
+        }
+
+        private void OnMicPeakChanged(float peak)
+        {
         }
 
         private int AddCameraPreview(int y)
@@ -484,6 +618,7 @@ namespace SecureChat.Client.Forms.Settings
             _lblInputValue.Text = picked;
             if (_chkUseSameDevices.Checked) _lblCallInputValue.Text = picked;
             SaveSettingsFromUI();
+            RestartMicMeter();
         }
 
         private void OnChooseCallOutputDevice()

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureChat.Models;
 
@@ -11,9 +12,11 @@ using SecureChat.Models;
 namespace SecureChat.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260619110031_AddHasHistoryMessageToCallLogsFix")]
+    partial class AddHasHistoryMessageToCallLogsFix
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -176,19 +179,6 @@ namespace SecureChat.Server.Migrations
                         .HasColumnType("varchar(8)")
                         .HasColumnName("created_by");
 
-                    b.Property<string>("Description")
-                        .HasMaxLength(1024)
-                        .HasColumnType("varchar(1024)")
-                        .HasColumnName("description");
-
-                    b.Property<byte>("GroupType")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("group_type");
-
-                    b.Property<byte>("HistoryMode")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("history_mode");
-
                     b.Property<DateTime?>("LastActivityAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("last_activity_at");
@@ -206,13 +196,6 @@ namespace SecureChat.Server.Migrations
                         .HasColumnType("tinyint unsigned")
                         .HasColumnName("conversation_type");
 
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("version")
-                        .HasDefaultValueSql("0");
-
                     b.HasKey("ConversationID");
 
                     b.HasIndex("CreatedBy");
@@ -225,7 +208,7 @@ namespace SecureChat.Server.Migrations
 
                     b.ToTable("Conversations", t =>
                         {
-                            t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1, 2)");
+                            t.HasCheckConstraint("chk_conv_type", "conversation_type in (0, 1)");
                         });
                 });
 
@@ -806,84 +789,6 @@ namespace SecureChat.Server.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("SecureChat.Models.UserPresence", b =>
-                {
-                    b.Property<string>("UserID")
-                        .HasMaxLength(8)
-                        .HasColumnType("varchar(8)")
-                        .HasColumnName("user_id");
-
-                    b.Property<int>("ActiveSessionCount")
-                        .HasColumnType("int")
-                        .HasColumnName("active_session_count");
-
-                    b.Property<DateTime?>("LastSeenUtc")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("last_seen_utc");
-
-                    b.Property<byte>("Status")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("status");
-
-                    b.HasKey("UserID");
-
-                    b.ToTable("UserPresence");
-                });
-
-            modelBuilder.Entity("SecureChat.Models.UserPrivacySettings", b =>
-                {
-                    b.Property<string>("UserID")
-                        .HasMaxLength(8)
-                        .HasColumnType("varchar(8)")
-                        .HasColumnName("user_id");
-
-                    b.Property<byte>("AutoDeleteMode")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("auto_delete_mode");
-
-                    b.Property<byte>("BioPrivacy")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("bio_privacy");
-
-                    b.Property<byte>("BirthdayPrivacy")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("birthday_privacy");
-
-                    b.Property<byte>("CallsPrivacy")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("calls_privacy");
-
-                    b.Property<byte>("ForwardedMessagesPrivacy")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("forwarded_messages_privacy");
-
-                    b.Property<byte>("LastSeenPrivacy")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("last_seen_privacy");
-
-                    b.Property<byte>("MessagesPrivacy")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("messages_privacy");
-
-                    b.Property<byte>("ProfilePhotoPrivacy")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("profile_photo_privacy");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("updated_at")
-                        .HasDefaultValueSql("current_timestamp");
-
-                    b.Property<byte>("VoiceMessagesPrivacy")
-                        .HasColumnType("tinyint unsigned")
-                        .HasColumnName("voice_messages_privacy");
-
-                    b.HasKey("UserID");
-
-                    b.ToTable("UserPrivacySettings");
-                });
-
             modelBuilder.Entity("SecureChat.Models.UserSession", b =>
                 {
                     b.Property<string>("SessionID")
@@ -1204,28 +1109,6 @@ namespace SecureChat.Server.Migrations
                     b.Navigation("Member");
 
                     b.Navigation("Message");
-                });
-
-            modelBuilder.Entity("SecureChat.Models.UserPresence", b =>
-                {
-                    b.HasOne("SecureChat.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("SecureChat.Models.UserPrivacySettings", b =>
-                {
-                    b.HasOne("SecureChat.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("SecureChat.Models.UserSession", b =>

@@ -13,7 +13,6 @@ namespace SecureChat.Client.Forms.Settings
 {
     public class frmSettings : Form
     {
-        // Colors read from TG at paint time
         private static readonly int ITEM_HEIGHT = 54;
         private static readonly int HEADER_PADDING_X = 16;
         private static readonly int AVATAR_SIZE = 88;
@@ -30,9 +29,9 @@ namespace SecureChat.Client.Forms.Settings
 
         public frmSettings(ProfileModel profile)
         {
+            _profile = profile ?? throw new ArgumentNullException(nameof(profile));
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
-            _profile = profile ?? throw new ArgumentNullException(nameof(profile));
             InitializeComponent();
             BuildUI();
         }
@@ -50,7 +49,6 @@ namespace SecureChat.Client.Forms.Settings
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 740);
             BackColor = TG.WindowBg;
-            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = TG.FontRegular(10f);
             DoubleBuffered = true;
             Resize += (_, __) => LayoutHeaderProfileText();
@@ -122,31 +120,19 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Size = new Size(AVATAR_SIZE, AVATAR_SIZE),
                 Location = new Point(HEADER_PADDING_X, 56),
-                BackColor = TG.GetAvatarColor(_profile.FullName)
+                BackColor = Color.Transparent
             };
+            // Enable DoubleBuffer để tránh flicker và artifact hình vuông
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_avatarPanel, true);
             _avatarPanel.Paint += (_, e) =>
             {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = new GraphicsPath();
-                path.AddEllipse(0, 0, _avatarPanel.Width, _avatarPanel.Height);
-                _avatarPanel.Region = new Region(path);
-
-                var avatarImage = LoadAvatarImage(_profile.AvatarPath);
-                if (avatarImage != null)
-                {
-                    e.Graphics.SetClip(path);
-                    e.Graphics.DrawImage(avatarImage, new Rectangle(0, 0, _avatarPanel.Width, _avatarPanel.Height));
-                    e.Graphics.ResetClip();
-                    avatarImage.Dispose();
-                    return;
-                }
-
-                using var f = TG.FontSemiBold(28f);
-                var initials = GetInitials(_profile.FullName);
-                var sz = e.Graphics.MeasureString(initials, f);
-                e.Graphics.DrawString(initials, f, Brushes.White,
-                    (_avatarPanel.Width - sz.Width) / 2,
-                    (_avatarPanel.Height - sz.Height) / 2);
+                var rect = new Rectangle(0, 0, _avatarPanel.Width, _avatarPanel.Height);
+                var photo = LoadAvatarImage(_profile.AvatarPath);
+                TG.DrawCircleAvatar(e.Graphics, rect, photo, _profile.FullName,
+                    TG.GetAvatarColor(_profile.FullName));
+                photo?.Dispose();
             };
 
             _lblName = new Label
@@ -214,7 +200,7 @@ namespace SecureChat.Client.Forms.Settings
             panel.Click += (_, __) => onClick();
 
             int labelX = 20; // Default position if no icon
-
+            
             // Only add icon if iconFile is not empty
             if (!string.IsNullOrEmpty(iconFile))
             {
@@ -242,8 +228,8 @@ namespace SecureChat.Client.Forms.Settings
                 Location = new Point(labelX, (ITEM_HEIGHT - 22) / 2),
                 BackColor = Color.Transparent
             };
-            lbl.MouseEnter += (_, __) => panel.BackColor = TG.SidebarHover;
-            lbl.MouseLeave += (_, __) => panel.BackColor = TG.WindowBg;
+                lbl.MouseEnter += (_, __) => panel.BackColor = TG.SidebarHover;
+                lbl.MouseLeave += (_, __) => panel.BackColor = TG.WindowBg;
             lbl.Click += (_, __) => onClick();
 
             panel.Controls.Add(lbl);
@@ -256,7 +242,8 @@ namespace SecureChat.Client.Forms.Settings
                     Font = TG.FontRegular(12f),
                     ForeColor = TG.CAccent,
                     AutoSize = true,
-                    BackColor = Color.Transparent
+                    BackColor = Color.Transparent,
+                    Tag = "accent"
                 };
                 trailing.MouseEnter += (_, __) => panel.BackColor = TG.SidebarHover;
                 trailing.MouseLeave += (_, __) => panel.BackColor = TG.WindowBg;
@@ -421,7 +408,7 @@ namespace SecureChat.Client.Forms.Settings
         {
             _lblName.Text = string.IsNullOrWhiteSpace(_profile.FullName) ? "Unknown User" : _profile.FullName;
             _lblEmail.Text = string.IsNullOrWhiteSpace(_profile.Email) ? "---" : _profile.Email;
-            _avatarPanel.BackColor = TG.GetAvatarColor(_profile.FullName);
+            _avatarPanel.BackColor = Color.Transparent;
 
             _lblUsername.Text = string.IsNullOrWhiteSpace(_profile.Username) ? "Add username" : _profile.Username;
             _lblUsername.ForeColor = string.IsNullOrWhiteSpace(_profile.Username) ? TG.TextSecondary : TG.CAccent;
@@ -543,12 +530,38 @@ namespace SecureChat.Client.Forms.Settings
             }
         }
 
-
-
         private void OnThemeChanged()
         {
             if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            ThemeRefreshHelper.ApplyTo(this);  // ← delegate hết cho helper
+            BackColor = TG.WindowBg;
+            _root.BackColor = TG.WindowBg;
+            _headerPanel.BackColor = TG.WindowBg;
+            _lblName.ForeColor = TG.TextPrimary;
+            _lblEmail.ForeColor = TG.TextSecondary;
+            _lblUsername.ForeColor = string.IsNullOrWhiteSpace(_profile.Username) ? TG.TextSecondary : TG.CAccent;
+            _avatarPanel.BackColor = Color.Transparent;
+            _avatarPanel.Invalidate();
+            foreach (var panel in _menuItems)
+            {
+                panel.BackColor = TG.WindowBg;
+                foreach (Control c in panel.Controls)
+                {
+                    if (c is Label lbl)
+                    {
+                        if (lbl.Text.Contains("🔓"))
+                            lbl.ForeColor = Color.FromArgb(0xE7, 0x2C, 0x3C);
+                        else if (lbl.Tag as string == "accent")
+                            lbl.ForeColor = TG.CAccent;
+                        else
+                            lbl.ForeColor = TG.TextPrimary;
+                    }
+                    else if (c is Panel s && s.Height == 1)
+                        s.BackColor = TG.Divider;
+                    c.Invalidate();
+                }
+            }
+            Invalidate(true);
         }
     }
+
 }

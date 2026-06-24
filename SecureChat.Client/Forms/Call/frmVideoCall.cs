@@ -132,7 +132,8 @@ namespace SecureChat.Client.Forms.Call
             _videoHandler.FrameCaptured += OnVideoHandlerFrame;
             _videoHandler.CameraError += OnVideoHandlerError;
 
-            int cameraIdx = LoadCameraIndexFromSettings();
+            DeviceConfig.Load();
+            int cameraIdx = DeviceConfig.GetCameraIndex();
             _videoHandler.Configure(cameraIndex: cameraIdx);
 
             _audioHandler = new AudioHandler();
@@ -146,9 +147,12 @@ namespace SecureChat.Client.Forms.Call
             Shown += (_, __) =>
             {
                 _ = _videoHandler.StartAsync();
-                _ = _audioHandler.StartAsync();
+                int inputDev = DeviceConfig.GetInputDeviceNumber();
+                int outputDev = DeviceConfig.GetOutputDeviceNumber();
+                _ = _audioHandler.StartAsync(inputDev, outputDev);
             };
             FormClosed += (_, __) => Cleanup();
+            ThemeRefreshHelper.Hook(this);
         }
 
         public frmVideoCall(string friendName, string callId, string conversationId, SignalRClient signalRClient, bool isGroupCall = false) : this(friendName)
@@ -229,6 +233,9 @@ namespace SecureChat.Client.Forms.Call
                 BackColor = TgBlue,
                 Cursor = Cursors.Default
             };
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(pnlAvatar, true);
             pnlAvatar.Paint += PnlAvatar_Paint;
 
             lblInitials = new Label
@@ -510,7 +517,7 @@ namespace SecureChat.Client.Forms.Call
             pnlAvatar.Location = new Point(
                 (ClientSize.Width - pnlAvatar.Width) / 2,
                 Math.Max(pnlGradientTop.Height + 8, avY));
-            ApplyCircle(pnlAvatar);
+            pnlAvatar.Invalidate();
 
             // Local preview – snap to bottom-right if user has not moved it
             if (!localPreviewMovedByUser && !isDragging)
@@ -544,9 +551,8 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         private void PnlAvatar_Paint(object? s, PaintEventArgs e)
         {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var br = new SolidBrush(TgBlue);
-            e.Graphics.FillEllipse(br, 0, 0, pnlAvatar.Width - 1, pnlAvatar.Height - 1);
+            var rect = new Rectangle(0, 0, pnlAvatar.Width, pnlAvatar.Height);
+            TG.DrawCircleAvatar(e.Graphics, rect, null, "", TgBlue, drawInitials: false);
         }
 
         private void PnlLocalWrap_Paint(object? s, PaintEventArgs e)
@@ -1198,70 +1204,6 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         //  CLEANUP
         // ═════════════════════════════════════════════════════════════════════════
-        private static int LoadCameraIndexFromSettings()
-        {
-            try
-            {
-                var path = System.IO.Path.Combine(AppContext.BaseDirectory, "speakerscamera.config");
-                if (!System.IO.File.Exists(path)) return 0;
-
-                var text = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8);
-                var parts = text.Contains('\u001F') ? text.Split('\u001F') : text.Split('|');
-                var cameraName = parts.Length >= 7 ? parts[5] : null;
-                if (string.IsNullOrWhiteSpace(cameraName) || cameraName == "Default") return 0;
-
-                var nameToIndex = new Dictionary<string, int>();
-                int friendlyCursor = 0;
-                var friendlyNames = GetFriendlyCameraNames();
-
-                for (int i = 0; i < 8; i++)
-                {
-                    try
-                    {
-                        using var probe = new OpenCvSharp.VideoCapture(i);
-                        if (!probe.IsOpened()) continue;
-
-                        string label = friendlyCursor < friendlyNames.Count
-                            ? friendlyNames[friendlyCursor++]
-                            : $"Camera {i + 1}";
-
-                        if (nameToIndex.ContainsKey(label))
-                            label = $"{label} ({i + 1})";
-
-                        nameToIndex[label] = i;
-                        probe.Release();
-                    }
-                    catch { }
-                }
-
-                if (nameToIndex.TryGetValue(cameraName, out var idx))
-                    return idx;
-                return 0;
-            }
-            catch
-            {
-                return 0;
-            }
-        }
-
-        private static List<string> GetFriendlyCameraNames()
-        {
-            var names = new List<string>();
-            try
-            {
-                using var searcher = new System.Management.ManagementObjectSearcher(
-                    "SELECT Name FROM Win32_PnPEntity WHERE PNPClass = 'Image'");
-                foreach (System.Management.ManagementObject obj in searcher.Get())
-                {
-                    var name = obj["Name"]?.ToString()?.Trim();
-                    if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name))
-                        names.Add(name);
-                }
-            }
-            catch { }
-            return names;
-        }
-
         private void Cleanup()
         {
             if (_cleanupDone) return;
@@ -1384,14 +1326,6 @@ namespace SecureChat.Client.Forms.Call
         {
             if (c.Width <= 0 || c.Height <= 0) return;
             using var path = RoundedRect(new Rectangle(0, 0, c.Width, c.Height), r);
-            c.Region = new Region(path);
-        }
-
-        private static void ApplyCircle(Control c)
-        {
-            if (c.Width <= 0 || c.Height <= 0) return;
-            var path = new GraphicsPath();
-            path.AddEllipse(0, 0, c.Width, c.Height);
             c.Region = new Region(path);
         }
 

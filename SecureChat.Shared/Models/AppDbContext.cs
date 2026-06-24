@@ -20,6 +20,7 @@ namespace SecureChat.Models
 		public DbSet<CallLog>           CallLogs		=> Set<CallLog>();
 		public DbSet<CallParticipant>   CallParticipants	=> Set<CallParticipant>();
 		public DbSet<UserPrivacySettings> UserPrivacySettings => Set<UserPrivacySettings>();
+		public DbSet<UserPresence> UserPresences => Set<UserPresence>();
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
 		{
@@ -77,6 +78,11 @@ namespace SecureChat.Models
 				.OnDelete(DeleteBehavior.Cascade);
 
 				m.Entity<Conversation>()
+				.Property(c => c.Version)
+				.IsConcurrencyToken()
+				.HasDefaultValueSql("0");
+
+			m.Entity<Conversation>()
 				.HasOne(c => c.Creator)
 				.WithMany()
 				.HasForeignKey(c => c.CreatedBy)

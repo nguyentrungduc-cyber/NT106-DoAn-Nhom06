@@ -1,5 +1,4 @@
-using System.Drawing;
-using SecureChat.Client.Services;
+﻿using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -15,8 +14,6 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmAdministratorsSettings(string conversationId, int currentCount)
         {
-            NightModeService.ThemeChanged += OnThemeChanged;
-            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             _conversationId = conversationId;
             _adminsCount = Math.Max(0, currentCount);
 
@@ -27,7 +24,6 @@ namespace SecureChat.Client.Forms.Chat
             MinimizeBox = false;
             ControlBox = false;
             BackColor = TG.WindowBg;
-            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(500, 740);
             Opacity = 0;
@@ -59,10 +55,28 @@ namespace SecureChat.Client.Forms.Chat
             {
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Segoe UI", 12f),
+                BackColor = TG.WindowBg,
                 ForeColor = TG.TextSecondary,
                 Text = "Search",
+                Tag = "search-tb",
                 Location = new Point(54, 16),
                 Size = new Size(420, 26)
+            };
+            txtSearch.GotFocus += (_, __) =>
+            {
+                if (txtSearch.Text == "Search")
+                {
+                    txtSearch.Text = string.Empty;
+                    txtSearch.ForeColor = TG.TextPrimary;
+                }
+            };
+            txtSearch.LostFocus += (_, __) =>
+            {
+                if (string.IsNullOrWhiteSpace(txtSearch.Text))
+                {
+                    txtSearch.Text = "Search";
+                    txtSearch.ForeColor = TG.TextSecondary;
+                }
             };
             var lblSearchIcon = new Label
             {
@@ -73,7 +87,7 @@ namespace SecureChat.Client.Forms.Chat
                 Size = new Size(32, 32),
                 TextAlign = ContentAlignment.MiddleCenter
             };
-            var sep = new Panel { Location = new Point(0, 53), Size = new Size(500, 1), BackColor = TG.Divider };
+            var sep = new Panel { Location = new Point(0, 53), Size = new Size(500, 1), BackColor = TG.Divider, Tag = "sep" };
             pnlSearch.Controls.AddRange(new Control[] { lblSearchIcon, txtSearch, sep });
 
             // Panel chứa danh sách admin — sẽ được populate từ API
@@ -90,40 +104,32 @@ namespace SecureChat.Client.Forms.Chat
                 Text = $"Administrators: {_adminsCount}",
                 Font = new Font("Segoe UI", 10f),
                 ForeColor = TG.TextSecondary,
+                Tag = "sub",
                 Location = new Point(20, 688),
                 Size = new Size(200, 24)
             };
 
             var btnClose = BuildBottomButton("Close", TG.Blue, false, 90);
+            btnClose.Tag = "accent-fg";
             btnClose.Location = new Point(390, 698);
             btnClose.Click += (_, __) => DialogResult = DialogResult.OK;
 
             Controls.AddRange(new Control[] { lblTitle, pnlSearch, _pnlAdmins, _lblCount, btnClose });
 
             _ = LoadAdminsAsync();
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
         }
 
         private async Task LoadAdminsAsync()
         {
             try
             {
-                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
-                var res = await http.GetAsync($"api/conversations/{_conversationId}/members");
-                if (!res.IsSuccessStatusCode) return;
+                var (ok, view, _) = await SecureChat.Client.Services.ApiClient.Instance
+                    .GetAsync<SecureChat.DTOs.ConversationViewResponse>($"api/conversations/{_conversationId}/view");
+                if (!ok || view?.Admins == null) return;
 
-                var json = await res.Content.ReadAsStringAsync();
-                var opts = new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
-                };
-                var list = System.Text.Json.JsonSerializer.Deserialize<List<SecureChat.DTOs.MemberResponse>>(json, opts);
-                if (list == null) return;
-
-                var admins = list.Where(m =>
-    m.Role == SecureChat.Models.MemberRole.Owner ||
-    m.Role == SecureChat.Models.MemberRole.Moderator).ToList();
-
+                var admins = view.Admins;
                 _adminsCount = admins.Count;
 
                 BeginInvoke(new Action(() =>
@@ -149,33 +155,12 @@ namespace SecureChat.Client.Forms.Chat
         {
             var row = new Panel { Size = new Size(500, 84), BackColor = TG.WindowBg };
 
-            var initials = displayName.Length >= 2
-                ? $"{displayName[0]}".ToUpper()
-                : displayName.ToUpper();
-
-            var avatar = new Panel
+            var avatar = new AvatarControl
             {
                 Location = new Point(20, 14),
                 Size = new Size(52, 52),
-                BackColor = TG.Blue
             };
-            avatar.Paint += (_, e) =>
-            {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using var path = new System.Drawing.Drawing2D.GraphicsPath();
-
-                path.AddEllipse(0, 0, avatar.Width, avatar.Height);
-                avatar.Region = new Region(path);
-            };
-            var lblInitial = new Label
-            {
-                Text = initials,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 16f)
-            };
-            avatar.Controls.Add(lblInitial);
+            avatar.SetName(displayName);
 
             var lblName = new Label
             {
@@ -200,7 +185,8 @@ namespace SecureChat.Client.Forms.Chat
                 Text = role.ToLower(),
                 Font = new Font("Segoe UI Semibold", 11f),
                 ForeColor = isOwner ? Color.FromArgb(0x9A, 0x77, 0xD5) : TG.Blue,
-                BackColor = isOwner ? Color.FromArgb(0xEF, 0xE8, 0xFF) : Color.FromArgb(0xE3, 0xF4, 0xFF),
+                BackColor = isOwner ? Color.FromArgb(0xEF, 0xE8, 0xFF) : TG.SidebarHover,
+                Tag = "role-badge",
                 TextAlign = ContentAlignment.MiddleCenter,
                 Location = new Point(416, 28),
                 Size = new Size(68, 28)
@@ -243,11 +229,41 @@ namespace SecureChat.Client.Forms.Chat
             _fadeTimer.Dispose();
             base.OnFormClosed(e);
         }
+
         private void OnThemeChanged()
         {
             if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
-            ThemeRefreshHelper.ApplyTo(this);  // ← delegate hết cho helper
-        }
+            if (IsDisposed) return;
 
+            ThemeRefreshHelper.ApplyTo(this);
+
+            void FixControls(Control parent)
+            {
+                foreach (Control c in parent.Controls)
+                {
+                    if (c.Tag as string == "accent-fg")
+                        c.ForeColor = TG.Blue;
+                    if (c.Tag as string == "sep")
+                        c.BackColor = TG.Divider;
+                    if (c.Tag as string == "sub")
+                        c.ForeColor = TG.TextSecondary;
+                    if (c.Tag as string == "role-badge" && c is Label badge)
+                    {
+                        bool isOwner = badge.Text.Equals("owner", StringComparison.OrdinalIgnoreCase);
+                        badge.ForeColor = isOwner ? Color.FromArgb(0x9A, 0x77, 0xD5) : TG.Blue;
+                        badge.BackColor = isOwner ? Color.FromArgb(0xEF, 0xE8, 0xFF) : TG.SidebarHover;
+                    }
+                    if (c.Tag as string == "search-tb")
+                    {
+                        c.BackColor = TG.WindowBg;
+                        if (c is TextBox tb && !tb.Focused)
+                            tb.ForeColor = string.IsNullOrWhiteSpace(tb.Text) || tb.Text == "Search" ? TG.TextSecondary : TG.TextPrimary;
+                    }
+                    if (c.HasChildren)
+                        FixControls(c);
+                }
+            }
+            FixControls(this);
+        }
     }
 }

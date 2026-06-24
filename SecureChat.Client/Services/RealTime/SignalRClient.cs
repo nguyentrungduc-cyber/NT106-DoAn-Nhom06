@@ -26,14 +26,15 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, Task>? ConversationCreated;
         public event Func<string, string?, string?, string?, Task>? ProfileUpdated;
         public event Func<string, Task>? ConversationDeleted;
-        public event Func<string, Task>? ConversationUpdated;
+		public event Func<string, int, Task>? ConversationUpdated;
         public event Func<string, Task>? MessagesCleared;
         public event Func<string, string, string, string, Task>? MessagePinned;
         public event Func<string, string, Task>? MessageUnpinned;
 public event Func<string, string, Task>? MemberAdded;
 public event Func<string, string, Task>? MemberRemoved;
-		public event Func<string, bool, DateTime?, Task>? UserPresenceChanged;
+		public event Func<string, string, DateTime?, Task>? UserStatusChanged;
 		public event Func<string, string, string, CallType, Task>? CallMissed;
+		public event Func<string, int, Task>? GroupSettingsUpdated;
 
         public bool IsConnected => _connection.State == HubConnectionState.Connected;
 
@@ -134,10 +135,10 @@ public event Func<string, string, Task>? MemberRemoved;
                     await ConversationDeleted.Invoke(conversationId);
             });
 
-            _connection.On<string>("ConversationUpdated", async conversationId =>
+            _connection.On<string, int>("ConversationUpdated", async (conversationId, version) =>
             {
                 if (ConversationUpdated is not null)
-                    await ConversationUpdated.Invoke(conversationId);
+                    await ConversationUpdated.Invoke(conversationId, version);
             });
 
             _connection.On<string>("MessagesCleared", async conversationId =>
@@ -170,10 +171,16 @@ public event Func<string, string, Task>? MemberRemoved;
                     await MemberRemoved.Invoke(conversationId, userId);
             });
 
-            _connection.On<string, bool, DateTime?>("UserPresenceChanged", async (userId, isOnline, lastSeenUtc) =>
+            _connection.On<string, int>("GroupSettingsUpdated", async (conversationId, version) =>
             {
-                if (UserPresenceChanged is not null)
-                    await UserPresenceChanged.Invoke(userId, isOnline, lastSeenUtc);
+                if (GroupSettingsUpdated is not null)
+                    await GroupSettingsUpdated.Invoke(conversationId, version);
+            });
+
+            _connection.On<string, string, DateTime?>("UserStatusChanged", async (userId, status, lastSeenUtc) =>
+            {
+                if (UserStatusChanged is not null)
+                    await UserStatusChanged.Invoke(userId, status, lastSeenUtc);
             });
 
             _connection.On<string, string, string, CallType>("CallMissed", async (callId, conversationId, callerName, callType) =>

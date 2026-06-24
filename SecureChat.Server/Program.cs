@@ -37,7 +37,8 @@ builder.Services.AddScoped<ConversationRepository>();
 builder.Services.AddScoped<MessageRepository>();
 builder.Services.AddScoped<CallRepository>();
 builder.Services.AddScoped<PrivacyRepository>();
-builder.Services.AddSingleton<PresenceTracker>();
+builder.Services.AddSingleton<UserPresenceService>();
+builder.Services.AddSingleton<GroupLockService>();
 builder.Services.AddScoped<JwtTokenService>();
 // Email service used by forgot-password flow. Registered as singleton so it can be reused.
 builder.Services.AddSingleton<EmailService>();

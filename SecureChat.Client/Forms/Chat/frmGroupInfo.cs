@@ -9,11 +9,11 @@ namespace SecureChat.Client.Forms.Chat
     {
         private void InitializeComponent() { }
 
-        private const int FORM_WIDTH = 540;
-        private const int FORM_HEIGHT = 760;
-        private const int HEADER_HEIGHT = 210;
+        private const int FORM_WIDTH = 580;
+        private const int FORM_HEIGHT = 800;
+        private const int HEADER_HEIGHT = 250;
         private const int ACTIONS_HEIGHT = 96;
-        private const int MEMBERS_HEADER_HEIGHT = 48;
+        private const int MEMBERS_HEADER_HEIGHT = 56;
         private const int BOTTOM_HEIGHT = 18;
         private const int SECTION_PAD = 18;
 
@@ -21,8 +21,10 @@ namespace SecureChat.Client.Forms.Chat
         // Colors read from TG at paint time
 
         private Panel _pnlList = null!;
-        private PictureBox _pbAvatar = null!;
+        private Panel _pbAvatar = null!;
+        private Image? _pbAvatarImage = null;
         private Label _lblName = null!;
+        private Label _lblDescription = null!;
         private Label _lblCount = null!;
         private Label _lblMembersTitle = null!;
 
@@ -80,15 +82,21 @@ namespace SecureChat.Client.Forms.Chat
             btnClose.Location = new Point(FORM_WIDTH - 46, 14);
             btnClose.Click += (_, __) => Close();
 
-            _pbAvatar = new PictureBox
+            _pbAvatar = new Panel
             {
-                Size = new Size(96, 96),
-                Location = new Point((FORM_WIDTH - 96) / 2, 34),
-                BackColor = Color.FromArgb(0xF4, 0xA4, 0x44),
-                SizeMode = PictureBoxSizeMode.Zoom
+                Size = new Size(110, 110),
+                Location = new Point((FORM_WIDTH - 110) / 2, 34),
+                BackColor = Color.Transparent,
             };
-            _pbAvatar.SizeChanged += (_, __) => ClipCircle(_pbAvatar);
-            _pbAvatar.Paint += (_, __) => ClipCircle(_pbAvatar);
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_pbAvatar, true);
+            _pbAvatar.Paint += (_, pe) =>
+            {
+                var rect = new Rectangle(0, 0, _pbAvatar.Width, _pbAvatar.Height);
+                TG.DrawCircleAvatar(pe.Graphics, rect, _pbAvatarImage, _lblName?.Text ?? "",
+                    Color.FromArgb(0xF4, 0xA4, 0x44));
+            };
 
             _lblName = new Label
             {
@@ -96,9 +104,21 @@ namespace SecureChat.Client.Forms.Chat
                 Font = new Font("Segoe UI Semibold", 17f),
                 ForeColor = TG.TextPrimary,
                 AutoSize = false,
-                Size = new Size(FORM_WIDTH, 36),
+                Size = new Size(FORM_WIDTH - 40, 40),
                 TextAlign = ContentAlignment.MiddleCenter,
-                Location = new Point(0, 136),
+                Location = new Point(20, 148),
+                BackColor = Color.Transparent
+            };
+
+            _lblDescription = new Label
+            {
+                Text = string.Empty,
+                Font = new Font("Segoe UI", 11f),
+                ForeColor = TG.TextSecondary,
+                AutoSize = false,
+                Size = new Size(FORM_WIDTH - 40, 26),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(20, 190),
                 BackColor = Color.Transparent
             };
 
@@ -108,13 +128,13 @@ namespace SecureChat.Client.Forms.Chat
                 Font = new Font("Segoe UI", 11f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
-                Size = new Size(FORM_WIDTH, 28),
+                Size = new Size(FORM_WIDTH - 40, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
-                Location = new Point(0, 166),
+                Location = new Point(20, 218),
                 BackColor = Color.Transparent
             };
 
-            pnl.Controls.AddRange(new Control[] { btnClose, _pbAvatar, _lblName, _lblCount });
+            pnl.Controls.AddRange(new Control[] { btnClose, _pbAvatar, _lblName, _lblDescription, _lblCount });
             Controls.Add(pnl);
         }
 
@@ -280,12 +300,41 @@ namespace SecureChat.Client.Forms.Chat
             _muteUntilUtc = f.MuteUntilUtc;
         }
 
-        private void OpenEditGroup()
+        private async void OpenEditGroup()
         {
             using var f = new frmEditGroup(_conversationId, _lblName.Text);
             if (f.ShowDialog(this) != DialogResult.OK) return;
 
-            _lblName.Text = f.GroupName;
+            try
+            {
+                var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                var payload = new
+                {
+                    Name = f.GroupName,
+                    Description = f.DescriptionText,
+                    GroupType = f.GroupType == "Public" ? (int)SecureChat.Models.GroupVisibility.Public : (int)SecureChat.Models.GroupVisibility.Private,
+                    ChatHistoryMode = f.ChatHistoryMode == "Visible" ? (int)SecureChat.Models.HistoryMode.Visible : (int)SecureChat.Models.HistoryMode.Hidden
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                var res = await http.PatchAsync(
+                    $"api/conversations/{_conversationId}",
+                    new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+                if (res.IsSuccessStatusCode)
+                {
+                    _lblName.Text = f.GroupName;
+                    _lblDescription.Text = f.DescriptionText;
+                    _lblDescription.Visible = !string.IsNullOrWhiteSpace(f.DescriptionText);
+                }
+                else
+                {
+                    var err = await res.Content.ReadAsStringAsync();
+                    MessageBox.Show(this, $"Cannot save: {err}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private async void OpenLeaveGroup()
@@ -299,19 +348,55 @@ namespace SecureChat.Client.Forms.Chat
 
             // Exclude current user from admin appointment list
             var currentIdx = memberNames.FindIndex(n => n.Equals(_currentUserDisplayName, StringComparison.OrdinalIgnoreCase));
-            string defaultNextOwner;
             if (currentIdx >= 0)
             {
                 memberNames.RemoveAt(currentIdx);
                 if (currentIdx < memberIds.Count)
                     memberIds.RemoveAt(currentIdx);
-                defaultNextOwner = memberNames.Count > 0 ? memberNames[0] : "Group member";
-            }
-            else
-            {
-                defaultNextOwner = _currentUserDisplayName;
             }
 
+            // CASE: Only one member (current user) — confirm direct delete
+            if (memberNames.Count == 0)
+            {
+                var result = MessageBox.Show(this,
+                    "You are the only member. Leaving will permanently delete the group.\n\nContinue?",
+                    "Leave group",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result != DialogResult.Yes)
+                    return;
+
+                try
+                {
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var res = await http.DeleteAsync($"api/conversations/{_conversationId}");
+                    if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.NoContent)
+                        Close();
+                    else
+                    {
+                        // Fallback: try leave endpoint
+                        var leaveRes = await http.PostAsync(
+                            $"api/conversations/{_conversationId}/leave", null);
+                        if (leaveRes.IsSuccessStatusCode)
+                            Close();
+                        else
+                        {
+                            var err = await leaveRes.Content.ReadAsStringAsync();
+                            MessageBox.Show(this, $"Cannot leave group: {err}", "Error",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                return;
+            }
+
+            // CASE: Multiple members — must appoint successor
+            string defaultNextOwner = memberNames[0];
             using var f = new frmLeaveGroup(_lblName.Text, defaultNextOwner, memberNames, memberIds);
             if (f.ShowDialog(this) != DialogResult.OK || !f.LeaveConfirmed) return;
 
@@ -333,26 +418,28 @@ namespace SecureChat.Client.Forms.Chat
                 else
                 {
                     var err = await res.Content.ReadAsStringAsync();
-                    MessageBox.Show(this, $"Không thể rời nhóm: {err}", "Lỗi",
+                    MessageBox.Show(this, $"Cannot leave group: {err}", "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        public void LoadGroup(string name, Image? avatar, IReadOnlyList<MemberModel> members)
+        public void LoadGroup(string name, string? description, Image? avatar, IReadOnlyList<MemberModel> members)
         {
             _lblName.Text = name;
+            _lblDescription.Text = description ?? string.Empty;
+            _lblDescription.Visible = !string.IsNullOrWhiteSpace(description);
             _lblCount.Text = $"{members.Count} members";
             _lblMembersTitle.Text = $"{members.Count} MEMBERS";
 
-            var oldAvatar = _pbAvatar.Image;
-            _pbAvatar.Image = avatar;
+            var oldAvatar = _pbAvatarImage;
+            _pbAvatarImage = avatar != null ? new Bitmap(avatar) : null;
             oldAvatar?.Dispose();
-            _pbAvatar.BackColor = avatar == null ? Color.FromArgb(0xF4, 0xA4, 0x44) : Color.Transparent;
+            _pbAvatar.Invalidate();
 
             _pnlList.SuspendLayout();
             DisposeOldMemberItems();
@@ -365,7 +452,7 @@ namespace SecureChat.Client.Forms.Chat
                 {
                     Dock = DockStyle.None,
                     Margin = Padding.Empty,
-                    Location = new Point(SECTION_PAD, y),
+                    Location = new Point(0, y),
                     BackColor = Color.Transparent
                 };
                 item.DisplayName = m.Name;
@@ -397,7 +484,7 @@ namespace SecureChat.Client.Forms.Chat
         private void LayoutMemberItems()
         {
             int scrollbar = SystemInformation.VerticalScrollBarWidth;
-            int available = _pnlList.ClientSize.Width - (SECTION_PAD * 2) - scrollbar;
+            int available = _pnlList.ClientSize.Width - SECTION_PAD - scrollbar;
             foreach (Control c in _pnlList.Controls)
             {
                 if (c is ucGroupMemberItem item)

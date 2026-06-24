@@ -1,10 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SecureChat.Models;
 
 namespace SecureChat.Repositories
 {
 	public class ConversationRepository(AppDbContext db)
 	{
+		public AppDbContext DbContext => db;
+
+		public async Task<IDbContextTransaction> BeginTransactionAsync(System.Data.IsolationLevel isolationLevel)
+			=> await db.Database.BeginTransactionAsync(isolationLevel);
 		/*
 		 * CONVERSATION
 		 */
@@ -48,8 +53,40 @@ namespace SecureChat.Repositories
 
 		public async Task UpdateAsync(Conversation conversation)
 		{
+			conversation.Version++;
 			db.Conversations.Update(conversation);
 			await db.SaveChangesAsync();
+		}
+
+		public async Task<Conversation> UpdateGroupSettingsAsync(string conversationID, string? description, GroupVisibility? groupType, HistoryMode? historyMode)
+		{
+			const int maxRetries = 3;
+			for (int attempt = 1; attempt <= maxRetries; attempt++)
+			{
+				try
+				{
+					var conv = await db.Conversations
+						.FirstOrDefaultAsync(c => c.ConversationID == conversationID)
+						?? throw new KeyNotFoundException($"Không tìm thấy cuộc trò chuyện {conversationID}.");
+
+					if (description is not null)
+						conv.Description = description;
+					if (groupType.HasValue)
+						conv.GroupType = groupType.Value;
+					if (historyMode.HasValue)
+						conv.HistoryMode = historyMode.Value;
+
+					conv.Version++;
+					await db.SaveChangesAsync();
+					return conv;
+				}
+				catch (DbUpdateConcurrencyException) when (attempt < maxRetries)
+				{
+					await Task.Delay(100 * attempt);
+					continue;
+				}
+			}
+			throw new DbUpdateConcurrencyException("The group was modified concurrently. Please try again.");
 		}
 
 		public async Task SetLastMessageAsync(string conversationID, string messageID, DateTime activityAt)
@@ -70,6 +107,34 @@ namespace SecureChat.Repositories
 
 			conv.LastMessageID  = null;
 			conv.LastActivityAt = null;
+			await db.SaveChangesAsync();
+		}
+
+		public async Task<int> GetVersionAsync(string conversationID)
+		{
+			var conv = await db.Conversations.FindAsync(conversationID);
+			return conv?.Version ?? 0;
+		}
+
+		public async Task HardDeleteConversationAsync(string conversationID)
+		{
+			var conv = await db.Conversations
+				.Include(c => c.Members)
+				.Include(c => c.PinnedMessages)
+				.FirstOrDefaultAsync(c => c.ConversationID == conversationID);
+			if (conv is null)
+				return;
+
+			// Break SetNull FK references before deletion
+			conv.LastMessageID = null;
+			foreach (var m in conv.Members)
+				m.LastReadMsgID = null;
+			foreach (var p in conv.PinnedMessages)
+				p.PinnedBy = null;
+
+			await db.SaveChangesAsync();
+
+			db.Conversations.Remove(conv);
 			await db.SaveChangesAsync();
 		}
 
@@ -111,6 +176,10 @@ namespace SecureChat.Repositories
 		{
 			member.JoinedAt = DateTime.UtcNow;
 			db.ConversationMembers.Add(member);
+
+			var conv = await db.Conversations.FindAsync(member.ConversationID);
+			if (conv is not null) conv.Version++;
+
 			await db.SaveChangesAsync();
 			return member;
 		}
@@ -127,6 +196,10 @@ namespace SecureChat.Repositories
 				.Include(m => m.User)
 				.FirstOrDefaultAsync(m => m.ConversationID == conversationID &&
 				                          m.UserID == userID);
+
+		public async Task<int> GetActiveMemberCountAsync(string conversationID)
+			=> await db.ConversationMembers
+				.CountAsync(m => m.ConversationID == conversationID && m.LeftAt == null);
 
 		public async Task<List<ConversationMember>> GetActiveMembersAsync(string conversationID)
 			=> await db.ConversationMembers
@@ -151,6 +224,9 @@ namespace SecureChat.Repositories
 		{
 			var member = await db.ConversationMembers.FindAsync(memberID)
 				?? throw new KeyNotFoundException($"Không tìm thấy thành viên {memberID}.");
+
+			var conv = await db.Conversations.FindAsync(member.ConversationID);
+			if (conv is not null) conv.Version++;
 
 			member.Role = role;
 			await db.SaveChangesAsync();
@@ -213,6 +289,9 @@ namespace SecureChat.Repositories
 			var member = await db.ConversationMembers.FindAsync(memberID);
 			if (member is null)
 				return;
+
+			var conv = await db.Conversations.FindAsync(member.ConversationID);
+			if (conv is not null) conv.Version++;
 
 			db.ConversationMembers.Remove(member);
 			await db.SaveChangesAsync();
