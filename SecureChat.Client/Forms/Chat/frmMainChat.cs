@@ -809,9 +809,9 @@ namespace SecureChat.Client
             if (!hasVisible)
             {
                 if (hasSearch && hasConversations)
-                    _lblEmptyState.Text = "No conversations match your search.";
+                    _lblEmptyState.Text = LocalizationService.Translate("No conversations match your search.");
                 else
-                    _lblEmptyState.Text = "You have no conversations yet.";
+                    _lblEmptyState.Text = LocalizationService.Translate("You have no conversations yet.");
                 LayoutEmptyState();
             }
         }
@@ -1352,18 +1352,18 @@ namespace SecureChat.Client
                     Renderer = new ToolStripProfessionalRenderer(new ChatMenuColorTable())
                 };
 
-                _mnuMuteNotifications = CreateChatMenuItem("🔕  Mute notifications", (_, __) => ToggleMuteNotificationsQuick());
+                _mnuMuteNotifications = CreateChatMenuItem($"🔕  {LocalizationService.Translate("Mute Notifications")}", (_, __) => ToggleMuteNotificationsQuick());
 
-                _mnuUnmuteNow = CreateChatMenuItem("🔊  Unmute now", (_, __) => UnmuteNow());
-                _mnuDisableSound = CreateChatMenuItem("🔇  Disable sound", (_, __) => ToggleDisableSound());
-                _mnuMuteForever = CreateChatMenuItem("⛔  Mute forever", (_, __) => SetMuteForever());
-                _mnuMuteFor = CreateChatMenuItem("⏳  Mute for...", null);
+                _mnuUnmuteNow = CreateChatMenuItem($"🔊  {LocalizationService.Translate("Unmute Now")}", (_, __) => UnmuteNow());
+                _mnuDisableSound = CreateChatMenuItem($"🔇  {LocalizationService.Translate("Disable Sound")}", (_, __) => ToggleDisableSound());
+                _mnuMuteForever = CreateChatMenuItem($"⛔  {LocalizationService.Translate("Mute Forever")}", (_, __) => SetMuteForever());
+                _mnuMuteFor = CreateChatMenuItem($"⏳  {LocalizationService.Translate("Mute for...")}", null);
 
-                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("30 minutes", (_, __) => SetMuteFor(TimeSpan.FromMinutes(30))));
-                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 hour", (_, __) => SetMuteFor(TimeSpan.FromHours(1))));
-                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("8 hours", (_, __) => SetMuteFor(TimeSpan.FromHours(8))));
-                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 day", (_, __) => SetMuteFor(TimeSpan.FromDays(1))));
-                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem("1 week", (_, __) => SetMuteFor(TimeSpan.FromDays(7))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem(LocalizationService.Translate("30 minutes"), (_, __) => SetMuteFor(TimeSpan.FromMinutes(30))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem(LocalizationService.Translate("1 hour"), (_, __) => SetMuteFor(TimeSpan.FromHours(1))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem(LocalizationService.Translate("8 hours"), (_, __) => SetMuteFor(TimeSpan.FromHours(8))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem(LocalizationService.Translate("1 day"), (_, __) => SetMuteFor(TimeSpan.FromDays(1))));
+                _mnuMuteFor.DropDownItems.Add(CreateChatSubMenuItem(LocalizationService.Translate("1 week"), (_, __) => SetMuteFor(TimeSpan.FromDays(7))));
 
                 _muteOptionItems = new ToolStripItem[]
                 {
@@ -1388,23 +1388,23 @@ namespace SecureChat.Client
             if (isGroup)
             {
                 _chatMoreMenu.Items.Add(new ToolStripSeparator());
-                _chatMoreMenu.Items.Add(CreateChatMenuItem("ℹ️  View group info", (_, __) => OpenGroupInfo()));
-                _chatMoreMenu.Items.Add(CreateChatMenuItem("🎛️  Manage group", (_, __) => OpenEditGroupFromChat()));
-                _chatMoreMenu.Items.Add(CreateChatMenuItem("🧹  Clear history", (_, __) => ClearHistory()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem($"ℹ️  {LocalizationService.Translate("View group info")}", (_, __) => OpenGroupInfo()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem($"🎛️  {LocalizationService.Translate("Manage group")}", (_, __) => OpenEditGroupFromChat()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem($"🧹  {LocalizationService.Translate("Clear History")}", (_, __) => ClearHistory()));
                 _chatMoreMenu.Items.Add(new ToolStripSeparator());
-                _chatMoreMenu.Items.Add(CreateChatMenuItem("🚪  Delete and leave", (_, __) => DeleteAndLeave(), Color.FromArgb(0xE2, 0x4B, 0x4A)));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem($"🚪  {LocalizationService.Translate("Delete and leave")}", (_, __) => DeleteAndLeave(), Color.FromArgb(0xE2, 0x4B, 0x4A)));
             }
             else if (isSavedConv)
             {
                 _chatMoreMenu.Items.Add(new ToolStripSeparator());
-                _chatMoreMenu.Items.Add(CreateChatMenuItem("🧹  Clear Saved Messages History", (_, __) => ClearSavedMessagesHistory()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem($"🧹  {LocalizationService.Translate("Clear Saved Messages History")}", (_, __) => ClearSavedMessagesHistory()));
             }
             else
             {
-                _chatMoreMenu.Items.Add(CreateChatMenuItem("👤  View Profile", (_, __) => ViewProfile()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem($"👤  {LocalizationService.Translate("View Profile")}", (_, __) => ViewProfile()));
                 _chatMoreMenu.Items.Add(new ToolStripSeparator());
-                _chatMoreMenu.Items.Add(CreateChatMenuItem("🗑  Clear History", (_, __) => ClearHistoryPrivate()));
-                _chatMoreMenu.Items.Add(CreateChatMenuItem("🗑  Delete Chat", (_, __) => DeleteChat(), Color.FromArgb(0xE2, 0x4B, 0x4A)));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem($"🗑  {LocalizationService.Translate("Clear History")}", (_, __) => ClearHistoryPrivate()));
+                _chatMoreMenu.Items.Add(CreateChatMenuItem($"🗑  {LocalizationService.Translate("Delete Chat")}", (_, __) => DeleteChat(), Color.FromArgb(0xE2, 0x4B, 0x4A)));
             }
 
             RefreshMuteMenuState();
@@ -1501,7 +1501,7 @@ namespace SecureChat.Client
                 if (_mnuMuteNotifications.DropDownItems.Count > 0)
                     _mnuMuteNotifications.DropDownItems.Clear();
 
-                _mnuMuteNotifications.Text = "🔊  Unmute";
+                _mnuMuteNotifications.Text = $"🔊  {LocalizationService.Translate("Unmute Now")}";
             }
             else
             {
@@ -1512,8 +1512,8 @@ namespace SecureChat.Client
                 }
 
                 _mnuMuteNotifications.Text = _notificationsMuted
-                    ? $"🔕  Muted until {_muteUntilUtc.Value.ToLocalTime():HH:mm}"
-                    : "🔔  Mute notifications";
+                    ? $"🔕  {string.Format(LocalizationService.Translate("Muted until {0}"), _muteUntilUtc.Value.ToLocalTime().ToString("HH:mm"))}"
+                    : $"🔔  {LocalizationService.Translate("Mute Notifications")}";
             }
 
             if (_mnuUnmuteNow != null)
@@ -4389,16 +4389,16 @@ namespace SecureChat.Client
                         };
 
                         // ── Mute submenu ──
-                        var itemMute = new ToolStripMenuItem("  🔇  Mute");
+                        var itemMute = new ToolStripMenuItem($"  🔇  {LocalizationService.Translate("Mute")}");
                         itemMute.ForeColor = TG.TextPrimary;
 
                         var muteOptions = new[]
                         {
-                            ("5 min",      5),
-                            ("30 min",    30),
-                            ("1 hour",    60),
-                            ("1 day",     60 * 24),
-                            ("Permanent", 60 * 24 * 365 * 10),
+                            (LocalizationService.Translate("5 min"),      5),
+                            (LocalizationService.Translate("30 min"),    30),
+                            (LocalizationService.Translate("1 hour"),    60),
+                            (LocalizationService.Translate("1 day"),     60 * 24),
+                            (LocalizationService.Translate("Permanent"), 60 * 24 * 365 * 10),
                         };
 
                         foreach (var (label, minutes) in muteOptions)
@@ -4411,12 +4411,12 @@ namespace SecureChat.Client
                         }
 
                         // ── Unmute ──
-                        var itemUnmute = new ToolStripMenuItem("  🔔  Unmute");
+                        var itemUnmute = new ToolStripMenuItem($"  🔔  {LocalizationService.Translate("Unmute")}");
                         itemUnmute.ForeColor = TG.TextPrimary;
                         itemUnmute.Click += async (_, __) => await UnmuteMemberAsync(memberId, memberName);
 
                         // ── Kick ──
-                        var itemKick = new ToolStripMenuItem("  👢  Remove from group");
+                        var itemKick = new ToolStripMenuItem($"  👢  {LocalizationService.Translate("Remove from group")}");
                         itemKick.ForeColor = Color.FromArgb(0xE2, 0x4B, 0x4A);
                         itemKick.Click += async (_, __) => await KickMemberAsync(memberId, memberName);
 
@@ -5156,9 +5156,10 @@ namespace SecureChat.Client
                 return LocalizationService.Translate("Today");
             if (date.Date == today.AddDays(-1))
                 return LocalizationService.Translate("Yesterday");
+            var monthName = LocalizationService.Translate(date.ToString("MMMM", System.Globalization.CultureInfo.InvariantCulture));
             if (date.Year == today.Year)
-                return date.ToString("MMMM dd");
-            return date.ToString("MMMM dd, yyyy");
+                return $"{monthName} {date.Day}";
+            return $"{monthName} {date.Day}, {date.Year}";
         }
 
         private void UpdateChatEmptyStateUI()

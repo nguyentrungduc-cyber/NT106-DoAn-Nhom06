@@ -86,7 +86,7 @@ namespace SecureChat.Client.Forms.Chat
                 ForeColor = TG.TextPrimary,
                 Location = new Point(58, 16),
                 Size = new Size(360, 26),
-                PlaceholderText = "Search"
+                PlaceholderText = LocalizationService.Translate("Search")
             };
             _txtSearch.TextChanged += (_, __) => BuildMembersList();
 

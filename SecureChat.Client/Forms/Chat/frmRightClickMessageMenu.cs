@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -24,13 +25,21 @@ namespace SecureChat.Client.Forms.Chat
         public static ContextMenuStrip Create(string messageId, MessageActions actions, Func<string, Image?>? iconFor = null, bool isPinned = false)
         {
             var pinLabel = isPinned ? "Unpin" : "Pin";
+            var pinLabelLoc = LocalizationService.Translate(pinLabel);
 
             var labels = new[]
             {
-                "Reply", "Forward", "Copy", "Edit", "Recall", pinLabel, "Delete"
+                LocalizationService.Translate("Reply"),
+                LocalizationService.Translate("Forward"),
+                LocalizationService.Translate("Copy"),
+                LocalizationService.Translate("Edit"),
+                LocalizationService.Translate("Recall"),
+                pinLabelLoc,
+                LocalizationService.Translate("Delete")
             };
 
-            var icons = labels.ToDictionary(l => l, l => iconFor?.Invoke(l));
+            var labelsKeys = new[] { "Reply", "Forward", "Copy", "Edit", "Recall", pinLabel, "Delete" };
+            var icons = labelsKeys.ToDictionary(l => l, l => iconFor?.Invoke(l));
 
             var menu = new ContextMenuStrip
             {
@@ -41,16 +50,16 @@ namespace SecureChat.Client.Forms.Chat
                 Renderer        = new ToolStripProfessionalRenderer(new MessageMenuColorTable()),
             };
 
-            AddItem(menu, "Reply",   actions.Reply,   messageId, icons["Reply"]);
-            AddItem(menu, "Forward", actions.Forward, messageId, icons["Forward"]);
-            AddItem(menu, "Copy",    actions.Copy,    messageId, icons["Copy"]);
-            AddItem(menu, "Edit",    actions.Edit,    messageId, icons["Edit"]);
-            AddRecallItem(menu, "Recall", actions.Recall, messageId, icons["Recall"]);
-            AddItem(menu, pinLabel,  actions.Pin,     messageId, icons[pinLabel]);
+            AddItem(menu, labels[0], actions.Reply,   messageId, icons["Reply"]);
+            AddItem(menu, labels[1], actions.Forward, messageId, icons["Forward"]);
+            AddItem(menu, labels[2], actions.Copy,    messageId, icons["Copy"]);
+            AddItem(menu, labels[3], actions.Edit,    messageId, icons["Edit"]);
+            AddRecallItem(menu, labels[4], actions.Recall, messageId, icons["Recall"]);
+            AddItem(menu, pinLabelLoc,  actions.Pin,     messageId, icons[pinLabel]);
 
             menu.Items.Add(new ToolStripSeparator());
 
-            var deleteItem = new ToolStripMenuItem("Delete") { Tag = messageId };
+            var deleteItem = new ToolStripMenuItem(LocalizationService.Translate("Delete")) { Tag = messageId };
             if (icons["Delete"] != null)
             {
                 deleteItem.Image        = icons["Delete"];
