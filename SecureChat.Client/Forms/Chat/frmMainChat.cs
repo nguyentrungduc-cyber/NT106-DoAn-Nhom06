@@ -3241,7 +3241,7 @@ namespace SecureChat.Client
     ("🪪", "Contacts",        false),
     ("🔖", "Saved Messages",  false),
     ("⚙️", "Settings",        false),
-    ("🌙", "Night Mode",      NightModeService.IsEnabled),
+    ("🌙", "Night Mode",      true),  // HasToggle luôn true; initial state đọc từ _settingsToggles
 };
 
             var pnlMenuList = new Panel { Dock = DockStyle.Fill, BackColor = TG.SidebarBg };
