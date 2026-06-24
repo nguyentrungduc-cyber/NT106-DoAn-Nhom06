@@ -161,7 +161,7 @@ namespace SecureChat.Client.Forms.Settings
                 if (_selectedLanguage == langType) return;
                 _selectedLanguage = langType;
 
-                foreach (Control c in Parent.Controls)
+                foreach (Control c in Controls)
                 {
                     if (c is Panel optionPnl && optionPnl != pnl)
                     {
