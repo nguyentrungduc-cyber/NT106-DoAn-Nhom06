@@ -52,15 +52,13 @@ namespace SecureChat.Client.Forms.Settings
                 "English",
                 "English",
                 LanguageType.English,
-                110,
-                _selectedLanguage == LanguageType.English);
+                110);
 
             var pnlVietnamese = BuildLanguageOption(
                 "Tiếng Việt",
                 "Vietnamese",
                 LanguageType.Vietnamese,
-                180,
-                _selectedLanguage == LanguageType.Vietnamese);
+                180);
 
             var btnDone = new Button
             {
@@ -104,9 +102,11 @@ namespace SecureChat.Client.Forms.Settings
             Controls.Add(pnlVietnamese);
             Controls.Add(btnCancel);
             Controls.Add(btnDone);
+
+            UiLocalization.ApplyToForm(this);
         }
 
-        private Panel BuildLanguageOption(string nativeName, string englishName, LanguageType langType, int y, bool isSelected)
+        private Panel BuildLanguageOption(string nativeName, string englishName, LanguageType langType, int y)
         {
             var pnl = new Panel
             {
@@ -122,14 +122,14 @@ namespace SecureChat.Client.Forms.Settings
                 Location = new Point(0, 16),
                 BackColor = Color.Transparent
             };
-            bool selected = isSelected;
             circle.Paint += (s, e) =>
             {
+                bool isActive = _selectedLanguage == langType;
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 var r = new Rectangle(0, 0, 23, 23);
-                using var p = new Pen(selected ? TG.Blue : TG.TextSecondary, 2f);
+                using var p = new Pen(isActive ? TG.Blue : TG.TextSecondary, 2f);
                 e.Graphics.DrawEllipse(p, r);
-                if (selected)
+                if (isActive)
                 {
                     using var b = new SolidBrush(TG.Blue);
                     e.Graphics.FillEllipse(b, r.X + 5, r.Y + 5, 13, 13);
