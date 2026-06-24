@@ -181,6 +181,7 @@ namespace SecureChat.Client
         }
 
         private readonly Dictionary<string, bool> _settingsToggles = new();
+        private Panel? _nightModeToggle;
         private readonly ConcurrentDictionary<string, string> _senderDisplayNameMap = new();
         private readonly ConcurrentDictionary<string, string> _senderAvatarMap = new();
         private readonly ConcurrentDictionary<string, string> _usernameToUserId = new();
@@ -3251,9 +3252,8 @@ namespace SecureChat.Client
             foreach (var item in menuItems)
             {
                 string key = item.Label;
-                bool toggleOn = _settingsToggles.TryGetValue(key, out bool v) ? v : false;
 
-                var row = BuildSettingsRow(item.Emoji, key, item.HasToggle, toggleOn, newState => _settingsToggles[key] = newState);
+                var row = BuildSettingsRow(item.Emoji, key, item.HasToggle, newState => _settingsToggles[key] = newState);
                 row.Location = new Point(0, my);
                 row.Width = smw;
                 row.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -3282,7 +3282,7 @@ namespace SecureChat.Client
             _pnlSettingsMenu.Controls.Add(_pnlSettingsHeader);
         }
 
-        private Panel BuildSettingsRow(string emoji, string label, bool hasToggle, bool initialOn, Action<bool>? onToggle = null)
+        private Panel BuildSettingsRow(string emoji, string label, bool hasToggle, Action<bool>? onToggle = null)
         {
             var pnl = new Panel { Height = 48, BackColor = TG.SidebarBg, Cursor = Cursors.Hand };
 
@@ -3322,10 +3322,10 @@ namespace SecureChat.Client
 
             if (hasToggle)
             {
-                bool on = initialOn;
                 var toggle = new Panel { Size = new Size(44, 24), BackColor = Color.Transparent, Cursor = Cursors.Hand };
                 toggle.Paint += (s, e) =>
                 {
+                    bool on = _settingsToggles.TryGetValue(label, out bool v) ? v : false;
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     var r = new Rectangle(0, 2, 40, 20);
                     using var brush = new SolidBrush(on ? TG.Blue : Color.FromArgb(0xCC, 0xCC, 0xCC));
@@ -3336,12 +3336,16 @@ namespace SecureChat.Client
                 };
                 toggle.Click += (s, e) =>
                 {
+                    bool on = _settingsToggles.TryGetValue(label, out bool v) ? v : false;
                     on = !on;
-                    onToggle?.Invoke(on); // update class-level store (or caller)
+                    _settingsToggles[label] = on;
+                    onToggle?.Invoke(on);
                     toggle.Invalidate();
                 };
                 pnl.Controls.Add(toggle);
                 pnl.Resize += (s, e) => toggle.Location = new Point(Math.Max(0, pnl.Width - 52), 12);
+                if (label == "Night Mode")
+                    _nightModeToggle = toggle;
             }
 
             return pnl;
@@ -3683,6 +3687,7 @@ namespace SecureChat.Client
             // ── Sidebar ────────────────────────────────────────────────
             _pnlConvList.BackColor = TG.SidebarBg;
             _settingsToggles["Night Mode"] = NightModeService.IsEnabled;
+            _nightModeToggle?.Invalidate();
 
             // Sidebar panel + controls missing from original toggle
             if (_pnlSidebar != null) _pnlSidebar.BackColor = TG.SidebarBg;
