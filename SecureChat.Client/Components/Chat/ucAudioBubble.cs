@@ -327,7 +327,7 @@ namespace SecureChat.Client.Components.Chat
                 {
                     // Bài khác đang phát — reset về idle
                     SetPlayPauseIcon(false);
-                    _lblTitle.Text = "Voice message";
+                    _lblTitle.Text = LocalizationService.Translate("Voice message");
                     ResetSeek();
                     _lblTime.Text  = $"0:00 / {FormatTime(_totalSeconds)}";
                 }

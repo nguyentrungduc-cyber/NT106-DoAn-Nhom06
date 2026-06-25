@@ -206,8 +206,8 @@ namespace SecureChat.Client
             _lblDisplayName.Visible = _tbDisplayName.Visible = false;
             _lblConfirmPass.Visible = _tbConfirmPass.Visible = false;
 
-            _btnLogin.Text = "Login";
-            _btnRegister.Text = "Create New Account";
+            _btnLogin.Text = LocalizationService.Translate("Login");
+            _btnRegister.Text = LocalizationService.Translate("Create New Account");
             _lnkForgot.Visible = true;
 
             this.ClientSize = new Size(420, 560);
@@ -221,8 +221,8 @@ namespace SecureChat.Client
             _lblDisplayName.Visible = _tbDisplayName.Visible = true;
             _lblConfirmPass.Visible = _tbConfirmPass.Visible = true;
 
-            _btnLogin.Text = "Create Account";
-            _btnRegister.Text = "← Already have an account";
+            _btnLogin.Text = LocalizationService.Translate("Create Account");
+            _btnRegister.Text = LocalizationService.Translate("← Already have an account");
             _lnkForgot.Visible = false;
 
             this.ClientSize = new Size(420, 720);
@@ -415,7 +415,7 @@ namespace SecureChat.Client
         private void SetLoading(bool loading)
         {
             _btnLogin.Enabled = _btnRegister.Enabled = !loading;
-            _btnLogin.Text = loading ? "PROCESSING..." : (_isRegisterMode ? "Create Account" : "Login");
+            _btnLogin.Text = loading ? LocalizationService.Translate("PROCESSING...") : (_isRegisterMode ? LocalizationService.Translate("Create Account") : LocalizationService.Translate("Login"));
         }
 
         private bool IsValidEmail(string email)

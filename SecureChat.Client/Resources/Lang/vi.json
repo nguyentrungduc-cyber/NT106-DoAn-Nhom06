@@ -644,5 +644,18 @@
   "Receiving screen share": "Đang nhận chia sẻ màn hình",
   "Screen share ended": "Đã kết thúc chia sẻ màn hình",
   "🔍  Search": "🔍  Tìm kiếm",
-  "🔍  Search by name or @username...": "🔍  Tìm kiếm theo tên hoặc @username..."
+  "🔍  Search by name or @username...": "🔍  Tìm kiếm theo tên hoặc @username...",
+  "We will send a code to reset your password.": "Chúng tôi sẽ gửi mã để đặt lại mật khẩu.",
+  "SEND CODE": "GỬI MÃ",
+  "A 6-digit code has been sent to\n{0}": "Mã 6 chữ số đã được gửi tới\n{0}",
+  "CONFIRM": "XÁC NHẬN",
+  "Password must have uppercase, lowercase, numbers and special characters.": "Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt.",
+  "RESET": "ĐẶT LẠI",
+  "PROCESSING...": "ĐANG XỬ LÝ...",
+  "NEXT": "TIẾP THEO",
+  "Create New Account": "Tạo tài khoản mới",
+  "Create Account": "Tạo tài khoản",
+  "← Already have an account": "← Đã có tài khoản",
+  "Add Members": "Thêm thành viên",
+  "Next": "Tiếp theo"
 }

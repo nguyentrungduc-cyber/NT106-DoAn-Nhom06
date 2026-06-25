@@ -333,29 +333,29 @@ namespace SecureChat.Client
                 case 1:
                     _timer.Stop();
                     _resetToken = null;
-                    _header.Title = "Forgot Password";
-                    _lblStepTitle.Text = "Step 1: Enter your email";
-                    _lblStepDesc.Text = "We will send a code to reset your password.";
+                    _header.Title = LocalizationService.Translate("Forgot Password");
+                    _lblStepTitle.Text = LocalizationService.Translate("Step 1: Enter your email");
+                    _lblStepDesc.Text = LocalizationService.Translate("We will send a code to reset your password.");
                     SetStep1Visible(true); SetStep2Visible(false); SetStep3Visible(false);
-                    _btnNext.Text = "SEND CODE";
+                    _btnNext.Text = LocalizationService.Translate("SEND CODE");
                     break;
                 case 2:
                     _timer.Stop();
-                    _header.Title = "Forgot Password";
-                    _lblStepTitle.Text = "Step 2: Enter verification code";
-                    _lblStepDesc.Text = $"A 6-digit code has been sent to\n{_tbEmail.Text}";
+                    _header.Title = LocalizationService.Translate("Forgot Password");
+                    _lblStepTitle.Text = LocalizationService.Translate("Step 2: Enter verification code");
+                    _lblStepDesc.Text = string.Format(LocalizationService.Translate("A 6-digit code has been sent to\n{0}"), _tbEmail.Text);
                     SetStep1Visible(false); SetStep2Visible(true); SetStep3Visible(false);
-                    _btnNext.Text = "CONFIRM";
+                    _btnNext.Text = LocalizationService.Translate("CONFIRM");
                     _countdown = 60; _timer.Start(); UpdateCountdown();
                     _otpBoxes[0].Focus();
                     break;
                 case 3:
                     _timer.Stop();
-                    _header.Title = "Forgot Password";
-                    _lblStepTitle.Text = "Step 3: Set new password";
-                    _lblStepDesc.Text = "Password must have uppercase, lowercase, numbers and special characters.";
+                    _header.Title = LocalizationService.Translate("Forgot Password");
+                    _lblStepTitle.Text = LocalizationService.Translate("Step 3: Set new password");
+                    _lblStepDesc.Text = LocalizationService.Translate("Password must have uppercase, lowercase, numbers and special characters.");
                     SetStep1Visible(false); SetStep2Visible(false); SetStep3Visible(true);
-                    _btnNext.Text = "RESET";
+                    _btnNext.Text = LocalizationService.Translate("RESET");
                     _tbNewPass.Text = "";
                     _tbConfirmPass.Text = "";
                     break;
@@ -607,12 +607,12 @@ namespace SecureChat.Client
         {
             _isBusy = busy;
             _btnNext.Enabled = !busy;
-            _btnNext.Text = busy ? "PROCESSING..." : _step switch
+            _btnNext.Text = busy ? LocalizationService.Translate("PROCESSING...") : _step switch
             {
-                1 => "SEND CODE",
-                2 => "CONFIRM",
-                3 => "RESET",
-                _ => "NEXT"
+                1 => LocalizationService.Translate("SEND CODE"),
+                2 => LocalizationService.Translate("CONFIRM"),
+                3 => LocalizationService.Translate("RESET"),
+                _ => LocalizationService.Translate("NEXT")
             };
             _header.ShowBack = !busy;
         }

@@ -37,7 +37,7 @@ namespace SecureChat.Client.Forms.Shared
         private frmError(DialogKind kind, string title, string message)
         {
             _kind = kind;
-            _title = string.IsNullOrWhiteSpace(title) ? "Notification" : title;
+            _title = string.IsNullOrWhiteSpace(title) ? LocalizationService.Translate("Notification") : title;
             _message = message ?? string.Empty;
             BuildUi();
             NightModeService.ThemeChanged += OnThemeChanged;

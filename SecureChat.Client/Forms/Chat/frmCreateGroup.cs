@@ -408,15 +408,15 @@ namespace SecureChat.Client.Forms.Chat
 
             if (step == 1)
             {
-                Text = "New Group";
-                _btnAction.Text = "Next";
+                Text = LocalizationService.Translate("New Group");
+                _btnAction.Text = LocalizationService.Translate("Next");
                 UpdateActionButton();
                 BeginInvoke((Action)(() => _txtGroupName.Focus()));
             }
             else
             {
-                Text = "Add Members";
-                _btnAction.Text = "Create";
+                Text = LocalizationService.Translate("Add Members");
+                _btnAction.Text = LocalizationService.Translate("Create");
                 _btnAction.Enabled = true;
                 _btnAction.ForeColor = TG.Blue;
                 RefreshCount();
