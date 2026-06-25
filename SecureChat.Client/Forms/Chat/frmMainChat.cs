@@ -5157,9 +5157,19 @@ namespace SecureChat.Client
             if (date.Date == today.AddDays(-1))
                 return LocalizationService.Translate("Yesterday");
             var monthName = LocalizationService.Translate(date.ToString("MMMM", System.Globalization.CultureInfo.InvariantCulture));
-            if (date.Year == today.Year)
-                return $"{monthName} {date.Day}";
-            return $"{monthName} {date.Day}, {date.Year}";
+            bool isVietnamese = LocalizationService.CurrentLanguage == LanguageType.Vietnamese;
+            if (isVietnamese)
+            {
+                if (date.Year == today.Year)
+                    return $"{date.Day} {monthName}";
+                return $"{date.Day} {monthName}, {date.Year}";
+            }
+            else
+            {
+                if (date.Year == today.Year)
+                    return $"{monthName} {date.Day}";
+                return $"{monthName} {date.Day}, {date.Year}";
+            }
         }
 
         private void UpdateChatEmptyStateUI()

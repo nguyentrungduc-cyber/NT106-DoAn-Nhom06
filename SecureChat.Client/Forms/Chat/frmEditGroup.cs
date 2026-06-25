@@ -199,7 +199,7 @@ namespace SecureChat.Client.Forms.Chat
                 var n = _txtName.Text.Trim();
                 if (string.IsNullOrWhiteSpace(n))
                 {
-                    MessageBox.Show(this, "Group name cannot be empty.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(this, LocalizationService.Translate("Group name cannot be empty."), LocalizationService.Translate("Validation"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     _txtName.Focus();
                     return;
                 }
@@ -311,8 +311,8 @@ namespace SecureChat.Client.Forms.Chat
         {
             using var ofd = new OpenFileDialog
             {
-                Title = "Choose group avatar",
-                Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.webp",
+                Title = LocalizationService.Translate("Choose group avatar"),
+                Filter = LocalizationService.Translate("Image files|*.png;*.jpg;*.jpeg;*.bmp;*.webp"),
                 Multiselect = false
             };
             if (ofd.ShowDialog(this) != DialogResult.OK) return;
@@ -328,7 +328,7 @@ namespace SecureChat.Client.Forms.Chat
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Failed to load image.\n{ex.Message}", "Image", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, string.Format(LocalizationService.Translate("Error: {0}"), ex.Message), LocalizationService.Translate("Image"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -380,13 +380,13 @@ namespace SecureChat.Client.Forms.Chat
                 if (meta.GroupType.HasValue)
                 {
                     _groupType = meta.GroupType.Value == SecureChat.Models.GroupVisibility.Public ? "Public" : "Private";
-                    _lblGroupTypeValue.Text = _groupType;
+                    _lblGroupTypeValue.Text = LocalizationService.Translate(_groupType);
                 }
 
                 if (meta.ChatHistoryMode.HasValue)
                 {
                     _chatHistory = meta.ChatHistoryMode.Value == SecureChat.Models.HistoryMode.Visible ? "Visible" : "Hidden";
-                    _lblChatHistoryValue.Text = _chatHistory;
+                    _lblChatHistoryValue.Text = LocalizationService.Translate(_chatHistory);
                 }
 
                 _membersCount = meta.MemberCount;

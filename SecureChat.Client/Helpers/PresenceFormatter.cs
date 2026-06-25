@@ -44,10 +44,15 @@ public static class PresenceFormatter
             return string.Format(fmt, lastSeenUtc.Value.ToLocalTime().ToString("HH:mm"));
         }
 
+        var localDate = lastSeenUtc.Value.ToLocalTime();
+        bool isVietnamese = LocalizationService.CurrentLanguage == LanguageType.Vietnamese;
+        string formattedDate = isVietnamese
+            ? $"{localDate.Day} {LocalizationService.Translate(localDate.ToString("MMMM", System.Globalization.CultureInfo.InvariantCulture))}"
+            : localDate.ToString("MMM dd");
         var fmt2 = LocalizationService.Translate("last seen on {0} at {1}");
         return string.Format(fmt2,
-            lastSeenUtc.Value.ToLocalTime().ToString("MMM dd"),
-            lastSeenUtc.Value.ToLocalTime().ToString("HH:mm"));
+            formattedDate,
+            localDate.ToString("HH:mm"));
     }
 
     public static string GetPresenceText(bool isOnline, DateTime? lastSeenUtc)
