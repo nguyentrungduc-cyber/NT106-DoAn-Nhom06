@@ -64,12 +64,12 @@ namespace SecureChat.Client.Forms.Chat
                 Font = TG.FontSemiBold(18f),
                 ForeColor = TG.TextPrimary,
                 TextAlign = ContentAlignment.MiddleCenter,
-                AutoSize = true,
-                MaximumSize = new Size(360, 0),
+                AutoSize = false,
+                Width = ClientSize.Width - 40,
+                MinimumSize = new Size(0, 28),
                 BackColor = Color.Transparent,
             };
-            if (lblName.Height < 28) lblName.Height = 28;
-            lblName.Location = new Point((ClientSize.Width - lblName.Width) / 2, y);
+            lblName.Location = new Point(20, y);
             Controls.Add(lblName);
             y += lblName.Height + 4;
 
@@ -85,7 +85,7 @@ namespace SecureChat.Client.Forms.Chat
                 BackColor = Color.Transparent,
             };
             if (lblUsername.Height < 20) lblUsername.Height = 20;
-            lblUsername.Location = new Point((ClientSize.Width - lblUsername.Width) / 2, y);
+            lblUsername.Location = new Point(20, y);
             Controls.Add(lblUsername);
             y += lblUsername.Height + 6;
 
@@ -102,11 +102,11 @@ namespace SecureChat.Client.Forms.Chat
                 Font = TG.FontRegular(11f),
                 ForeColor = presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary,
                 TextAlign = ContentAlignment.MiddleCenter,
-                AutoSize = true,
-                MaximumSize = new Size(360, 0),
+                AutoSize = false,
+                Width = ClientSize.Width - 40,
                 BackColor = Color.Transparent,
             };
-            lblStatus.Location = new Point((ClientSize.Width - lblStatus.Width) / 2, y);
+            lblStatus.Location = new Point(20, y);
             Controls.Add(lblStatus);
             y += lblStatus.Height + 18;
 
