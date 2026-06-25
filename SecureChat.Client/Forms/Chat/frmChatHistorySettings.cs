@@ -1,4 +1,5 @@
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmChatHistorySettings : Form
@@ -85,6 +86,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 lblTitle, _rbVisible, lblVisibleDesc, _rbHidden, lblHiddenDesc, btnCancel, btnSave
             });
+            UiLocalization.ApplyToForm(this);
         }
 
         private static Button BuildBottomButton(string text, Color color, bool bold = false)

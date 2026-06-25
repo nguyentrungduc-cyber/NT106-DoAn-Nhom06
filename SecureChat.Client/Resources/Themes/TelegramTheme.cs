@@ -202,7 +202,7 @@ namespace SecureChat.Client
         public static Font FontTitle(float size)  => new Font("Segoe UI", size, FontStyle.Bold);
         public static Font FontRegular(float size)=> new Font("Segoe UI", size, FontStyle.Regular);
         public static Font FontSemiBold(float size)=> new Font("Segoe UI Semibold", size, FontStyle.Regular);
-        public static Font FontMono(float size)   => new Font("Consolas", size, FontStyle.Regular);
+        public static Font FontMono(float size)   => new Font("Segoe UI", size, FontStyle.Regular);
 
         // === CORNER RADIUS ===
         public const int RadiusSmall  = 6;

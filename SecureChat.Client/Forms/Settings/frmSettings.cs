@@ -71,7 +71,7 @@ namespace SecureChat.Client.Forms.Settings
             AddMenuItem(ref y, "Privacy and Security", "privacy.png", OpenPrivacy);
             AddMenuItem(ref y, "Advanced", "advanced.png", OpenAdvanced);
             AddMenuItem(ref y, "Speakers and Camera", "devices.png", OpenSpeakersCamera);
-            AddMenuItem(ref y, "Language", "language.png", OpenLanguage, true, LanguagePrefs.GetDisplayLanguageName(), lbl => _lblLanguageMenu = lbl);
+            AddMenuItem(ref y, "Language", "language.png", OpenLanguage, true, GetLanguageDisplayName(), lbl => _lblLanguageMenu = lbl);
 
             // Add separator before logout
             y += 8;
@@ -313,7 +313,7 @@ namespace SecureChat.Client.Forms.Settings
             dlg.StartPosition = FormStartPosition.CenterParent;
             if (dlg.ShowDialog(this) == DialogResult.OK && _lblLanguageMenu != null)
             {
-                _lblLanguageMenu.Text = LanguagePrefs.GetDisplayLanguageName();
+                _lblLanguageMenu.Text = GetLanguageDisplayName();
             }
         }
 
@@ -321,8 +321,8 @@ namespace SecureChat.Client.Forms.Settings
         {
             var confirmResult = MessageBox.Show(
                 this,
-                "Are you sure you want to logout?",
-                "Confirm Logout",
+                LocalizationService.Translate("Are you sure you want to logout?"),
+                LocalizationService.Translate("Confirm Logout"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
 
@@ -347,8 +347,8 @@ namespace SecureChat.Client.Forms.Settings
             {
                 MessageBox.Show(
                     this,
-                    $"Logout error: {ex.Message}",
-                    "Error",
+                    string.Format(LocalizationService.Translate("Logout error: {0}"), ex.Message),
+                    LocalizationService.Translate("Error"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 Enabled = true;
@@ -357,7 +357,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private void ShowPending()
         {
-            MessageBox.Show(this, "Feature coming soon", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, LocalizationService.Translate("Feature coming soon"), LocalizationService.Translate("Info"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private static Button FlatIconButton(string text)
@@ -561,6 +561,11 @@ namespace SecureChat.Client.Forms.Settings
                 }
             }
             Invalidate(true);
+        }
+
+        private static string GetLanguageDisplayName()
+        {
+            return LocalizationService.CurrentLanguage == LanguageType.Vietnamese ? "Tiếng Việt" : "English";
         }
     }
 

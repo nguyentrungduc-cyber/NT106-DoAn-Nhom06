@@ -286,7 +286,7 @@ namespace SecureChat.Client.Components.Chat
             catch (Exception ex)
             {
                 SafeInvoke(() => MessageBox.Show(
-                    FindForm(), ex.Message, "Lỗi phát audio",
+                    FindForm(), ex.Message, LocalizationService.Translate("Audio playback error"),
                     MessageBoxButtons.OK, MessageBoxIcon.Warning));
             }
         }
@@ -304,20 +304,20 @@ namespace SecureChat.Client.Components.Chat
                     {
                         case VoicePlaybackService.PlaybackState.Playing:
                             SetPlayPauseIcon(true);
-                            _lblTitle.Text = "▶ Đang phát...";
+                            _lblTitle.Text = "▶ " + LocalizationService.Translate("Playing...");
                             break;
                         case VoicePlaybackService.PlaybackState.Paused:
                             SetPlayPauseIcon(false);
-                            _lblTitle.Text = "⏸ Tạm dừng";
+                            _lblTitle.Text = "⏸ " + LocalizationService.Translate("Paused");
                             break;
                         case VoicePlaybackService.PlaybackState.Loading:
                             _btnPlayPause.Text    = "…";
                             _btnPlayPause.Enabled = false;
-                            _lblTitle.Text        = "Đang tải...";
+                            _lblTitle.Text        = LocalizationService.Translate("Loading...");
                             break;
                         case VoicePlaybackService.PlaybackState.Idle:
                             SetPlayPauseIcon(false);
-                            _lblTitle.Text = "Voice message";
+                            _lblTitle.Text = LocalizationService.Translate("Voice message");
                             ResetSeek();
                             _lblTime.Text  = $"0:00 / {FormatTime(_totalSeconds)}";
                             break;
@@ -327,7 +327,7 @@ namespace SecureChat.Client.Components.Chat
                 {
                     // Bài khác đang phát — reset về idle
                     SetPlayPauseIcon(false);
-                    _lblTitle.Text = "Voice message";
+                    _lblTitle.Text = LocalizationService.Translate("Voice message");
                     ResetSeek();
                     _lblTime.Text  = $"0:00 / {FormatTime(_totalSeconds)}";
                 }

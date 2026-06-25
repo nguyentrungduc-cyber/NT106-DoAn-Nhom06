@@ -1,5 +1,6 @@
 using System;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -85,7 +86,7 @@ namespace SecureChat.Client.Forms.Chat
                 ForeColor = TG.TextPrimary,
                 Location = new Point(58, 16),
                 Size = new Size(360, 26),
-                PlaceholderText = "Search"
+                PlaceholderText = LocalizationService.Translate("Search")
             };
             _txtSearch.TextChanged += (_, __) => BuildMembersList();
 
@@ -167,6 +168,7 @@ namespace SecureChat.Client.Forms.Chat
 
             BuildMembersList();
             UpdateBottomButtonState();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void StartFadeIn()

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using SecureChat.Client.Services;
 using SecureChat.Client.Services.Api;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.DTOs;
 
 namespace SecureChat.Client.Forms.Settings
@@ -40,6 +41,7 @@ namespace SecureChat.Client.Forms.Settings
             BuildUI();
             ThemeRefreshHelper.Hook(this);
             Load += async (_, __) => await LoadSettingsAsync();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void InitializeComponent() { }
@@ -60,7 +62,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private void ApplySettingsToUI()
         {
-            _lblAutoDeleteStatus.Text = AutoDeleteLabel(_settings.AutoDeleteMode);
+            _lblAutoDeleteStatus.Text = TranslateDynamic(AutoDeleteLabel(_settings.AutoDeleteMode));
 
             foreach (Control c in _table.Controls)
             {
@@ -77,11 +79,13 @@ namespace SecureChat.Client.Forms.Settings
                     {
                         var val = GetSettingValue(prop);
                         if (val is not null)
-                            statusLbl.Text = val;
+                            statusLbl.Text = TranslateDynamic(val);
                     }
                 }
             }
         }
+
+        private static string TranslateDynamic(string text) => LocalizationService.Translate(text);
 
         private string? GetSettingValue(string prop) => prop switch
         {
@@ -326,7 +330,7 @@ namespace SecureChat.Client.Forms.Settings
                     {
                         using var dlg = new Form
                         {
-                            Text = key,
+                            Text = statusLbl.Text,
                             Size = new Size(260, 200),
                             StartPosition = FormStartPosition.CenterParent,
                             BackColor = TG.WindowBg,
@@ -337,10 +341,11 @@ namespace SecureChat.Client.Forms.Settings
                         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(12, 12, 12, 12) };
                         foreach (var r in radios)
                         {
-                            var rb = new RadioButton { Text = r, ForeColor = TG.TextPrimary, BackColor = TG.WindowBg, AutoSize = true, Checked = statusLbl.Text == r };
+                            var translated = LocalizationService.Translate(r);
+                            var rb = new RadioButton { Text = translated, Tag = r, ForeColor = TG.TextPrimary, BackColor = TG.WindowBg, AutoSize = true, Checked = statusLbl.Text == translated };
                             panel.Controls.Add(rb);
                         }
-                        var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = false, Width = 80, Height = 30, Padding = new Padding(6, 2, 6, 2) };
+                        var btnOk = new Button { Text = LocalizationService.Translate("OK"), DialogResult = DialogResult.OK, AutoSize = false, Width = 80, Height = 30, Padding = new Padding(6, 2, 6, 2) };
                         btnOk.FlatStyle = FlatStyle.Flat;
                         btnOk.FlatAppearance.BorderSize = 0;
                         btnOk.BackColor = TG.CAccent;
@@ -359,7 +364,7 @@ namespace SecureChat.Client.Forms.Settings
                                 if (ctrl is RadioButton rb && rb.Checked)
                                 {
                                     statusLbl.Text = rb.Text;
-                                    await SavePrivacyToApi(key, rb.Text);
+                                    await SavePrivacyToApi(key, (rb.Tag as string) ?? rb.Text);
                                     break;
                                 }
                             }
@@ -398,7 +403,7 @@ namespace SecureChat.Client.Forms.Settings
             var items = new[] { "Off", "After 1 day", "After 1 week", "After 1 month" };
             using var dlg = new Form
             {
-                Text = "Auto-Delete",
+                Text = LocalizationService.Translate("Auto-Delete Messages"),
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 StartPosition = FormStartPosition.CenterParent,
                 Size = new Size(240, 220),
@@ -416,19 +421,19 @@ namespace SecureChat.Client.Forms.Settings
                 IntegralHeight = false,
                 ItemHeight = 28
             };
-            list.Items.AddRange(items);
+            list.Items.AddRange(items.Select(i => (object)LocalizationService.Translate(i)).ToArray());
 
             list.SelectedIndexChanged += async (_, __) =>
             {
-                var selected = list.SelectedItem?.ToString() ?? "Off";
+                var selected = list.SelectedItem?.ToString() ?? TranslateDynamic("Off");
                 var mode = selected switch
                 {
-                    "After 1 day" => "TwentyFourHours",
-                    "After 1 week" => "SevenDays",
-                    "After 1 month" => "ThirtyDays",
+                    _ when selected == LocalizationService.Translate("After 1 day") => "TwentyFourHours",
+                    _ when selected == LocalizationService.Translate("After 1 week") => "SevenDays",
+                    _ when selected == LocalizationService.Translate("After 1 month") => "ThirtyDays",
                     _ => "Off"
                 };
-                _lblAutoDeleteStatus.Text = selected;
+                _lblAutoDeleteStatus.Text = TranslateDynamic(selected);
                 var result = await _privacyService.UpdateSettingsAsync(new UpdatePrivacySettingsDto { AutoDeleteMode = mode });
                 if (result.Success && result.Data is not null)
                     _settings = result.Data;
@@ -441,7 +446,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private void ChangeEmail()
         {
-            MessageBox.Show(this, "Email changes are managed through the profile settings.", "Info");
+            MessageBox.Show(this, LocalizationService.Translate("Email changes are managed through the profile settings."), LocalizationService.Translate("Info"));
         }
 
         private async void OpenBlockedUsers()
@@ -449,22 +454,22 @@ namespace SecureChat.Client.Forms.Settings
             var blockedResult = await ApiClient.Instance.GetAsync<List<BlockedUserItem>>("api/friends/blocked");
             if (!blockedResult.IsSuccess)
             {
-                MessageBox.Show(this, $"Failed to load blocked users: {blockedResult.ErrorMessage}", "Error");
+                MessageBox.Show(this, string.Format(LocalizationService.Translate("Error: {0}"), blockedResult.ErrorMessage), LocalizationService.Translate("Blocked users"));
                 return;
             }
 
             var blocked = blockedResult.Data ?? new List<BlockedUserItem>();
-            _lblBlocked.Text = blocked.Count == 0 ? "None" : $"{blocked.Count} user(s)";
+            _lblBlocked.Text = blocked.Count == 0 ? TranslateDynamic("None") : $"{blocked.Count} {LocalizationService.Translate("users")}";
 
             if (blocked.Count == 0)
             {
-                MessageBox.Show(this, "No blocked users.", "Blocked Users");
+                MessageBox.Show(this, LocalizationService.Translate("No blocked users."), LocalizationService.Translate("Blocked users"));
                 return;
             }
 
             using var dlg = new Form
             {
-                Text = "Blocked Users",
+                Text = LocalizationService.Translate("Blocked users"),
                 Size = new Size(400, 350),
                 StartPosition = FormStartPosition.CenterParent,
                 BackColor = TG.WindowBg,
@@ -485,7 +490,7 @@ namespace SecureChat.Client.Forms.Settings
 
             var btnUnblock = new Button
             {
-                Text = "Unblock",
+                Text = LocalizationService.Translate("Unblock"),
                 Dock = DockStyle.Bottom,
                 Height = 36,
                 FlatStyle = FlatStyle.Flat,
@@ -501,13 +506,13 @@ namespace SecureChat.Client.Forms.Settings
                     if (delResult.IsSuccess)
                     {
                         listBox.Items.Remove(selected);
-                        _lblBlocked.Text = listBox.Items.Count == 0 ? "None" : $"{listBox.Items.Count} user(s)";
+                        _lblBlocked.Text = listBox.Items.Count == 0 ? TranslateDynamic("None") : $"{listBox.Items.Count} {LocalizationService.Translate("users")}";
                         if (listBox.Items.Count == 0)
                             dlg.Close();
                     }
                     else
                     {
-                        MessageBox.Show(this, $"Failed to unblock: {delResult.ErrorMessage}", "Error");
+                        MessageBox.Show(this, string.Format(LocalizationService.Translate("Error: {0}"), delResult.ErrorMessage), LocalizationService.Translate("Error"));
                     }
                 }
             };

@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using SecureChat.Client.Services;
 using SecureChat.Client.Settings;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Settings
 {
@@ -28,6 +29,7 @@ namespace SecureChat.Client.Forms.Settings
             InitializeComponent();
             BuildUI();
             LoadSettings();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void InitializeComponent() { }

@@ -1,4 +1,5 @@
 ﻿using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.DTOs;
 
 namespace SecureChat.Client.Forms.Chat
@@ -16,6 +17,7 @@ namespace SecureChat.Client.Forms.Chat
         private TextBox _txtSearch;
         private Panel _pnlList;
         private List<MemberItemData> _allMembers = new();
+        private bool _searchActive;
 
         public IReadOnlyList<MemberItemData> Members => _allMembers;
 
@@ -81,18 +83,20 @@ namespace SecureChat.Client.Forms.Chat
             };
             _txtSearch.GotFocus += (_, __) =>
             {
-                if (_txtSearch.Text == "Search")
+                if (!_searchActive)
                 {
                     _txtSearch.Text = string.Empty;
                     _txtSearch.ForeColor = TG.TextPrimary;
+                    _searchActive = true;
                 }
             };
             _txtSearch.LostFocus += (_, __) =>
             {
                 if (string.IsNullOrWhiteSpace(_txtSearch.Text))
                 {
-                    _txtSearch.Text = "Search";
+                    _txtSearch.Text = LocalizationService.Translate("Search");
                     _txtSearch.ForeColor = TG.TextSecondary;
+                    _searchActive = false;
                 }
             };
             _txtSearch.TextChanged += (_, __) =>
@@ -130,6 +134,7 @@ namespace SecureChat.Client.Forms.Chat
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             BuildMemberRows(string.Empty);
+            UiLocalization.ApplyToForm(this);
         }
 
         private void BuildMemberRows(string keyword)
@@ -419,8 +424,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 _txtSearch.BackColor = TG.WindowBg;
                 if (!_txtSearch.Focused)
-                    _txtSearch.ForeColor = string.IsNullOrWhiteSpace(_txtSearch.Text) || _txtSearch.Text == "Search"
-                        ? TG.TextSecondary : TG.TextPrimary;
+                    _txtSearch.ForeColor = _searchActive ? TG.TextPrimary : TG.TextSecondary;
             }
         }
     }

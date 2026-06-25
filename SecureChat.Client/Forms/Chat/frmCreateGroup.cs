@@ -1,5 +1,6 @@
 ﻿using SecureChat.Client.Components.Group;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using System.Drawing.Drawing2D;
 
 namespace SecureChat.Client.Forms.Chat
@@ -100,6 +101,7 @@ namespace SecureChat.Client.Forms.Chat
             BuildUI();
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            UiLocalization.ApplyToForm(this);
         }
 
         protected override void OnShown(EventArgs e)
@@ -406,15 +408,15 @@ namespace SecureChat.Client.Forms.Chat
 
             if (step == 1)
             {
-                Text = "New Group";
-                _btnAction.Text = "Next";
+                Text = LocalizationService.Translate("New Group");
+                _btnAction.Text = LocalizationService.Translate("Next");
                 UpdateActionButton();
                 BeginInvoke((Action)(() => _txtGroupName.Focus()));
             }
             else
             {
-                Text = "Add Members";
-                _btnAction.Text = "Create";
+                Text = LocalizationService.Translate("Add Members");
+                _btnAction.Text = LocalizationService.Translate("Create");
                 _btnAction.Enabled = true;
                 _btnAction.ForeColor = TG.Blue;
                 RefreshCount();

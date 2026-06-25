@@ -2,6 +2,7 @@
 using System.IO;
 using SecureChat.Client.Forms.Settings;
 using SecureChat.Client.Models;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client
 {
@@ -29,6 +30,10 @@ namespace SecureChat.Client
             }
 
             Log("[CLIENT] Application starting");
+
+            // Initialize localization service
+            LocalizationService.Initialize();
+            UiLocalization.Initialize();
 
             // 1. UI thread exceptions
             Application.ThreadException += new ThreadExceptionEventHandler(UIThreadException);
@@ -93,13 +98,13 @@ namespace SecureChat.Client
         private static void UIThreadException(object sender, ThreadExceptionEventArgs e)
         {
             LogException(e.Exception);
-            MessageBox.Show("Có lỗi xảy ra trong hệ thống giao diện. Vui lòng thử lại.", "Lỗi hệ thống", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show("An error occurred in the UI system. Please try again.", "System Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
         private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             LogException((Exception)e.ExceptionObject);
-            MessageBox.Show("Ứng dụng gặp lỗi nghiêm trọng và cần khởi động lại.", "Lỗi nghiêm trọng", MessageBoxButtons.OK, MessageBoxIcon.Stop);
+            MessageBox.Show("The application encountered a critical error and needs to restart.", "Critical Error", MessageBoxButtons.OK, MessageBoxIcon.Stop);
         }
 
         private static void LogException(Exception ex)

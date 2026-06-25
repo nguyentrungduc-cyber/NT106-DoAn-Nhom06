@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.DTOs;
 
 namespace SecureChat.Client.Forms.Chat
@@ -140,6 +141,7 @@ namespace SecureChat.Client.Forms.Chat
             Controls.AddRange(new Control[] { lblTitle, btnClose, _txtSearch, sep, _pnlList, btnCancel });
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            UiLocalization.ApplyToForm(this);
         }
 
         private async System.Threading.Tasks.Task LoadFriendsAsync()
@@ -231,7 +233,7 @@ namespace SecureChat.Client.Forms.Chat
 
             var lblName = new Label
             {
-                Text = f.DisplayName ?? f.Username ?? "Unknown",
+                Text = f.DisplayName ?? f.Username ?? LocalizationService.Translate("Unknown"),
                 Font = new Font("Segoe UI Semibold", 14f),
                 ForeColor = TG.TextPrimary,
                 Location = new Point(nameX, 14),

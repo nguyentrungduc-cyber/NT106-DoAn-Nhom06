@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Client.Services;
 
 namespace SecureChat.Client
@@ -125,9 +126,9 @@ namespace SecureChat.Client
             // Chuỗi "  Danh sách  " truyền vào constructor chính là thuộc tính Text của TabPage, và WinForms tự dùng Text đó để vẽ chữ lên tabstrip.
             // WinForms không tự vẽ nữa — thay vào đó hàm DrawTabItem() tự lấy tab.Text ra để vẽ.
             _tabs = new TabControl();
-            _tabContacts = new TabPage("  Contacts  ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
-            _tabRequests = new TabPage("  Requests  ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
-            _tabSearch = new TabPage("  Search    ") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabContacts = new TabPage("Contacts") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabRequests = new TabPage("Requests") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabSearch = new TabPage("Search") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
 
 
             _contactSubTabs = new TabControl();
@@ -144,7 +145,7 @@ namespace SecureChat.Client
 
             InitializeComponent();
             ThemeRefreshHelper.Hook(this);
-            this.Load += async (s, e) => await LoadContactsFromApiAsync();
+            this.Load += async (s, e) => { await LoadContactsFromApiAsync(); UiLocalization.ApplyToForm(this); };
         }
 
 
@@ -652,14 +653,14 @@ namespace SecureChat.Client
                 menu.ForeColor = TG.TextPrimary;
                 menu.Renderer = new ToolStripProfessionalRenderer(new ContactsMenuColorTable());
 
-                var itemUnfriend = new ToolStripMenuItem("  🙍  Unfriend");
+                var itemUnfriend = new ToolStripMenuItem(LocalizationService.Translate("  🙍  Unfriend"));
                 itemUnfriend.ForeColor = TG.TextName;
                 itemUnfriend.BackColor = TG.SidebarBg;
                 itemUnfriend.Click += async (_, __) =>
                 {
                     var confirm = MessageBox.Show(
-                        $"Unfriend {c.DisplayName}?",
-                        "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                        string.Format(LocalizationService.Translate("Unfriend {0}?"), c.DisplayName),
+                        LocalizationService.Translate("Confirm"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                     if (confirm != DialogResult.Yes) return;
 
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -667,17 +668,17 @@ namespace SecureChat.Client
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
                     else
-                        MessageBox.Show("Unfriend failed.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(LocalizationService.Translate("Unfriend failed."), LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 };
 
-                var itemBlock = new ToolStripMenuItem("  🚫  Block user");
+                var itemBlock = new ToolStripMenuItem(LocalizationService.Translate("  🚫  Block user"));
                 itemBlock.ForeColor = Color.FromArgb(0xE2, 0x4B, 0x4A);
                 itemBlock.BackColor = TG.SidebarBg;
                 itemBlock.Click += async (_, __) =>
                 {
                     var confirm = MessageBox.Show(
-                        $"Block {c.DisplayName}? This person will not be able to message you.",
-                        "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        string.Format(LocalizationService.Translate("Block {0}?"), c.DisplayName),
+                        LocalizationService.Translate("Confirm"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                     if (confirm != DialogResult.Yes) return;
 
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -688,7 +689,7 @@ namespace SecureChat.Client
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
                     else
-                        MessageBox.Show("Block user failed.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(LocalizationService.Translate("Block user failed."), LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 };
 
                 menu.Items.Add(itemUnfriend);
@@ -942,7 +943,7 @@ namespace SecureChat.Client
 
             var lblSub = new Label
             {
-                Text = $"{c.MemberCount} members",
+                Text = $"{c.MemberCount} {LocalizationService.Translate("members")}",
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -1050,9 +1051,9 @@ namespace SecureChat.Client
             int outgoingCount = _requests.FindAll(r => !r.IsIncoming).Count;
             int blockedCount = _blockedUsers.Count;  // ✅ FIX: Thêm đếm số blocked users
 
-            _tpIncoming = new TabPage($"Received ({incomingCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
-            _tpSent = new TabPage($"Sent ({outgoingCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
-            _tpBlocked = new TabPage($"Blocked ({blockedCount})") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpIncoming = new TabPage(string.Format(LocalizationService.Translate("received_tab"), incomingCount)) { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpSent = new TabPage(string.Format(LocalizationService.Translate("sent_tab"), outgoingCount)) { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpBlocked = new TabPage(string.Format(LocalizationService.Translate("blocked_tab"), blockedCount)) { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
 
             _requestSubTabs.TabPages.AddRange(new[] { _tpIncoming, _tpSent, _tpBlocked });
 
@@ -1406,23 +1407,23 @@ namespace SecureChat.Client
             switch (c.Status)
             {
                 case FriendStatus.Friend:
-                    statusCtrl = new Label { Text = "✓ Friends", Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("✓ Friends"), Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingOutgoing:
-                    statusCtrl = new Label { Text = "Sent", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Sent"), Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingIncoming:
-                    statusCtrl = new Label { Text = "Pending", Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Pending"), Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.Blocked:
-                    statusCtrl = new Label { Text = "Blocked", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Blocked"), Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 default:
-                    var btn = new TelegramButton { Text = "+ Add Friend", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
+                    var btn = new TelegramButton { Text = LocalizationService.Translate("+ Add Friend"), Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
                     btn.Click += async (s, e) =>
                     {
                         btn.Enabled = false;
-                        btn.Text = "Sending...";
+                        btn.Text = LocalizationService.Translate("Sending...");
                         try
                         {
                             var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -1433,16 +1434,16 @@ namespace SecureChat.Client
                             if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.Conflict)
                             {
                                 c.Status = FriendStatus.PendingOutgoing;
-                                btn.Text = "Sent";
+                                btn.Text = LocalizationService.Translate("Sent");
                                 btn.ForeColor = System.Drawing.Color.FromArgb(0xE6, 0x5C, 0x00);
                                 await LoadContactsFromApiAsync();
                             }
                             else
                             {
                                 var errorBody = await res.Content.ReadAsStringAsync();
-                                btn.Text = "+ Add Friend";
+                                btn.Text = LocalizationService.Translate("+ Add Friend");
                                 btn.Enabled = true;
-                                MessageBox.Show($"Error {(int)res.StatusCode}: {errorBody}", "Send failed");
+                                MessageBox.Show(string.Format(LocalizationService.Translate("Error {0}: {1}"), (int)res.StatusCode, errorBody), LocalizationService.Translate("Send failed"));
                             }
                         }
                         catch
@@ -1517,8 +1518,8 @@ namespace SecureChat.Client
                 _pnlSentRequests.Controls.Add(row);
                 y += 86;
             }
-            _tpIncoming.Text = $"Received ({_requests.Count(r => r.IsIncoming)})";
-            _tpSent.Text = $"Sent ({_requests.Count(r => !r.IsIncoming)})";
+            _tpIncoming.Text = string.Format(LocalizationService.Translate("received_tab"), _requests.Count(r => r.IsIncoming));
+            _tpSent.Text = string.Format(LocalizationService.Translate("sent_tab"), _requests.Count(r => !r.IsIncoming));
             _requestSubTabs.Invalidate();
 
         }
@@ -1528,14 +1529,14 @@ namespace SecureChat.Client
             _pnlBlockedUsers.Controls.Clear();
 
             // Cập nhật số đếm trên tab
-            _tpBlocked.Text = $"Blocked ({_blockedUsers.Count})";
+            _tpBlocked.Text = string.Format(LocalizationService.Translate("blocked_tab"), _blockedUsers.Count);
             _requestSubTabs.Invalidate();
 
             if (_blockedUsers.Count == 0)
             {
                 var lbl = new Label
                 {
-                    Text = "No blocked users",
+                    Text = LocalizationService.Translate("No blocked users"),
                     Font = TG.FontRegular(9f),
                     ForeColor = TG.TextSecondary,
                     AutoSize = false,
@@ -1583,7 +1584,7 @@ namespace SecureChat.Client
 
             var lblStatus = new Label
             {
-                Text = "🚫 Blocked",
+                Text = "🚫 " + LocalizationService.Translate("Blocked"),
                 Font = TG.FontRegular(8f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,

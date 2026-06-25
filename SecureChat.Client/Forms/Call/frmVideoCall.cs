@@ -14,6 +14,7 @@ using System.Windows.Forms;
 using SecureChat.Client.Media;
 using SecureChat.Client.Services;
 using SecureChat.Client.Services.RealTime;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Models;
 using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
@@ -153,6 +154,8 @@ namespace SecureChat.Client.Forms.Call
             };
             FormClosed += (_, __) => Cleanup();
             ThemeRefreshHelper.Hook(this);
+            UiLocalization.ApplyToForm(this);
+            LocalizationService.LanguageChanged += OnLanguageChanged;
         }
 
         public frmVideoCall(string friendName, string callId, string conversationId, SignalRClient signalRClient, bool isGroupCall = false) : this(friendName)
@@ -679,7 +682,7 @@ namespace SecureChat.Client.Forms.Call
                 }
 
                 lastRemoteFrameUtc = DateTime.UtcNow;
-                lblStatus.Text = "Video call";
+                lblStatus.Text = LocalizationService.Translate("Video call");
             }
             if (InvokeRequired) BeginInvoke((Action)Apply);
             else Apply();
@@ -761,7 +764,7 @@ namespace SecureChat.Client.Forms.Call
 
             if (!hasRemoteVideo)
             {
-                lblStatus.Text = el.TotalSeconds < 6 ? "Connecting..." : "Waiting for video...";
+                lblStatus.Text = el.TotalSeconds < 6 ? LocalizationService.Translate("Connecting...") : LocalizationService.Translate("Waiting for video...");
                 pnlAvatar.Visible = true;
             }
             else
@@ -770,12 +773,12 @@ namespace SecureChat.Client.Forms.Call
                 if (stale)
                 {
                     hasRemoteVideo = false;
-                    lblStatus.Text = "Reconnecting...";
+                    lblStatus.Text = LocalizationService.Translate("Reconnecting...");
                     pnlAvatar.Visible = true;
                 }
                 else
                 {
-                    lblStatus.Text = "Video call";
+                    lblStatus.Text = LocalizationService.Translate("Video call");
                     pnlAvatar.Visible = false;
                 }
             }
@@ -967,7 +970,7 @@ namespace SecureChat.Client.Forms.Call
         {
             if (IsDisposed) return;
             isScreenSharing = false;
-            BeginInvoke(new Action(() => lblStatus.Text = "Screen share stopped"));
+            BeginInvoke(new Action(() => lblStatus.Text = LocalizationService.Translate("Screen share stopped")));
         }
 
         private void ToggleScreenShare()
@@ -1018,7 +1021,7 @@ namespace SecureChat.Client.Forms.Call
                 _leaveInitiated = true;
                 BeginInvoke(new Action(() =>
                 {
-                    MessageBox.Show("Cuộc gọi đã kết thúc từ phía đối phương.", "Call ended", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(LocalizationService.Translate("Call ended from the other side."), LocalizationService.Translate("Call ended"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     Close();
                 }));
             }
@@ -1027,7 +1030,7 @@ namespace SecureChat.Client.Forms.Call
                 BeginInvoke(new Action(() =>
                 {
                     RemoveParticipant(senderId);
-                    lblStatus.Text = "Other participant left";
+                    lblStatus.Text = LocalizationService.Translate("Other participant left");
                 }));
             }
             else if (sig == "CALL_JOINED")
@@ -1035,7 +1038,7 @@ namespace SecureChat.Client.Forms.Call
                 BeginInvoke(new Action(() =>
                 {
                     EnsureParticipant(senderId, senderId);
-                    lblStatus.Text = "Video call";
+                    lblStatus.Text = LocalizationService.Translate("Video call");
                     lastRemoteFrameUtc = DateTime.UtcNow;
                 }));
             }
@@ -1060,14 +1063,14 @@ namespace SecureChat.Client.Forms.Call
             {
                 BeginInvoke(new Action(() =>
                 {
-                    lblStatus.Text = "Receiving screen share";
+                    lblStatus.Text = LocalizationService.Translate("Receiving screen share");
                 }));
             }
             else if (sig == "SCREEN_OFF")
             {
                 BeginInvoke(new Action(() =>
                 {
-                    lblStatus.Text = "Screen share ended";
+                    lblStatus.Text = LocalizationService.Translate("Screen share ended");
                 }));
             }
             return Task.CompletedTask;
@@ -1204,6 +1207,12 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         //  CLEANUP
         // ═════════════════════════════════════════════════════════════════════════
+        private void OnLanguageChanged()
+        {
+            if (InvokeRequired) { BeginInvoke(new Action(OnLanguageChanged)); return; }
+            lblStatus.Text = LocalizationService.Translate(lblStatus.Text);
+        }
+
         private void Cleanup()
         {
             if (_cleanupDone) return;
@@ -1264,6 +1273,7 @@ namespace SecureChat.Client.Forms.Call
             previewSnapTimer.Stop();
             previewSnapTimer.Dispose();
             _cts.Dispose();
+            LocalizationService.LanguageChanged -= OnLanguageChanged;
         }
 
         private void NotifyUserInteraction()

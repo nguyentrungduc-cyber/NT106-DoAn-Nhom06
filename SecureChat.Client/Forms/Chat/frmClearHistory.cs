@@ -1,5 +1,6 @@
 using System;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -75,6 +76,7 @@ namespace SecureChat.Client.Forms.Chat
                 btnCancel,
                 btnDelete
             });
+            UiLocalization.ApplyToForm(this);
         }
 
         private static Button BuildActionButton(string text, Color color)

@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using SecureChat.Client.Models;
 using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 using System.IO;
 
 namespace SecureChat.Client.Forms.Profile
@@ -41,6 +42,7 @@ namespace SecureChat.Client.Forms.Profile
             LoadProfile(profile);
             Resize += (_, __) => LayoutDynamic();
             LayoutDynamic();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void BuildUI()
@@ -576,7 +578,7 @@ namespace SecureChat.Client.Forms.Profile
             _zoomBar.Scroll += (_, __) =>
             {
                 _zoom = _zoomBar.Value / 100f;
-                _lblZoom.Text = $"Zoom: {_zoomBar.Value}%";
+                _lblZoom.Text = string.Format(LocalizationService.Translate("Zoom: {0}%"), _zoomBar.Value);
                 UpdateSelectionForZoom();
                 _canvas.Invalidate();
             };
@@ -623,6 +625,7 @@ namespace SecureChat.Client.Forms.Profile
             Controls.Add(btnCancel);
             Controls.Add(btnApply);
 
+            UiLocalization.ApplyToForm(this);
             RecalculateImageRect();
             UpdateSelectionForZoom();
         }
