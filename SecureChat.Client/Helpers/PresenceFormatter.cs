@@ -48,7 +48,7 @@ public static class PresenceFormatter
         bool isVietnamese = LocalizationService.CurrentLanguage == LanguageType.Vietnamese;
         string formattedDate = isVietnamese
             ? $"{localDate.Day} {LocalizationService.Translate(localDate.ToString("MMMM", System.Globalization.CultureInfo.InvariantCulture))}"
-            : localDate.ToString("MMM dd");
+            : localDate.ToString("MMM dd", System.Globalization.CultureInfo.InvariantCulture);
         var fmt2 = LocalizationService.Translate("last seen on {0} at {1}");
         return string.Format(fmt2,
             formattedDate,

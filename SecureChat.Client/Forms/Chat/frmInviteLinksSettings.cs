@@ -89,12 +89,12 @@ namespace SecureChat.Client.Forms.Chat
             btnCopy.Click += (_, __) =>
             {
                 try { Clipboard.SetText(txtLink.Text); } catch { }
-                MessageBox.Show(this, "Link copied.", "Invite links", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, LocalizationService.Translate("Link copied."), LocalizationService.Translate("Invite links"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
 
             var btnShare = BuildBlueButton("\u27A1\uFE0F  Share Link", new Point(254, 174));
             btnShare.Click += (_, __) =>
-                MessageBox.Show(this, "Share link flow will be connected next.", "Invite links", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, LocalizationService.Translate("Share link flow will be connected next."), LocalizationService.Translate("Invite links"), MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             var sep = new Panel { Location = new Point(0, 238), Size = new Size(500, 1), BackColor = TG.Divider };
 
@@ -162,8 +162,8 @@ namespace SecureChat.Client.Forms.Chat
         private void CreateNewLink()
         {
             _linksCount++;
-            _lblLinksCount.Text = $"Total links: {_linksCount}";
-            MessageBox.Show(this, "A new invite link has been created.", "Invite links", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _lblLinksCount.Text = string.Format(LocalizationService.Translate("Total links: {0}"), _linksCount);
+            MessageBox.Show(this, LocalizationService.Translate("A new invite link has been created."), LocalizationService.Translate("Invite links"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private static Button BuildBlueButton(string text, Point location)

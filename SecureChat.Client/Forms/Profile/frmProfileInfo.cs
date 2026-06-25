@@ -578,7 +578,7 @@ namespace SecureChat.Client.Forms.Profile
             _zoomBar.Scroll += (_, __) =>
             {
                 _zoom = _zoomBar.Value / 100f;
-                _lblZoom.Text = $"Zoom: {_zoomBar.Value}%";
+                _lblZoom.Text = string.Format(LocalizationService.Translate("Zoom: {0}%"), _zoomBar.Value);
                 UpdateSelectionForZoom();
                 _canvas.Invalidate();
             };
@@ -625,6 +625,7 @@ namespace SecureChat.Client.Forms.Profile
             Controls.Add(btnCancel);
             Controls.Add(btnApply);
 
+            UiLocalization.ApplyToForm(this);
             RecalculateImageRect();
             UpdateSelectionForZoom();
         }

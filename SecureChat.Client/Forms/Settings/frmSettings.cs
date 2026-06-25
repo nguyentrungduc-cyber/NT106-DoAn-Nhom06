@@ -321,8 +321,8 @@ namespace SecureChat.Client.Forms.Settings
         {
             var confirmResult = MessageBox.Show(
                 this,
-                "Are you sure you want to logout?",
-                "Confirm Logout",
+                LocalizationService.Translate("Are you sure you want to logout?"),
+                LocalizationService.Translate("Confirm Logout"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
 
@@ -347,8 +347,8 @@ namespace SecureChat.Client.Forms.Settings
             {
                 MessageBox.Show(
                     this,
-                    $"Logout error: {ex.Message}",
-                    "Error",
+                    string.Format(LocalizationService.Translate("Logout error: {0}"), ex.Message),
+                    LocalizationService.Translate("Error"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 Enabled = true;
@@ -357,7 +357,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private void ShowPending()
         {
-            MessageBox.Show(this, "Feature coming soon", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, LocalizationService.Translate("Feature coming soon"), LocalizationService.Translate("Info"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private static Button FlatIconButton(string text)

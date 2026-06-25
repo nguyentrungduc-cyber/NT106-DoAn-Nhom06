@@ -1407,23 +1407,23 @@ namespace SecureChat.Client
             switch (c.Status)
             {
                 case FriendStatus.Friend:
-                    statusCtrl = new Label { Text = "✓ Friends", Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("✓ Friends"), Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingOutgoing:
-                    statusCtrl = new Label { Text = "Sent", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Sent"), Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingIncoming:
-                    statusCtrl = new Label { Text = "Pending", Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Pending"), Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.Blocked:
-                    statusCtrl = new Label { Text = "Blocked", Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Blocked"), Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 default:
-                    var btn = new TelegramButton { Text = "+ Add Friend", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
+                    var btn = new TelegramButton { Text = LocalizationService.Translate("+ Add Friend"), Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
                     btn.Click += async (s, e) =>
                     {
                         btn.Enabled = false;
-                        btn.Text = "Sending...";
+                        btn.Text = LocalizationService.Translate("Sending...");
                         try
                         {
                             var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -1434,16 +1434,16 @@ namespace SecureChat.Client
                             if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.Conflict)
                             {
                                 c.Status = FriendStatus.PendingOutgoing;
-                                btn.Text = "Sent";
+                                btn.Text = LocalizationService.Translate("Sent");
                                 btn.ForeColor = System.Drawing.Color.FromArgb(0xE6, 0x5C, 0x00);
                                 await LoadContactsFromApiAsync();
                             }
                             else
                             {
                                 var errorBody = await res.Content.ReadAsStringAsync();
-                                btn.Text = "+ Add Friend";
+                                btn.Text = LocalizationService.Translate("+ Add Friend");
                                 btn.Enabled = true;
-                                MessageBox.Show($"Error {(int)res.StatusCode}: {errorBody}", "Send failed");
+                                MessageBox.Show(string.Format(LocalizationService.Translate("Error {0}: {1}"), (int)res.StatusCode, errorBody), LocalizationService.Translate("Send failed"));
                             }
                         }
                         catch

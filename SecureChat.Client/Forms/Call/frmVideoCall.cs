@@ -1021,7 +1021,7 @@ namespace SecureChat.Client.Forms.Call
                 _leaveInitiated = true;
                 BeginInvoke(new Action(() =>
                 {
-                    MessageBox.Show("Cuộc gọi đã kết thúc từ phía đối phương.", "Call ended", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(LocalizationService.Translate("Call ended from the other side."), LocalizationService.Translate("Call ended"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     Close();
                 }));
             }

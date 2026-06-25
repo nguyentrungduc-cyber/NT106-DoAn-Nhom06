@@ -29,9 +29,9 @@ namespace SecureChat.Client.Forms.Chat
         private Label _lblCount = null!;
         private Label _lblMembersTitle = null!;
 
-        private Button _btnMute = null!;
-        private Button _btnManage = null!;
-        private Button _btnLeave = null!;
+        private Panel _btnMute = null!;
+        private Panel _btnManage = null!;
+        private Panel _btnLeave = null!;
 
         private bool _disableSound;
         private bool _notificationsMuted;
@@ -153,9 +153,9 @@ namespace SecureChat.Client.Forms.Chat
             _btnManage = BuildActionCard("\u2699\uFE0F", "Manage");
             _btnLeave = BuildActionCard("\u21AA\uFE0F", "Leave", C_DANGER);
 
-            _btnMute.Click += (_, __) => OpenMuteNotifications();
-            _btnManage.Click += (_, __) => OpenEditGroup();
-            _btnLeave.Click += (_, __) => OpenLeaveGroup();
+            WireClick(_btnMute, (_, __) => OpenMuteNotifications());
+            WireClick(_btnManage, (_, __) => OpenEditGroup());
+            WireClick(_btnLeave, (_, __) => OpenLeaveGroup());
 
             int cardW = 112;
             int gap = 12;
@@ -232,27 +232,49 @@ namespace SecureChat.Client.Forms.Chat
             Controls.Add(pnl);
         }
 
-        private Button BuildActionCard(string emoji, string title, Color? titleColor = null)
+        private Panel BuildActionCard(string emoji, string title, Color? titleColor = null)
         {
+            var pnl = new Panel
             {
-                var b = new Button
-                {
-                    Size = new Size(112, 70),
-                    FlatStyle = FlatStyle.Flat,
-                    BackColor = TG.SidebarHover,
-                    ForeColor = titleColor ?? TG.TextPrimary,
-                    Font = new Font("Segoe UI Emoji", 10.8f),
-                    Text = $"{emoji}\n{title}",
-                    TextAlign = ContentAlignment.MiddleCenter,
-                    Cursor = Cursors.Hand,
-                    UseCompatibleTextRendering = true,
-                    TabStop = false
-                };
-                b.FlatAppearance.BorderSize = 0;
-                b.FlatAppearance.MouseOverBackColor = TG.SidebarHover;
-                b.FlatAppearance.MouseDownBackColor = TG.SidebarHover;
-                return b;
-            }
+                Size = new Size(112, 70),
+                BackColor = TG.SidebarHover,
+                Cursor = Cursors.Hand,
+                TabStop = false
+            };
+
+            var lblEmoji = new Label
+            {
+                Text = emoji,
+                Font = new Font("Segoe UI Emoji", 16f),
+                ForeColor = titleColor ?? TG.TextPrimary,
+                Size = new Size(112, 32),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(0, 6),
+                BackColor = Color.Transparent,
+                TabStop = false
+            };
+
+            var lblTitle = new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI Semibold", 9.5f),
+                ForeColor = titleColor ?? TG.TextPrimary,
+                Size = new Size(112, 24),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(0, 40),
+                BackColor = Color.Transparent,
+                TabStop = false
+            };
+
+            pnl.Controls.AddRange(new Control[] { lblEmoji, lblTitle });
+            return pnl;
+        }
+
+        private static void WireClick(Control root, EventHandler handler)
+        {
+            root.Click += handler;
+            foreach (Control c in root.Controls)
+                WireClick(c, handler);
         }
 
         private static Button FlatIconButton(string text, string fontFamily, float size)
@@ -314,7 +336,6 @@ namespace SecureChat.Client.Forms.Chat
                 {
                     Name = f.GroupName,
                     Description = f.DescriptionText,
-                    GroupType = f.GroupType == "Public" ? (int)SecureChat.Models.GroupVisibility.Public : (int)SecureChat.Models.GroupVisibility.Private,
                     ChatHistoryMode = f.ChatHistoryMode == "Visible" ? (int)SecureChat.Models.HistoryMode.Visible : (int)SecureChat.Models.HistoryMode.Hidden
                 };
                 var json = System.Text.Json.JsonSerializer.Serialize(payload);
@@ -330,12 +351,12 @@ namespace SecureChat.Client.Forms.Chat
                 else
                 {
                     var err = await res.Content.ReadAsStringAsync();
-                    MessageBox.Show(this, $"Cannot save: {err}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, string.Format(LocalizationService.Translate("Cannot save: {0}"), err), LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -361,8 +382,8 @@ namespace SecureChat.Client.Forms.Chat
             if (memberNames.Count == 0)
             {
                 var result = MessageBox.Show(this,
-                    "You are the only member. Leaving will permanently delete the group.\n\nContinue?",
-                    "Leave group",
+                    LocalizationService.Translate("You are the only member. Leaving will permanently delete the group.\n\nContinue?"),
+                    LocalizationService.Translate("Leave group"),
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
@@ -385,14 +406,14 @@ namespace SecureChat.Client.Forms.Chat
                         else
                         {
                             var err = await leaveRes.Content.ReadAsStringAsync();
-                            MessageBox.Show(this, $"Cannot leave group: {err}", "Error",
+                            MessageBox.Show(this, string.Format(LocalizationService.Translate("Cannot leave group: {0}"), err), LocalizationService.Translate("Error"),
                                 MessageBoxButtons.OK, MessageBoxIcon.Error);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, ex.Message, LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 return;
             }
@@ -420,13 +441,13 @@ namespace SecureChat.Client.Forms.Chat
                 else
                 {
                     var err = await res.Content.ReadAsStringAsync();
-                    MessageBox.Show(this, $"Cannot leave group: {err}", "Error",
+                    MessageBox.Show(this, string.Format(LocalizationService.Translate("Cannot leave group: {0}"), err), LocalizationService.Translate("Error"),
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -435,8 +456,8 @@ namespace SecureChat.Client.Forms.Chat
             _lblName.Text = name;
             _lblDescription.Text = description ?? string.Empty;
             _lblDescription.Visible = !string.IsNullOrWhiteSpace(description);
-            _lblCount.Text = $"{members.Count} members";
-            _lblMembersTitle.Text = $"{members.Count} MEMBERS";
+            _lblCount.Text = string.Format(LocalizationService.Translate("{0} members"), members.Count);
+            _lblMembersTitle.Text = string.Format(LocalizationService.Translate("{0} MEMBERS"), members.Count);
 
             var oldAvatar = _pbAvatarImage;
             _pbAvatarImage = avatar != null ? new Bitmap(avatar) : null;

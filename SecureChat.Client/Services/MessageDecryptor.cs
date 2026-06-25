@@ -443,7 +443,7 @@ namespace SecureChat.Client.Services
                     message.MessageID,
                     "recalled::",
                     isOut,
-                    message.SentAt.ToLocalTime().ToString("h:mm tt"),
+                    message.SentAt.ToLocalTime().ToString("HH:mm"),
                     message.SenderUsername ?? string.Empty,
                     message);
             }
@@ -513,7 +513,7 @@ namespace SecureChat.Client.Services
                 message.MessageID,
                 content,
                 isOut,
-                message.SentAt.ToLocalTime().ToString("h:mm tt"),
+                message.SentAt.ToLocalTime().ToString("HH:mm"),
                 message.SenderUsername ?? string.Empty,
                 message);
         }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -141,7 +142,7 @@ namespace SecureChat.Client.Forms.Settings
                 var item = new ListViewItem(fi.Name);
                 item.SubItems.Add(FormatSize(fi.Length));
                 item.SubItems.Add(entry.Source);
-                item.SubItems.Add(entry.DownloadedAtUtc.ToLocalTime().ToString("dd/MM HH:mm"));
+                item.SubItems.Add(entry.DownloadedAtUtc.ToLocalTime().ToString("dd/MM HH:mm", CultureInfo.InvariantCulture));
                 item.Tag = fi.FullName;
                 list.Items.Add(item);
             }

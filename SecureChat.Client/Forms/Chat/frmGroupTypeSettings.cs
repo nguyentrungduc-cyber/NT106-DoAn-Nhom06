@@ -109,12 +109,12 @@ namespace SecureChat.Client.Forms.Chat
             btnCopy.Click += (_, __) =>
             {
                 try { Clipboard.SetText(txtLink.Text); } catch { }
-                MessageBox.Show(this, "Link copied.", "Group type", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, LocalizationService.Translate("Link copied."), LocalizationService.Translate("Group type"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
 
             var btnShare = BuildBlueButton("\u27A1\uFE0F  Share Link", new Point(256, 374));
             btnShare.Click += (_, __) =>
-                MessageBox.Show(this, "Share link action will be connected next.", "Group type", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, LocalizationService.Translate("Share link action will be connected next."), LocalizationService.Translate("Group type"), MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             var btnCancel = BuildBottomButton("Cancel", TG.Blue);
             btnCancel.Location = new Point(300, 430);

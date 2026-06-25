@@ -233,7 +233,7 @@ namespace SecureChat.Client.Forms.Chat
 
             var lblName = new Label
             {
-                Text = f.DisplayName ?? f.Username ?? "Unknown",
+                Text = f.DisplayName ?? f.Username ?? LocalizationService.Translate("Unknown"),
                 Font = new Font("Segoe UI Semibold", 14f),
                 ForeColor = TG.TextPrimary,
                 Location = new Point(nameX, 14),

@@ -340,8 +340,8 @@ namespace SecureChat.Client
                     {
                         bool isGroup = c.Type == SecureChat.Models.ConversationType.Group;
                         string time = c.LastActivityAt.HasValue
-                            ? c.LastActivityAt.Value.ToLocalTime().ToString("h:mm tt")
-                            : c.CreatedAt.ToLocalTime().ToString("h:mm tt");
+                            ? c.LastActivityAt.Value.ToLocalTime().ToString("HH:mm")
+                            : c.CreatedAt.ToLocalTime().ToString("HH:mm");
 
                         // Giữ preview cũ nếu có; nếu không thì dùng preview từ server
                         string preview = existingPreviews.TryGetValue(c.ConversationID, out var oldPreview)
@@ -442,7 +442,7 @@ namespace SecureChat.Client
                         catch { /* Giữ nguyên ciphertext nếu giải mã thất bại */ }
                     }
 
-                    string time = m.SentAt.ToLocalTime().ToString("h:mm tt");
+                    string time = m.SentAt.ToLocalTime().ToString("HH:mm");
                     string sender = isOut ? "" : (m.SenderUsername ?? "");
                     if (!isOut && !string.IsNullOrEmpty(sender) && !string.IsNullOrEmpty(m.SenderDisplayName))
                         _senderDisplayNameMap[sender] = m.SenderDisplayName;
@@ -852,7 +852,7 @@ namespace SecureChat.Client
                     string display = !string.IsNullOrWhiteSpace(conv.Name)
                         ? conv.Name!
                         : "Direct chat";
-                    string time = conv.LastActivityAt?.ToLocalTime().ToString("h:mm tt")
+                    string time = conv.LastActivityAt?.ToLocalTime().ToString("HH:mm")
                         ?? string.Empty;
                     _convs.Insert(0, (conv.ConversationID, display, string.Empty, time, 0, isGroup));
 
@@ -1480,9 +1480,9 @@ namespace SecureChat.Client
 
         private static string FormatDuration(TimeSpan duration)
         {
-            if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} minutes";
-            if (duration.TotalHours < 24) return $"{(int)duration.TotalHours} hours";
-            return $"{(int)duration.TotalDays} days";
+            if (duration.TotalMinutes < 60) return string.Format(LocalizationService.Translate("{0} minutes"), (int)duration.TotalMinutes);
+            if (duration.TotalHours < 24) return string.Format(LocalizationService.Translate("{0} hours"), (int)duration.TotalHours);
+            return string.Format(LocalizationService.Translate("{0} days"), (int)duration.TotalDays);
         }
 
         private void RefreshMuteMenuState()
@@ -1645,7 +1645,6 @@ namespace SecureChat.Client
                 Name = dlg.GroupName,
                 AvatarUrl = avatarUrl,
                 Description = dlg.DescriptionText,
-                GroupType = dlg.GroupType == "Public" ? (int)SecureChat.Models.GroupVisibility.Public : (int)SecureChat.Models.GroupVisibility.Private,
                 ChatHistoryMode = dlg.ChatHistoryMode == "Visible" ? (int)SecureChat.Models.HistoryMode.Visible : (int)SecureChat.Models.HistoryMode.Hidden
             };
             var updateJson = System.Text.Json.JsonSerializer.Serialize(updatePayload);
@@ -2094,7 +2093,7 @@ namespace SecureChat.Client
         private async void ClearHistoryPrivate()
         {
             var conv = _convs.Find(c => c.Id == _activeConvId);
-            string otherName = conv.Name ?? "the other user";
+            string otherName = conv.Name ?? LocalizationService.Translate("the other user");
 
             var result = MessageBox.Show(this,
                 LocalizationService.Translate("Clear chat history?"),
@@ -2205,7 +2204,7 @@ namespace SecureChat.Client
         {
             var targetConvId = _activeConvId;
             var conv = _convs.Find(c => c.Id == targetConvId);
-            string otherName = conv.Name ?? "the other user";
+            string otherName = conv.Name ?? LocalizationService.Translate("the other user");
 
             var result = MessageBox.Show(this,
                 LocalizationService.Translate("Delete this chat?"),
@@ -2721,13 +2720,13 @@ namespace SecureChat.Client
                                     SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, aesKey, aesIv);
                                     string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
                                     _messageDates[msgRes.MessageID] = msgRes.SentAt.ToLocalTime();
-                                    _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                    _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToLocalTime().ToString("HH:mm"), msgRes.SenderUsername ?? ""));
                                     if (msgRes.ExpiresAt.HasValue)
                                         _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
                                     this.BeginInvoke(new Action(() =>
                                     {
                                         BuildMessages();
-                                        var time = msgRes.SentAt.ToLocalTime().ToString("h:mm tt");
+                                        var time = msgRes.SentAt.ToLocalTime().ToString("HH:mm");
                                         RefreshConversationItem(_activeConvId, payload, true, "", time, messageId: msgRes.MessageID);
                                     }));
                                 }
@@ -2971,13 +2970,13 @@ namespace SecureChat.Client
                                             SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, key, iv);
                                             string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
                                             _messageDates[msgRes.MessageID] = msgRes.SentAt.ToLocalTime();
-                                            _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToString("h:mm tt"), msgRes.SenderUsername ?? ""));
+                                            _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToLocalTime().ToString("HH:mm"), msgRes.SenderUsername ?? ""));
                                             if (msgRes.ExpiresAt.HasValue)
                                                 _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
                                             this.BeginInvoke(new Action(() =>
                                             {
                                                 BuildMessages();
-                                                var time = msgRes.SentAt.ToLocalTime().ToString("h:mm tt");
+                                                var time = msgRes.SentAt.ToLocalTime().ToString("HH:mm");
                                                 RefreshConversationItem(_activeConvId, payload, true, "", time, messageId: msgRes.MessageID);
                                             }));
                                         }
@@ -4635,7 +4634,7 @@ namespace SecureChat.Client
                     string display = !string.IsNullOrWhiteSpace(c.Name)
                         ? c.Name!
                         : (c.Type == ConversationType.Group ? "Group" : "Direct chat");
-                    string time = c.LastActivityAt?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
+                    string time = c.LastActivityAt?.ToLocalTime().ToString("HH:mm") ?? string.Empty;
                     bool isGroup = c.Type == ConversationType.Group;
 
                     // Giữ preview cũ nếu có (sẽ được background sync cập nhật sau)
@@ -4954,7 +4953,7 @@ namespace SecureChat.Client
         {
             string senderForPreview = latest.Out ? "" : (!string.IsNullOrEmpty(latest.SenderDisplayName) ? latest.SenderDisplayName : latest.Sender);
             RefreshConversationItem(convId, latest.Text, latest.Out, senderForPreview,
-                latest.Raw.SentAt.ToLocalTime().ToString("h:mm tt"), messageId: latest.Id);
+                latest.Raw.SentAt.ToLocalTime().ToString("HH:mm"), messageId: latest.Id);
         }
 
         private void RefreshSidebarPreview()
@@ -6141,7 +6140,7 @@ namespace SecureChat.Client
                     catch { /* Real-time error is not critical */ }
                 }
 
-                string timeStr = messageResponse.SentAt.ToLocalTime().ToString("h:mm tt");
+                string timeStr = messageResponse.SentAt.ToLocalTime().ToString("HH:mm");
 
                 // Save forward metadata for rendering header
                 _forwardMetadata[messageResponse.MessageID] = senderName;
@@ -6701,7 +6700,7 @@ namespace SecureChat.Client
                     string display = !string.IsNullOrWhiteSpace(conv.Name)
                         ? conv.Name!
                         : (isGroup ? "Group" : "Direct chat");
-                    string time = conv.LastActivityAt?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
+                    string time = conv.LastActivityAt?.ToLocalTime().ToString("HH:mm") ?? string.Empty;
                     _convs.Insert(0, (convId, display, string.Empty, time, 0, isGroup));
 
                     if (!isGroup && !string.IsNullOrWhiteSpace(conv.OtherUserId))
@@ -7348,7 +7347,7 @@ namespace SecureChat.Client
                         if (convIdx >= 0)
                         {
                             var c = _convs[convIdx];
-                            RefreshConversationItem(message.ConversationID, "recalled::", false, "", DateTime.Now.ToLocalTime().ToString("h:mm tt"), c.Unread);
+                            RefreshConversationItem(message.ConversationID, "recalled::", false, "", DateTime.Now.ToLocalTime().ToString("HH:mm"), c.Unread);
                         }
 
                         // Re-render if this is the active conversation
@@ -7878,7 +7877,7 @@ namespace SecureChat.Client
             string tempMessageId = Guid.NewGuid().ToString();
             _messageDates[tempMessageId] = DateTime.Now;
             _msgDelivery[tempMessageId] = SecureChat.DTOs.DeliveryStatus.Sent;
-            _currentMsgs.Add((tempMessageId, finalMessageText, true, DateTime.Now.ToString("h:mm tt"), ""));
+            _currentMsgs.Add((tempMessageId, finalMessageText, true, DateTime.Now.ToString("HH:mm"), ""));
             BuildMessages();
 
             try
@@ -7985,7 +7984,7 @@ namespace SecureChat.Client
                     // Chuyển delivery status từ tempId sang realId
                     _msgDelivery.TryRemove(tempMessageId, out _);
                     _msgDelivery[messageResponse.MessageID] = SecureChat.DTOs.DeliveryStatus.Sent;
-                    string timeStr = messageResponse.SentAt.ToLocalTime().ToString("h:mm tt");
+                    string timeStr = messageResponse.SentAt.ToLocalTime().ToString("HH:mm");
                     _currentMsgs[index] = (
                         messageResponse.MessageID,
                         finalMessageText,

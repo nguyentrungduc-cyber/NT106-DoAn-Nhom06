@@ -11,7 +11,6 @@ namespace SecureChat.Client.Forms.Chat
         private Image? _avatarImage;
 
         private readonly Label _lblDescPlaceholder;
-        private readonly Label _lblGroupTypeValue;
         private readonly Label _lblChatHistoryValue;
         private readonly Label _lblAdminsValue;
         private readonly Label _lblMembersValue;
@@ -24,7 +23,6 @@ namespace SecureChat.Client.Forms.Chat
         private readonly System.Windows.Forms.Timer _fadeTimer;
         private bool _disposed;
 
-        private string _groupType = "Private";
         private string _chatHistory = "Hidden";
         private int _adminsCount = 0;
         private int _membersCount = 0;
@@ -33,7 +31,6 @@ namespace SecureChat.Client.Forms.Chat
         public string GroupName { get; private set; }
         public string? NewAvatarPath { get; private set; }
         public string DescriptionText => _txtDescription.Text.Trim();
-        public string GroupType => _groupType;
         public string ChatHistoryMode => _chatHistory;
         public int AdminsCount => _adminsCount;
         public int MembersCount => _membersCount;
@@ -170,23 +167,19 @@ namespace SecureChat.Client.Forms.Chat
             _sectionSeparator = new Panel { Location = new Point(0, 0), Size = new Size(520, 1), BackColor = TG.Divider };
             section.Controls.Add(_sectionSeparator);
 
-            var rowGroupType = BuildSettingsRow("\u2699\uFE0F  Group type", _groupType, out _lblGroupTypeValue);
-            rowGroupType.Location = new Point(0, 8);
-            BindRowAction(rowGroupType, OpenGroupTypeSettings);
-
             var rowHistory = BuildSettingsRow("\U0001F4AC  Chat history for new members", _chatHistory, out _lblChatHistoryValue);
-            rowHistory.Location = new Point(0, 54);
+            rowHistory.Location = new Point(0, 8);
             BindRowAction(rowHistory, OpenChatHistorySettings);
 
             var rowAdmins = BuildSettingsRow("\U0001F6E1\uFE0F  Administrators", _adminsCount.ToString(), out _lblAdminsValue);
-            rowAdmins.Location = new Point(0, 100);
+            rowAdmins.Location = new Point(0, 54);
             BindRowAction(rowAdmins, OpenAdministratorsSettings);
 
             var rowMembers = BuildSettingsRow("\U0001F465  Members", _membersCount.ToString(), out _lblMembersValue);
-            rowMembers.Location = new Point(0, 146);
+            rowMembers.Location = new Point(0, 100);
             BindRowAction(rowMembers, OpenMembersSettings);
 
-            section.Controls.AddRange(new Control[] { rowGroupType, rowHistory, rowAdmins, rowMembers });
+            section.Controls.AddRange(new Control[] { rowHistory, rowAdmins, rowMembers });
 
             _btnCancel = BuildBottomButton("Cancel", TG.Blue);
             _btnCancel.Location = new Point(300, 676);
@@ -272,15 +265,6 @@ namespace SecureChat.Client.Forms.Chat
             row.Click += (_, __) => action();
             foreach (Control c in row.Controls)
                 c.Click += (_, __) => action();
-        }
-
-        private void OpenGroupTypeSettings()
-        {
-            using var dlg = new frmGroupTypeSettings(_groupType);
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-
-            _groupType = dlg.GroupType;
-            _lblGroupTypeValue.Text = _groupType;
         }
 
         private void OpenChatHistorySettings()
@@ -375,12 +359,6 @@ namespace SecureChat.Client.Forms.Chat
                 {
                     _txtDescription.Text = meta.Description;
                     _lblDescPlaceholder.Visible = false;
-                }
-
-                if (meta.GroupType.HasValue)
-                {
-                    _groupType = meta.GroupType.Value == SecureChat.Models.GroupVisibility.Public ? "Public" : "Private";
-                    _lblGroupTypeValue.Text = LocalizationService.Translate(_groupType);
                 }
 
                 if (meta.ChatHistoryMode.HasValue)

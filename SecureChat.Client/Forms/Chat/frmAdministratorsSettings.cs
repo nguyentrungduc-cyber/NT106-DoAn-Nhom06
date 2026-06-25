@@ -10,6 +10,7 @@ namespace SecureChat.Client.Forms.Chat
         private readonly Panel _pnlAdmins;
         private readonly string _conversationId;
         private int _adminsCount;
+        private bool _searchActive;
 
         public int AdministratorsCount => _adminsCount;
 
@@ -65,18 +66,20 @@ namespace SecureChat.Client.Forms.Chat
             };
             txtSearch.GotFocus += (_, __) =>
             {
-                if (txtSearch.Text == "Search")
+                if (!_searchActive)
                 {
                     txtSearch.Text = string.Empty;
                     txtSearch.ForeColor = TG.TextPrimary;
+                    _searchActive = true;
                 }
             };
             txtSearch.LostFocus += (_, __) =>
             {
                 if (string.IsNullOrWhiteSpace(txtSearch.Text))
                 {
-                    txtSearch.Text = "Search";
+                    txtSearch.Text = LocalizationService.Translate("Search");
                     txtSearch.ForeColor = TG.TextSecondary;
+                    _searchActive = false;
                 }
             };
             var lblSearchIcon = new Label
@@ -259,7 +262,7 @@ namespace SecureChat.Client.Forms.Chat
                     {
                         c.BackColor = TG.WindowBg;
                         if (c is TextBox tb && !tb.Focused)
-                            tb.ForeColor = string.IsNullOrWhiteSpace(tb.Text) || tb.Text == "Search" ? TG.TextSecondary : TG.TextPrimary;
+                            tb.ForeColor = _searchActive ? TG.TextPrimary : TG.TextSecondary;
                     }
                     if (c.HasChildren)
                         FixControls(c);
