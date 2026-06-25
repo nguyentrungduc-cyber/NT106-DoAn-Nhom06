@@ -46,8 +46,9 @@ namespace SecureChat.Client.Services
             var forms = Application.OpenForms.Cast<Form>().ToArray();
             foreach (var form in forms)
             {
-                if (form is frmMainChat main)
-                    main.OnNightModeChanged();
+                // KHÔNG gọi trực tiếp main.OnNightModeChanged() ở đây —
+                // ThemeChanged?.Invoke() sau này sẽ trigger nó qua event subscription.
+                // Gọi 2 lần → BuildMessages() chạy 2x mỗi Toggle.
                 form.Invalidate(true);
             }
         }

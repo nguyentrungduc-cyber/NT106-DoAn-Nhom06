@@ -3837,6 +3837,8 @@ namespace SecureChat.Client
             _pnlMessages.BackColor = TG.ChatBg;
             _pnlMessages.CachedWallpaper = null;
             if (_pnlChat != null) _pnlChat.BackColor = TG.ChatBg;
+            if (_pnlChatEmpty != null) _pnlChatEmpty.BackColor = TG.ChatBg;
+            if (_lblChatEmpty != null) _lblChatEmpty.ForeColor = TG.TextSecondary;
             ReloadWallpaper(); // clear _wallpaper cache rồi DoRebuildBackground ngay
 
             foreach (Control c in _pnlMessages.Controls)
