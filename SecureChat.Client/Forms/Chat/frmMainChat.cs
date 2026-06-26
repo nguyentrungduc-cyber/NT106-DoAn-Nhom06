@@ -8282,47 +8282,6 @@ namespace SecureChat.Client
     /// nhưng child bubble panels dùng màu thật (TG.ChatBg) để tránh
     /// cascade Transparent repaint gây flicker khi scroll.
     /// </summary>
-    /// <summary>
-    /// Panel bọc ngoài mỗi bubble tin nhắn — chiếm full width của ChatPanel.
-    /// Tự vẽ background từ CachedWallpaper của parent (không yêu cầu parent
-    /// repaint) → tránh cascade repaint → hết flicker khi scroll.
-    /// </summary>
-    internal class BubbleWrapperPanel : Panel
-    {
-        private readonly ChatPanel _parent;
-
-        public BubbleWrapperPanel(ChatPanel parent)
-        {
-            _parent = parent;
-            SetStyle(
-                ControlStyles.AllPaintingInWmPaint |
-                ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.UserPaint, true);
-            UpdateStyles();
-        }
-
-        protected override void OnPaintBackground(PaintEventArgs e)
-        {
-            if (_parent.CachedWallpaper != null)
-            {
-                // Panel này nằm tại (0, this.Top) trong scroll content.
-                // AutoScrollPosition.Y là âm (ví dụ -200 khi scroll xuống 200px).
-                // Vị trí của panel trong viewport = this.Top + AutoScrollPosition.Y
-                // Wallpaper vẽ theo viewport (0,0) → cần translate ngược lại.
-                int panelTopInViewport = this.Top + _parent.AutoScrollPosition.Y;
-                // Vẽ wallpaper tại (0, -panelTopInViewport) trong local coords của panel
-                // → đúng vùng wallpaper hiển thị dưới vị trí này trong viewport
-                e.Graphics.DrawImage(_parent.CachedWallpaper,
-                    0, -panelTopInViewport,
-                    _parent.ClientSize.Width, _parent.ClientSize.Height);
-            }
-            else
-            {
-                e.Graphics.Clear(_parent.BackColor);
-            }
-        }
-    }
-
     public class ChatPanel : Panel
     {
         // CachedWallpaper đã bỏ — wallpaper vẽ trực tiếp lên _pnlChat (parent) qua PnlChat_Paint
