@@ -5,12 +5,13 @@ using System.Windows.Forms;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.ProgressBar;
 using System.Threading.Tasks;
 using SecureChat.Client.Forms.Shared;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Client.Services;
 
 namespace SecureChat.Client
 {
 
-    /// Màn hình nhập mã 2FA (OTP 5 ký tự kiểu Telegram)
+    /// Two-Factor Authentication screen (6-digit OTP)
 
     public class frmTwoFA : Form
     {
@@ -18,10 +19,7 @@ namespace SecureChat.Client
         private TextBox[] _otpBoxes = new TextBox[6];
         private TelegramButton _btnConfirm;
         private Label _lblTitle, _lblDesc, _lblResend, _lblTimer;
-
-        // khác System.Threading.Timer — cái này chạy trên UI thread, an toàn khi cập nhật giao diện
         private System.Windows.Forms.Timer _timer;
-
         private int _countdown = 60;
         private Label _lblError;
 
@@ -30,7 +28,8 @@ namespace SecureChat.Client
             _identifier = identifier ?? string.Empty;
             InitializeComponent();
 
-            // vì khi biết email thì gửi Opt đầu tiên, lúc này bộ đếm sẽ chạy lần đầu tiên
+            ThemeRefreshHelper.Hook(this);
+            UiLocalization.ApplyToForm(this);
             StartCountdown();
         }
 
@@ -43,16 +42,16 @@ namespace SecureChat.Client
 
         private void InitializeComponent()
         {
-            Text = "Xác minh 2 bước";
+            Text = "Two-Factor Authentication";
             Size = new Size(520, 600);
             MinimumSize = new Size(500, 580);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = TG.FontRegular(9.5f);
 
-            // ── Header xanh ──────────────────────────
+            // Header panel
             var header = new Panel { Height = 180, BackColor = TG.Blue, Dock = DockStyle.Top };
 
             var lblIcon = new Label
@@ -67,7 +66,7 @@ namespace SecureChat.Client
             };
             var lblH = new Label
             {
-                Text = "Xác minh 2 bước",
+                Text = "Two-Factor Authentication",
                 Font = TG.FontSemiBold(15f),
                 ForeColor = Color.White,
                 AutoSize = false,
@@ -77,7 +76,7 @@ namespace SecureChat.Client
             };
             var lblSub = new Label
             {
-                Text = "Mã xác nhận đã được gửi đến email của bạn",
+                Text = "Enter the verification code sent to your email.",
                 Font = TG.FontRegular(8.5f),
                 ForeColor = Color.FromArgb(200, 235, 255),
                 AutoSize = false,
@@ -93,10 +92,10 @@ namespace SecureChat.Client
                 lblSub.SetBounds(0, 110, header.Width, 20);
             };
 
-            // ── Body ──────────────────────────────────
+            // Body
             _lblDesc = new Label
             {
-                Text = "Nhập 6 chữ số trong mã xác nhận:",
+                Text = "Enter the 6-digit verification code:",
                 Font = TG.FontRegular(9.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -115,91 +114,90 @@ namespace SecureChat.Client
                     MaxLength = 1,
                     Font = TG.FontTitle(24f),
                     ForeColor = TG.Blue,
-                    TextAlign = HorizontalAlignment.Center, // Căn giữa ký tự cho một TextBox
+                    TextAlign = HorizontalAlignment.Center,
                     BackColor = Color.White,
-                    BorderStyle = BorderStyle.None, // Ẩn viền mặc định (tự vẽ viền bo góc)
+                    BorderStyle = BorderStyle.None,
                     Size = new Size(58, 62),
                 };
 
-                // Panel bọc ngoài TextBox để vẽ viền bo góc tùy chỉnh.
-                // Mỗi wrap bọc 1 Textbox
+                // Wrapper panel to draw custom rounded border.
+                // Each wrap holds one TextBox
                 var wrap = new Panel
                 {
                     Size = new Size(62, 70),
-                    BackColor = Color.White,
+                    BackColor = TG.WindowBg,
                 };
 
-                // Sự kiện Paint: mỗi khi giao diện cần hiển thị lại (khi mở form, thay đổi kích thước, hoặc khi bạn gọi Invalidate()), các lệnh này sẽ thực thi để "vẽ" lên màn hình.
-                // Vẽ lại viền mỗi khi ô được tô vẽ. Viền thay đổi theo trạng thái (focus/filled/empty).
+                // Paint event: redraws border on form resize, invalidation, etc.
+                // Redraw border based on state (focus/filled/empty).
                 wrap.Paint += (s, e) =>
                 {
-                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias; //Kích hoạt chế độ khử răng cưa.Nó giúp các đường cong(của góc bo) trông mịn màng, không bị gai hoặc răng cưa.
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
-                    bool focused = box.Focused; // Người dùng có đang đặt con trỏ chuột vào ô đó không?
-                    bool filled = !string.IsNullOrEmpty(box.Text); // Ô đó đã có chữ chưa?
+                    bool focused = box.Focused;
+                    bool filled = !string.IsNullOrEmpty(box.Text);
 
-                    // Nếu đang được focus HOẶC đã có nội dung, viền sẽ hiện màu xanh(TG.Blue).Nếu trống trơn, viền sẽ mờ đi(TG.Divider).
+                    // Blue border if focused or filled, otherwise dimmed divider color.
                     Color border = focused ? TG.Blue : filled ? TG.Blue : TG.Divider;
 
-                    // Khi bạn click vào ô(focus), viền sẽ dày lên 2px để làm nổi bật, bình thường chỉ 1px.
+                    // Thicker (2px) border on focus, normal (1px) otherwise.
                     float bw = focused ? 2f : 1f;
 
-                    //Tạo một khung chữ nhật khớp với kích thước của wrap.
+                    // Create a rectangle matching the wrap size.
                     var r = new Rectangle(0, 0, wrap.Width - 1, wrap.Height - 1);
 
+                    using var path = RoundedPanel.GetRoundedPath(r, TG.RadiusSmall);
 
-                    using var path = RoundedPanel.GetRoundedPath(r, TG.RadiusSmall); // Bo góc
+                    e.Graphics.FillPath(Brushes.White, path);
 
-                    e.Graphics.FillPath(Brushes.White, path);  // Tô nền trắng
-
-                    e.Graphics.DrawPath(new Pen(border, bw), path); // Vẽ viền
+                    e.Graphics.DrawPath(new Pen(border, bw), path);
                 };
                 wrap.Controls.Add(box);
-                box.Location = new Point(2, (70 - box.Height) / 2); // Căn giữa dọc trong wrap
-                // X = 2 để có padding đều hai bên
+                box.Location = new Point(2, (70 - box.Height) / 2);
+                // X = 2 for even padding on both sides
 
                 // Auto advance
                 box.TextChanged += (s, e) =>
                 {
-                    wrap.Invalidate(); // Vẽ lại viền
+                    wrap.Invalidate();
 
-                    // Nhập xong → tự nhảy sang ô tiếp theo
+                    // Auto-advance to next box on input
                     if (!string.IsNullOrEmpty(box.Text) && idx < 5)
                         _otpBoxes[idx + 1].Focus();
 
-                    // Ô cuối → focus vào nút Xác nhận
+                    // Last box -> focus Confirm button
                     if (!string.IsNullOrEmpty(box.Text) && idx == 5)
                         _btnConfirm.Focus();
                 };
 
-                // Nhấn Backspace khi ô đang trống → lùi về ô trước
+                // Backspace on empty box -> go back
                 box.KeyDown += (s, e) =>
                 {
                     if (e.KeyCode == Keys.Back && string.IsNullOrEmpty(box.Text) && idx > 0)
                         _otpBoxes[idx - 1].Focus();
                 };
 
-                box.GotFocus += (s, e) => wrap.Invalidate(); // Focus vào → vẽ lại viền xanh
-                box.LostFocus += (s, e) => wrap.Invalidate(); // Mất focus → vẽ lại viền xám
+                box.GotFocus += (s, e) => wrap.Invalidate();
+                box.LostFocus += (s, e) => wrap.Invalidate();
 
-                pnlOtp.Controls.Add(wrap); // thêm panel con -> panel cha
+                pnlOtp.Controls.Add(wrap);
                 _otpBoxes[i] = box;
             }
 
-            // Layout OTP - Đảm bảo không bị khuất khi resize
+            // Layout OTP - Ensure visibility on resize
             pnlOtp.Resize += (s, e) =>
             {
                 int boxW = 62;
                 int spacing = 14;
-                int total = 6 * boxW + 5 * spacing; // 6 boxes + 5 spacing
-                
-                // Đảm bảo có đủ không gian, nếu không thì giảm spacing
+                int total = 6 * boxW + 5 * spacing;
+
+                // Ensure enough space; reduce spacing if needed
                 if (total > pnlOtp.Width)
                 {
                     spacing = Math.Max(8, (pnlOtp.Width - 6 * boxW) / 5);
                     total = 6 * boxW + 5 * spacing;
                 }
-                
+
                 int startX = Math.Max(0, (pnlOtp.Width - total) / 2);
                 for (int i = 0; i < pnlOtp.Controls.Count; i++)
                     pnlOtp.Controls[i].Location = new Point(startX + i * (boxW + spacing), 0);
@@ -220,7 +218,7 @@ namespace SecureChat.Client
             // Button
             _btnConfirm = new TelegramButton
             {
-                Text = "XÁC NHẬN",
+                Text = "CONFIRM",
                 Height = 46,
                 Font = TG.FontSemiBold(10.5f),
                 Radius = TG.RadiusSmall,
@@ -237,7 +235,7 @@ namespace SecureChat.Client
             };
             _lblResend = new Label
             {
-                Text = "Không nhận được mã?",
+                Text = "Didn't get the code?",
                 Font = TG.FontRegular(9f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = true,
@@ -245,12 +243,12 @@ namespace SecureChat.Client
             };
             var lnkResend = new LinkLabel
             {
-                Text = "Gửi lại",
+                Text = "Resend",
                 LinkColor = TG.Blue,
                 Font = TG.FontRegular(9f),
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                Enabled = false, // Vô hiệu ban đầu (phải chờ 60 giây)
+                Enabled = false, // Initially disabled (wait 60s)
             };
 
             lnkResend.LinkClicked += (s, e) =>
@@ -268,7 +266,7 @@ namespace SecureChat.Client
                             this.Invoke(() =>
                             {
                                 lnkResend.Enabled = true;
-                                frmError.ShowApi(this, err, "Không thể gửi lại OTP. Vui lòng thử lại.");
+                                frmError.ShowApi(this, err, "Could not resend OTP. Please try again.");
                             });
                             return;
                         }
@@ -280,7 +278,7 @@ namespace SecureChat.Client
                             _lblTimer.Text = $"({_countdown}s)";
                             StartCountdown();
                             HideError();
-                            frmError.ShowSuccess(this, "Đã gửi lại OTP", "Mã xác nhận mới đã được gửi đến email của bạn.");
+                            frmError.ShowSuccess(this, "OTP Resent", "A new verification code has been sent to your email.");
                         });
                     }
                     catch (Exception ex)
@@ -288,17 +286,17 @@ namespace SecureChat.Client
                         this.Invoke(() =>
                         {
                             lnkResend.Enabled = true;
-                            frmError.ShowError(this, "Gửi lại thất bại", ex.Message);
+                            frmError.ShowError(this, "Resend Failed", ex.Message);
                         });
                     }
                 });
             };
 
-            // Panel chứa toàn bộ nội dung bên dưới header, padding tăng lên để thoáng hơn
-            var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(40, 20, 40, 20) };
+            // Panel containing all body content below header, with increased padding
+            var pnlBody = new Panel { Dock = DockStyle.Fill, BackColor = TG.WindowBg, Padding = new Padding(40, 20, 40, 20) };
             pnlBody.Controls.AddRange(new Control[] { _lblDesc, pnlOtp, _lblError, _btnConfirm, _lblResend, lnkResend, _lblTimer });
 
-            // Sắp xếp các control theo chiều dọc, tự tính lại khi form thay đổi kích thước. Biến y tích lũy vị trí từng control.
+            // Arrange controls vertically, recalculate on resize.
             pnlBody.Resize += (s, e) =>
             {
                 int pad = 40, w = pnlBody.Width - pad * 2, y = 20;
@@ -311,12 +309,12 @@ namespace SecureChat.Client
                 _lblTimer.Location = new Point(pad + _lblResend.Width + lnkResend.Width + 8, y);
             };
 
-            _timer = new System.Windows.Forms.Timer { Interval = 1000 }; // Mỗi 1000ms = 1 giây
+            _timer = new System.Windows.Forms.Timer { Interval = 1000 };
             _timer.Tick += (s, e) =>
             {
                 _countdown--;
-                _lblTimer.Text = $"({_countdown}s)"; // Hiện thời gian giảm dần
-                if (_countdown <= 0) { _timer.Stop(); lnkResend.Enabled = true; _lblTimer.Text = ""; } // Bật gửi lại, Ẩn đếm ngược
+                _lblTimer.Text = $"({_countdown}s)";
+                if (_countdown <= 0) { _timer.Stop(); lnkResend.Enabled = true; _lblTimer.Text = ""; }
             };
 
             Controls.AddRange(new Control[] { pnlBody, header });
@@ -338,7 +336,7 @@ namespace SecureChat.Client
         private void BtnConfirm_Click(object sender, EventArgs e)
         {
             string code = GetOtpCode();
-            if (code.Length < 6) { ShowError("Vui lòng nhập đủ 6 chữ số."); return; }
+            if (code.Length < 6) { ShowError("Please enter all 6 digits."); return; }
             HideError();
 
             // Call server verify-login-otp
@@ -354,7 +352,7 @@ namespace SecureChat.Client
                         this.Invoke(() =>
                         {
                             _btnConfirm.Enabled = true;
-                            frmError.ShowApi(this, err, "Mã OTP không đúng hoặc đã hết hạn.");
+                            frmError.ShowApi(this, err, "Invalid verification code.");
                         });
                         return;
                     }
@@ -374,7 +372,7 @@ namespace SecureChat.Client
                     this.Invoke(() =>
                     {
                         _btnConfirm.Enabled = true;
-                        frmError.ShowError(this, "Xác thực thất bại", "Phản hồi từ máy chủ không hợp lệ.");
+                        frmError.ShowError(this, "Verification Failed", "Invalid server response.");
                     });
                 }
                 catch (Exception ex)
@@ -382,7 +380,7 @@ namespace SecureChat.Client
                     this.Invoke(() =>
                     {
                         _btnConfirm.Enabled = true;
-                        frmError.ShowError(this, "Lỗi kết nối", ex.Message);
+                        frmError.ShowError(this, "Connection Error", ex.Message);
                     });
                 }
             });

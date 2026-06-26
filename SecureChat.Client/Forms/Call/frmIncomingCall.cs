@@ -2,6 +2,8 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using SecureChat.Models;
+using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Call
 {
@@ -14,13 +16,17 @@ namespace SecureChat.Client.Forms.Call
         private readonly Button _btnAccept;
         private readonly Button _btnReject;
         private readonly Panel _pnlAvatar;
+        private readonly string _callerName;
+        private readonly CallType _callType;
 
         private static readonly Color TgBlue = Color.FromArgb(0x2C, 0xA5, 0xE0);
         private static readonly Color TgBg = Color.White;
 
         public frmIncomingCall(string callerName, CallType callType)
         {
-            Text = "Incoming Call";
+            _callerName = callerName;
+            _callType = callType;
+            Text = LocalizationService.Translate("Incoming Call");
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -68,7 +74,7 @@ namespace SecureChat.Client.Forms.Call
             string callTypeText = callType == CallType.Video ? "Video call" : "Voice call";
             _lblInfo = new Label
             {
-                Text = $"{callTypeText} incoming...",
+                Text = string.Format(LocalizationService.Translate("{0} incoming..."), callTypeText),
                 Font = new Font("Segoe UI", 10f),
                 ForeColor = Color.FromArgb(0x7A, 0x8A, 0x99),
                 AutoSize = true,
@@ -79,7 +85,7 @@ namespace SecureChat.Client.Forms.Call
 
             _btnAccept = new Button
             {
-                Text = "Accept",
+                Text = LocalizationService.Translate("Accept"),
                 Size = new Size(120, 42),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(0x21, 0xA1, 0x66),
@@ -94,7 +100,7 @@ namespace SecureChat.Client.Forms.Call
 
             _btnReject = new Button
             {
-                Text = "Decline",
+                Text = LocalizationService.Translate("Decline"),
                 Size = new Size(120, 42),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(0xE0, 0x24, 0x24),
@@ -106,6 +112,27 @@ namespace SecureChat.Client.Forms.Call
             _btnReject.Location = new Point(200, 190);
             _btnReject.Click += (_, __) => Close();
             Controls.Add(_btnReject);
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
+            SecureChat.Client.Services.ThemeRefreshHelper.ApplyTo(this);
+            LocalizationService.LanguageChanged += OnLanguageChanged;
+            UiLocalization.ApplyToForm(this);
+        }
+
+        private void OnLanguageChanged()
+        {
+            if (IsDisposed) return;
+            Text = LocalizationService.Translate("Incoming Call");
+            string callTypeText = _callType == CallType.Video ? LocalizationService.Translate("Video call") : LocalizationService.Translate("Voice call");
+            _lblInfo.Text = string.Format(LocalizationService.Translate("{0} incoming..."), callTypeText);
+            _btnAccept.Text = LocalizationService.Translate("Accept");
+            _btnReject.Text = LocalizationService.Translate("Decline");
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                LocalizationService.LanguageChanged -= OnLanguageChanged;
+            base.Dispose(disposing);
         }
     }
 }

@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client.Components.Chat
 {
@@ -18,6 +19,28 @@ namespace SecureChat.Client.Components.Chat
         // Events
         public event EventHandler<FileClickEventArgs>? FileClicked;
         public event EventHandler? DownloadCanceled;
+
+        public void OnNightModeChanged()
+        {
+            if (IsDisposed) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    lblFileName.ForeColor = TG.TextPrimary;
+                    lblFileSize.ForeColor = TG.FileSizeColor;
+                    lblTime.ForeColor = TG.TextSecondary;
+                    pnlBubble.Invalidate();
+                }));
+            }
+            else
+            {
+                lblFileName.ForeColor = TG.TextPrimary;
+                lblFileSize.ForeColor = TG.FileSizeColor;
+                lblTime.ForeColor = TG.TextSecondary;
+                pnlBubble.Invalidate();
+            }
+        }
 
         // Internal controls
         private Panel pnlBubble;
@@ -72,7 +95,7 @@ namespace SecureChat.Client.Components.Chat
             lblFileName.Location = new Point(60, 8);
             lblFileName.Size = new Size(220, 20);
             lblFileName.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblFileName.ForeColor = Color.FromArgb(30, 30, 30);
+            lblFileName.ForeColor = TG.TextPrimary;
             lblFileName.Cursor = Cursors.Hand;
             lblFileName.Click += Bubble_Click;
 
@@ -81,7 +104,7 @@ namespace SecureChat.Client.Components.Chat
             lblFileSize.Location = new Point(60, 30);
             lblFileSize.Size = new Size(220, 16);
             lblFileSize.Font = new Font("Segoe UI", 8F, FontStyle.Regular);
-            lblFileSize.ForeColor = Color.FromArgb(80, 160, 120);
+            lblFileSize.ForeColor = TG.FileSizeColor;
             lblFileSize.Cursor = Cursors.Hand;
             lblFileSize.Click += Bubble_Click;
 
@@ -96,7 +119,7 @@ namespace SecureChat.Client.Components.Chat
             lblTime.AutoSize = true;
             lblTime.Location = new Point(275, 34);
             lblTime.Font = new Font("Segoe UI", 8F);
-            lblTime.ForeColor = Color.FromArgb(100, 100, 100);
+            lblTime.ForeColor = TG.TextSecondary;
 
             // picStatus
             picStatus.Size = new Size(16, 16);
@@ -137,7 +160,7 @@ namespace SecureChat.Client.Components.Chat
             g.SmoothingMode = SmoothingMode.AntiAlias;
             var rect = new Rectangle(0, 0, pnlBubble.Width - 1, pnlBubble.Height - 1);
             using var path = RoundedRect(rect, 14);
-            Color back = IsOutgoing ? Color.FromArgb(225, 245, 234) : Color.FromArgb(245, 248, 250);
+            Color back = IsOutgoing ? TG.MsgOutBg : TG.MsgInBg;
             using var brush = new SolidBrush(back);
             g.FillPath(brush, path);
         }
@@ -265,7 +288,7 @@ namespace SecureChat.Client.Components.Chat
             string label = string.IsNullOrEmpty(ext) ? "FILE" : ext.TrimStart('.').ToUpper();
             if (label.Length > 4) label = label[..4];
             using var font = new Font("Segoe UI", 7f, FontStyle.Bold);
-            using var textBrush = new SolidBrush(Color.White);
+            using var textBrush = new SolidBrush(TG.TitleBarFg);
             var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
             g.DrawString(label, font, textBrush, rect, sf);
         }

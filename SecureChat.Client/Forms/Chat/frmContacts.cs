@@ -1,10 +1,12 @@
 using System;
-using System.Collections.Generic; //  cho phép dùng List<T>.
-using System.Drawing; //  làm việc với màu sắc (Color), font, hình ảnh.
-using System.Drawing.Drawing2D; // vẽ nâng cao như SmoothingMode, AntiAlias.
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Forms; // tạo giao diện desktop (Form, Panel, Label, Button...).
+using System.Windows.Forms;
+using SecureChat.Client.Forms.Settings;
+using SecureChat.Client.Services;
 
 namespace SecureChat.Client
 {
@@ -124,9 +126,9 @@ namespace SecureChat.Client
             // Chuỗi "  Danh sách  " truyền vào constructor chính là thuộc tính Text của TabPage, và WinForms tự dùng Text đó để vẽ chữ lên tabstrip.
             // WinForms không tự vẽ nữa — thay vào đó hàm DrawTabItem() tự lấy tab.Text ra để vẽ.
             _tabs = new TabControl();
-            _tabContacts = new TabPage("  Danh sách  ") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            _tabRequests = new TabPage("  Lời mời    ") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            _tabSearch = new TabPage("  Tìm kiếm  ") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            _tabContacts = new TabPage("Contacts") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabRequests = new TabPage("Requests") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tabSearch = new TabPage("Search") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
 
 
             _contactSubTabs = new TabControl();
@@ -142,7 +144,8 @@ namespace SecureChat.Client
             _lblSearchHint = new Label();
 
             InitializeComponent();
-            this.Load += async (s, e) => await LoadContactsFromApiAsync();
+            ThemeRefreshHelper.Hook(this);
+            this.Load += async (s, e) => { await LoadContactsFromApiAsync(); UiLocalization.ApplyToForm(this); };
         }
 
 
@@ -283,7 +286,7 @@ namespace SecureChat.Client
                             {
                                 Type = ContactType.Group,
                                 ConversationId = c.ConversationID,
-                                DisplayName = c.Name ?? "Nhóm",
+                                DisplayName = c.Name ?? "Group",
                                 MemberCount = c.MemberCount,
                             }).ToList();
                     }
@@ -308,7 +311,7 @@ namespace SecureChat.Client
 
         private void InitializeComponent()
         {
-            Text = "Danh bạ";
+            Text = "Contacts";
             Size = new Size(440, 620);
             MinimumSize = new Size(360, 560);
             StartPosition = FormStartPosition.CenterParent;
@@ -316,14 +319,14 @@ namespace SecureChat.Client
             FormBorderStyle = FormBorderStyle.FixedSingle; // Viền cố định, không kéo được
             // FormBorderStyle = FormBorderStyle.Sizable; // Cho phép kéo thay đổi kích thước
 
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             MaximizeBox = false; // chặn nút phóng to
             Font = TG.FontRegular(9.5f);
 
             // 1. Header (đặt trước để WinForms tính docking đúng)
             var header = new TelegramHeader
             {
-                Title = "Danh bạ",
+                Title = "Contacts",
                 ShowBack = true,
                 Dock = DockStyle.Top
             };
@@ -364,7 +367,7 @@ namespace SecureChat.Client
             var pnlContent = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
             pnlContent.Controls.Add(_tabs);
 
@@ -402,7 +405,7 @@ namespace SecureChat.Client
             bool selected = e.Index == _tabs.SelectedIndex;
 
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.FillRectangle(Brushes.White, e.Bounds); // chỉnh màu trắng cho bên trong các tab cha thay vì màu xám
+            e.Graphics.FillRectangle(new SolidBrush(TG.WindowBg), e.Bounds);
 
             if (selected)
             {
@@ -459,7 +462,7 @@ namespace SecureChat.Client
                 bool sel = e.Index == _contactSubTabs.SelectedIndex;
 
                 e.Graphics.FillRectangle(
-                    sel ? new SolidBrush(Color.FromArgb(0xE3, 0xF2, 0xFD)) : Brushes.White,
+                    sel ? new SolidBrush(TG.SidebarHover) : new SolidBrush(TG.WindowBg),
                     e.Bounds
                 );
 
@@ -480,9 +483,9 @@ namespace SecureChat.Client
             };
 
             // Tạo tab "Bạn bè" với nền trắng.
-            var tpFriends = new TabPage("Bạn bè") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            var tpFriends = new TabPage("Friends") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
             // Tạo tab "Nhóm" với nền trắng.
-            var tpGroups = new TabPage("Nhóm") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            var tpGroups = new TabPage("Groups") { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
             // Thêm cả 2 tab này vào thanh điều hướng chính.
             _contactSubTabs.TabPages.AddRange(new[] { tpFriends, tpGroups });
 
@@ -490,12 +493,12 @@ namespace SecureChat.Client
 
             _pnlFriends.AutoScroll = true;
 
-            _pnlFriends.BackColor = Color.White;
+            _pnlFriends.BackColor = TG.WindowBg;
             _pnlFriends.Resize += Pnl_UpdateRowsWidth;
 
             _pnlGroups.Dock = DockStyle.Fill;
             _pnlGroups.AutoScroll = true;
-            _pnlGroups.BackColor = Color.White;
+            _pnlGroups.BackColor = TG.WindowBg;
             _pnlGroups.Resize += Pnl_UpdateRowsWidth;
 
             BuildFriendList(_friends, _pnlFriends);
@@ -569,7 +572,7 @@ namespace SecureChat.Client
             {
                 Height = 62,
                 Width = initialWidth,
-                BackColor = Color.White,
+                BackColor = TG.WindowBg,
                 Cursor = Cursors.Hand
             };
 
@@ -623,7 +626,7 @@ namespace SecureChat.Client
                 Radius = TG.RadiusSmall,
 
                 // NormalColor = Color.Transparent,
-                NormalColor = Color.White,
+                NormalColor = TG.WindowBg,
 
                 TextColor = TG.Blue,
                 Cursor = Cursors.Hand
@@ -637,7 +640,7 @@ namespace SecureChat.Client
                 Height = 28,
                 Font = TG.FontSemiBold(13f),
                 Radius = TG.RadiusSmall,
-                NormalColor = Color.White,
+                NormalColor = TG.WindowBg,
                 TextColor = TG.TextSecondary,
                 Cursor = Cursors.Hand
             };
@@ -646,15 +649,18 @@ namespace SecureChat.Client
             {
                 var menu = new ContextMenuStrip();
                 menu.Font = TG.FontRegular(9.5f);
-                menu.RenderMode = ToolStripRenderMode.System;
+                menu.BackColor = TG.SidebarBg;
+                menu.ForeColor = TG.TextPrimary;
+                menu.Renderer = new ToolStripProfessionalRenderer(new ContactsMenuColorTable());
 
-                var itemUnfriend = new ToolStripMenuItem("  🙍  Hủy kết bạn");
+                var itemUnfriend = new ToolStripMenuItem(LocalizationService.Translate("  🙍  Unfriend"));
                 itemUnfriend.ForeColor = TG.TextName;
+                itemUnfriend.BackColor = TG.SidebarBg;
                 itemUnfriend.Click += async (_, __) =>
                 {
                     var confirm = MessageBox.Show(
-                        $"Hủy kết bạn với {c.DisplayName}?",
-                        "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                        string.Format(LocalizationService.Translate("Unfriend {0}?"), c.DisplayName),
+                        LocalizationService.Translate("Confirm"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                     if (confirm != DialogResult.Yes) return;
 
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -662,16 +668,17 @@ namespace SecureChat.Client
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
                     else
-                        MessageBox.Show("Hủy kết bạn thất bại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(LocalizationService.Translate("Unfriend failed."), LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 };
 
-                var itemBlock = new ToolStripMenuItem("  🚫  Chặn người này");
+                var itemBlock = new ToolStripMenuItem(LocalizationService.Translate("  🚫  Block user"));
                 itemBlock.ForeColor = Color.FromArgb(0xE2, 0x4B, 0x4A);
+                itemBlock.BackColor = TG.SidebarBg;
                 itemBlock.Click += async (_, __) =>
                 {
                     var confirm = MessageBox.Show(
-                        $"Chặn {c.DisplayName}? Người này sẽ không thể nhắn tin cho bạn.",
-                        "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        string.Format(LocalizationService.Translate("Block {0}?"), c.DisplayName),
+                        LocalizationService.Translate("Confirm"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                     if (confirm != DialogResult.Yes) return;
 
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -682,7 +689,7 @@ namespace SecureChat.Client
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
                     else
-                        MessageBox.Show("Chặn người dùng thất bại.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(LocalizationService.Translate("Block user failed."), LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 };
 
                 menu.Items.Add(itemUnfriend);
@@ -734,7 +741,7 @@ namespace SecureChat.Client
                         if (!otherUserRes.IsSuccessStatusCode)
                         {
                             btnMsg.Enabled = true;
-                            MessageBox.Show("Không thể lấy thông tin người dùng.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            MessageBox.Show("Could not get user information.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             return;
                         }
                         var otherUser = System.Text.Json.JsonSerializer.Deserialize<SecureChat.DTOs.UserResponse>(
@@ -742,7 +749,7 @@ namespace SecureChat.Client
                         if (otherUser == null || string.IsNullOrWhiteSpace(otherUser.PublicKey))
                         {
                             btnMsg.Enabled = true;
-                            MessageBox.Show("Người dùng chưa thiết lập khóa mã hóa.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            MessageBox.Show("User has not set up encryption key.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             return;
                         }
 
@@ -752,7 +759,7 @@ namespace SecureChat.Client
                     catch (Exception ex)
                     {
                         btnMsg.Enabled = true;
-                        MessageBox.Show($"Không thể tạo khóa mã hóa: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show($"Cannot create encryption key: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
@@ -784,7 +791,7 @@ namespace SecureChat.Client
                     {
                         var errBody = await res.Content.ReadAsStringAsync();
                         btnMsg.Enabled = true;
-                        MessageBox.Show($"Lỗi {(int)res.StatusCode}: {errBody}", "Debug");
+                        MessageBox.Show($"Error {(int)res.StatusCode}: {errBody}", "Debug");
                         return;
                     }
 
@@ -806,8 +813,8 @@ namespace SecureChat.Client
                 catch (Exception ex)
                 {
                     btnMsg.Enabled = true;
-                    MessageBox.Show($"Không thể mở cuộc trò chuyện:\n{ex.Message}",
-                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Cannot open conversation:\n{ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
 
@@ -900,16 +907,16 @@ namespace SecureChat.Client
                 {
                     // Chỉ trả về màu trắng nếu chuột thực sự rời khỏi vùng của Panel
                     if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
-                        setHoverColor(Color.White);
+                        setHoverColor(TG.WindowBg);
                 };
             }
 
             // pnl.MouseEnter += (s, e) => setHoverColor(TG.SidebarHover);
-            // pnl.MouseLeave += (s, e) => setHoverColor(Color.White);
+            // pnl.MouseLeave += (s, e) => setHoverColor(TG.WindowBg);
 
             // Trong hàm BuildFriendRow, đoạn xử lý Hover:
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }
@@ -917,7 +924,7 @@ namespace SecureChat.Client
 
         private Panel BuildGroupRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 62, Width = initialWidth, BackColor = Color.White, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 62, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
 
             var avatar = new AvatarControl { Size = new Size(44, 44), Location = new Point(10, 9), ShowOnline = false };
             avatar.SetName(c.DisplayName);
@@ -936,7 +943,7 @@ namespace SecureChat.Client
 
             var lblSub = new Label
             {
-                Text = $"{c.MemberCount} thành viên",
+                Text = $"{c.MemberCount} {LocalizationService.Translate("members")}",
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -968,8 +975,8 @@ namespace SecureChat.Client
                 catch (Exception ex)
                 {
                     btnMsg.Enabled = true;
-                    MessageBox.Show($"Không thể mở cuộc trò chuyện:\n{ex.Message}",
-                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Cannot open conversation:\n{ex.Message}",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
             // Khi click vào avatar hoặc tên người dùng, tự động kích hoạt nút tin nhắn
@@ -1009,11 +1016,11 @@ namespace SecureChat.Client
                 ctrl.MouseLeave += (s, e) =>
                 {
                     if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
-                        pnl.BackColor = Color.White;
+                        pnl.BackColor = TG.WindowBg;
                 };
             }
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }
@@ -1035,7 +1042,7 @@ namespace SecureChat.Client
             {
                 var t = _requestSubTabs.TabPages[e.Index];
                 bool sel = e.Index == _requestSubTabs.SelectedIndex;
-                e.Graphics.FillRectangle(sel ? new SolidBrush(Color.FromArgb(0xE3, 0xF2, 0xFD)) : Brushes.White, e.Bounds);
+                e.Graphics.FillRectangle(sel ? new SolidBrush(TG.SidebarHover) : new SolidBrush(TG.WindowBg), e.Bounds);
                 using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                 e.Graphics.DrawString(t.Text, TG.FontSemiBold(9f), new SolidBrush(sel ? TG.Blue : TG.TextSecondary), e.Bounds, sf);
             };
@@ -1044,9 +1051,9 @@ namespace SecureChat.Client
             int outgoingCount = _requests.FindAll(r => !r.IsIncoming).Count;
             int blockedCount = _blockedUsers.Count;  // ✅ FIX: Thêm đếm số blocked users
 
-            _tpIncoming = new TabPage($"Đã nhận ({incomingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            _tpSent = new TabPage($"Đã gửi ({outgoingCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
-            _tpBlocked = new TabPage($"Đã chặn ({blockedCount})") { BackColor = Color.White, UseVisualStyleBackColor = false };
+            _tpIncoming = new TabPage(string.Format(LocalizationService.Translate("received_tab"), incomingCount)) { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpSent = new TabPage(string.Format(LocalizationService.Translate("sent_tab"), outgoingCount)) { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
+            _tpBlocked = new TabPage(string.Format(LocalizationService.Translate("blocked_tab"), blockedCount)) { BackColor = TG.WindowBg, UseVisualStyleBackColor = false };
 
             _requestSubTabs.TabPages.AddRange(new[] { _tpIncoming, _tpSent, _tpBlocked });
 
@@ -1058,7 +1065,7 @@ namespace SecureChat.Client
             LoadBlockedUsers();  // ✅ FIX: Gọi hàm load dữ liệu
 
             // ============ TAB "Đã nhận" ============
-            _pnlIncoming = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+            _pnlIncoming = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.WindowBg };
             _pnlIncoming.Resize += Pnl_UpdateRowsWidth;
             int y = 0;
             int initInWidth = _pnlIncoming.ClientSize.Width > 0 ? _pnlIncoming.ClientSize.Width : 360;
@@ -1072,7 +1079,7 @@ namespace SecureChat.Client
             _tpIncoming.Controls.Add(_pnlIncoming);
 
             // ============ TAB "Đã gửi" ============
-            _pnlSentRequests = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.White };
+            _pnlSentRequests = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.WindowBg };
             _pnlSentRequests.Resize += Pnl_UpdateRowsWidth;
             y = 0;
             int initSentWidth = _pnlSentRequests.ClientSize.Width > 0 ? _pnlSentRequests.ClientSize.Width : 360;
@@ -1104,7 +1111,7 @@ namespace SecureChat.Client
 
         private Panel BuildRequestRow(FriendRequestItem req, bool isIncoming, int initialWidth)
         {
-            var pnl = new Panel { Height = 86, Width = initialWidth, BackColor = Color.White };
+            var pnl = new Panel { Height = 86, Width = initialWidth, BackColor = TG.WindowBg };
 
             var avatar = new AvatarControl { Size = new Size(44, 44), Location = new Point(12, 10) };
             avatar.SetName(req.DisplayName);
@@ -1123,7 +1130,7 @@ namespace SecureChat.Client
 
             var lblSub = new Label
             {
-                Text = req.MutualCount > 0 ? $"Bạn bè chung: {req.MutualCount}" : "@" + req.Username,
+                Text = req.MutualCount > 0 ? $"Mutual friends: {req.MutualCount}" : "@" + req.Username,
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -1136,8 +1143,8 @@ namespace SecureChat.Client
             if (isIncoming)
             {
                 int btnWidth = (initialWidth - 88) / 2;
-                var btnAccept = new TelegramButton { Text = "Chấp nhận", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(64, 54), Width = btnWidth };
-                var btnDecline = new TelegramButton { Text = "Từ chối", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64 + btnWidth + 8, 54), Width = btnWidth };
+                var btnAccept = new TelegramButton { Text = "Accept", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(64, 54), Width = btnWidth };
+                var btnDecline = new TelegramButton { Text = "Decline", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64 + btnWidth + 8, 54), Width = btnWidth };
 
                 btnAccept.Click += async (s, e) =>
                 {
@@ -1149,7 +1156,7 @@ namespace SecureChat.Client
                         _tabs.Refresh();
                         await LoadContactsFromApiAsync();
                     }
-                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                    else MessageBox.Show("Operation failed.", "Error");
                 };
                 btnDecline.Click += async (s, e) =>
                 {
@@ -1157,7 +1164,7 @@ namespace SecureChat.Client
                     var res = await http.PutAsync($"api/friends/requests/{req.RequestId}/decline", null);
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
-                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                    else MessageBox.Show("Operation failed.", "Error");
                 };
 
                 pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnAccept, btnDecline });
@@ -1175,14 +1182,14 @@ namespace SecureChat.Client
             }
             else
             {
-                var btnCancel = new TelegramButton { Text = "Hủy lời mời", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64, 54), Width = initialWidth - 76 };
+                var btnCancel = new TelegramButton { Text = "Cancel Request", Height = 28, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), IsOutlined = true, Location = new Point(64, 54), Width = initialWidth - 76 };
                 btnCancel.Click += async (s, e) =>
                 {
                     var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
                     var res = await http.DeleteAsync($"api/friends/requests/{req.RequestId}");
                     if (res.IsSuccessStatusCode)
                         await LoadContactsFromApiAsync();
-                    else MessageBox.Show("Thao tác thất bại.", "Lỗi");
+                    else MessageBox.Show("Operation failed.", "Error");
                 };
 
                 pnl.Controls.AddRange(new Control[] { avatar, lblName, lblSub, btnCancel });
@@ -1202,7 +1209,7 @@ namespace SecureChat.Client
 
         private static void RemoveRequest(Panel row, bool isAccepted)
         {
-            string msg = isAccepted ? "Đã chấp nhận lời mời kết bạn!" : "Đã từ chối lời mời.";
+            string msg = isAccepted ? "Friend request accepted!" : "Request declined.";
             MessageBox.Show(msg, "SecureChat", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             Control container = row.Parent;
@@ -1227,11 +1234,11 @@ namespace SecureChat.Client
 
         private void BuildSearchTab()
         {
-            var pnlSearch = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = Color.White, Padding = new Padding(12, 8, 12, 6) };
+            var pnlSearch = new Panel { Height = 52, Dock = DockStyle.Top, BackColor = TG.WindowBg, Padding = new Padding(12, 8, 12, 6) };
 
             _tbSearch.Height = 36;
             _tbSearch.Dock = DockStyle.Fill;
-            _tbSearch.SetPlaceholder("🔍  Tìm theo tên hoặc @username...");
+            _tbSearch.SetPlaceholder("🔍  Search by name or @username...");
             _tbSearch.TextChanged += (s, e) =>
             {
                 _searchDebounceTimer?.Stop();
@@ -1248,7 +1255,7 @@ namespace SecureChat.Client
             };
             pnlSearch.Controls.Add(_tbSearch);
 
-            _lblSearchHint.Text = "Nhập tên hoặc username để tìm kiếm";
+            _lblSearchHint.Text = "Enter name or username to search";
             _lblSearchHint.Font = TG.FontRegular(9.5f);
             _lblSearchHint.ForeColor = TG.TextHint;
             _lblSearchHint.AutoSize = false;
@@ -1258,7 +1265,7 @@ namespace SecureChat.Client
 
             _pnlSearchResults.Dock = DockStyle.Fill;
             _pnlSearchResults.AutoScroll = true;
-            _pnlSearchResults.BackColor = Color.White;
+            _pnlSearchResults.BackColor = TG.WindowBg;
             _pnlSearchResults.Resize += Pnl_UpdateRowsWidth;
             _pnlSearchResults.Controls.Add(_lblSearchHint);
 
@@ -1278,7 +1285,7 @@ namespace SecureChat.Client
             // Hiển thị trạng thái đang tìm
             var lblLoading = new Label
             {
-                Text = "Đang tìm kiếm...",
+                Text = "Searching...",
                 Font = TG.FontRegular(9f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -1339,8 +1346,8 @@ namespace SecureChat.Client
             var lblHdr = new Label
             {
                 Text = results.Count > 0
-                    ? $"Kết quả cho \"{query}\""
-                    : $"Không tìm thấy kết quả cho \"{query}\"",
+                    ? $"Results for \"{query}\""
+                    : $"No results found for \"{query}\"",
                 Font = TG.FontRegular(8.5f),
                 ForeColor = TG.TextSecondary,
                 AutoSize = false,
@@ -1365,7 +1372,7 @@ namespace SecureChat.Client
 
         private Panel BuildSearchRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = Color.White, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
 
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10), ShowOnline = c.IsOnline };
             avatar.SetName(c.DisplayName);
@@ -1400,23 +1407,23 @@ namespace SecureChat.Client
             switch (c.Status)
             {
                 case FriendStatus.Friend:
-                    statusCtrl = new Label { Text = "✓ Bạn bè", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x2E, 0x7D, 0x32), BackColor = Color.FromArgb(0xE8, 0xF5, 0xE9), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter, Padding = new Padding(6, 0, 6, 0), BorderStyle = BorderStyle.FixedSingle };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("✓ Friends"), Font = TG.FontRegular(8f), ForeColor = TG.AccentGreen, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingOutgoing:
-                    statusCtrl = new Label { Text = "Đã gửi", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0xE6, 0x5C, 0x00), BackColor = Color.FromArgb(0xFF, 0xF3, 0xE0), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Sent"), Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.PendingIncoming:
-                    statusCtrl = new Label { Text = "Chờ duyệt", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x15, 0x65, 0xC0), BackColor = Color.FromArgb(0xE3, 0xF2, 0xFD), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Pending"), Font = TG.FontRegular(8f), ForeColor = TG.Blue, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 case FriendStatus.Blocked:
-                    statusCtrl = new Label { Text = "Đã chặn", Font = TG.FontRegular(8f), ForeColor = Color.FromArgb(0x75, 0x75, 0x75), BackColor = Color.FromArgb(0xF5, 0xF5, 0xF5), AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
+                    statusCtrl = new Label { Text = LocalizationService.Translate("Blocked"), Font = TG.FontRegular(8f), ForeColor = TG.TextSecondary, BackColor = Color.Transparent, AutoSize = false, Height = 24, Width = 80, Location = new Point(statusX, 16), TextAlign = ContentAlignment.MiddleCenter };
                     break;
                 default:
-                    var btn = new TelegramButton { Text = "+ Kết bạn", Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
+                    var btn = new TelegramButton { Text = LocalizationService.Translate("+ Add Friend"), Height = 28, Width = 80, Radius = TG.RadiusSmall, Font = TG.FontRegular(8.5f), Location = new Point(statusX, 16) };
                     btn.Click += async (s, e) =>
                     {
                         btn.Enabled = false;
-                        btn.Text = "Đang gửi...";
+                        btn.Text = LocalizationService.Translate("Sending...");
                         try
                         {
                             var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
@@ -1427,21 +1434,21 @@ namespace SecureChat.Client
                             if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.Conflict)
                             {
                                 c.Status = FriendStatus.PendingOutgoing;
-                                btn.Text = "Đã gửi";
+                                btn.Text = LocalizationService.Translate("Sent");
                                 btn.ForeColor = System.Drawing.Color.FromArgb(0xE6, 0x5C, 0x00);
                                 await LoadContactsFromApiAsync();
                             }
                             else
                             {
                                 var errorBody = await res.Content.ReadAsStringAsync();
-                                btn.Text = "+ Kết bạn";
+                                btn.Text = LocalizationService.Translate("+ Add Friend");
                                 btn.Enabled = true;
-                                MessageBox.Show($"Lỗi {(int)res.StatusCode}: {errorBody}", "Gửi thất bại");
+                                MessageBox.Show(string.Format(LocalizationService.Translate("Error {0}: {1}"), (int)res.StatusCode, errorBody), LocalizationService.Translate("Send failed"));
                             }
                         }
                         catch
                         {
-                            btn.Text = "+ Kết bạn";
+                            btn.Text = "+ Add Friend";
                             btn.Enabled = true;
                         }
                     };
@@ -1477,11 +1484,11 @@ namespace SecureChat.Client
                 ctrl.MouseLeave += (s, e) =>
                 {
                     if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
-                        pnl.BackColor = Color.White;
+                        pnl.BackColor = TG.WindowBg;
                 };
             }
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
         }
@@ -1511,8 +1518,8 @@ namespace SecureChat.Client
                 _pnlSentRequests.Controls.Add(row);
                 y += 86;
             }
-            _tpIncoming.Text = $"Đã nhận ({_requests.Count(r => r.IsIncoming)})";
-            _tpSent.Text = $"Đã gửi ({_requests.Count(r => !r.IsIncoming)})";
+            _tpIncoming.Text = string.Format(LocalizationService.Translate("received_tab"), _requests.Count(r => r.IsIncoming));
+            _tpSent.Text = string.Format(LocalizationService.Translate("sent_tab"), _requests.Count(r => !r.IsIncoming));
             _requestSubTabs.Invalidate();
 
         }
@@ -1522,14 +1529,14 @@ namespace SecureChat.Client
             _pnlBlockedUsers.Controls.Clear();
 
             // Cập nhật số đếm trên tab
-            _tpBlocked.Text = $"Đã chặn ({_blockedUsers.Count})";
+            _tpBlocked.Text = string.Format(LocalizationService.Translate("blocked_tab"), _blockedUsers.Count);
             _requestSubTabs.Invalidate();
 
             if (_blockedUsers.Count == 0)
             {
                 var lbl = new Label
                 {
-                    Text = "Chưa chặn ai",
+                    Text = LocalizationService.Translate("No blocked users"),
                     Font = TG.FontRegular(9f),
                     ForeColor = TG.TextSecondary,
                     AutoSize = false,
@@ -1556,7 +1563,7 @@ namespace SecureChat.Client
 
         private Panel BuildBlockedUserRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = Color.White, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
 
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10) };
             avatar.SetName(c.DisplayName);
@@ -1577,20 +1584,20 @@ namespace SecureChat.Client
 
             var lblStatus = new Label
             {
-                Text = "🚫 Đã chặn",
+                Text = "🚫 " + LocalizationService.Translate("Blocked"),
                 Font = TG.FontRegular(8f),
-                ForeColor = Color.FromArgb(0x75, 0x75, 0x75),
+                ForeColor = TG.TextSecondary,
                 AutoSize = false,
                 Height = 24,
                 Width = 80,
                 Location = new Point(initialWidth - 92, 16),
                 TextAlign = ContentAlignment.MiddleCenter,
-                BackColor = Color.FromArgb(0xF5, 0xF5, 0xF5),
+                BackColor = Color.Transparent,
             };
 
             var btnUnblock = new TelegramButton
             {
-                Text = "Bỏ chặn",
+                Text = "Unblock",
                 Height = 28,
                 Width = 80,
                 Radius = TG.RadiusSmall,
@@ -1603,7 +1610,7 @@ namespace SecureChat.Client
                 {
                     if (string.IsNullOrWhiteSpace(c.BlockId))
                     {
-                        MessageBox.Show("BlockId is empty; cannot unblock.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show("BlockId is empty; cannot unblock.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
@@ -1620,12 +1627,12 @@ namespace SecureChat.Client
                     }
                     else
                     {
-                        MessageBox.Show($"Bỏ chặn thất bại ({(int)res.StatusCode}): {body}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show($"Unblock failed ({(int)res.StatusCode}): {body}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Bỏ chặn thất bại: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Unblock failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
 
@@ -1655,13 +1662,25 @@ namespace SecureChat.Client
                 ctrl.MouseLeave += (s, e) =>
                 {
                     if (!pnl.ClientRectangle.Contains(pnl.PointToClient(Control.MousePosition)))
-                        pnl.BackColor = Color.White;
+                        pnl.BackColor = TG.WindowBg;
                 };
             }
             pnl.MouseEnter += (s, e) => pnl.BackColor = TG.SidebarHover;
-            pnl.MouseLeave += (s, e) => pnl.BackColor = Color.White;
+            pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
+        }
+
+        private sealed class ContactsMenuColorTable : ProfessionalColorTable
+        {
+            public override Color MenuItemSelected           => TG.SidebarHover;
+            public override Color MenuItemBorder             => TG.Divider;
+            public override Color ToolStripDropDownBackground => TG.SidebarBg;
+            public override Color SeparatorDark              => TG.Divider;
+            public override Color SeparatorLight             => TG.Divider;
+            public override Color ImageMarginGradientBegin   => TG.SidebarBg;
+            public override Color ImageMarginGradientMiddle  => TG.SidebarBg;
+            public override Color ImageMarginGradientEnd     => TG.SidebarBg;
         }
     }
 }

@@ -84,6 +84,14 @@ namespace SecureChat.Client
             ForeColor = Color.White;
         }
 
+        public void RefreshTheme()
+        {
+            NormalColor = TG.Blue;
+            HoverColor = TG.BlueHover;
+            PressColor = TG.BlueActive;
+            Invalidate();
+        }
+
         protected override void OnMouseEnter(EventArgs e) { _isHovered = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { _isHovered = false; Invalidate(); base.OnMouseLeave(e); }
         protected override void OnMouseDown(MouseEventArgs e) { _isPressed = true; Invalidate(); base.OnMouseDown(e); }
@@ -92,8 +100,7 @@ namespace SecureChat.Client
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // --- DÒNG FIX QUAN TRỌNG ---
+            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             // Xóa sạch dấu vết cũ bằng màu của Panel cha để tránh bị "xanh phủ"
             if (this.Parent != null)
             {
@@ -111,7 +118,9 @@ namespace SecureChat.Client
                 // e.Graphics.FillPath(new SolidBrush(Color.White), path);
                 // e.Graphics.DrawPath(new Pen(NormalColor, 1.5f), path);
                 // Nếu dùng NormalColor = Transparent, hãy vẽ màu trắng làm nền
-                e.Graphics.FillPath(Brushes.White, path);
+                Color fillColor = this.Parent?.BackColor ?? Color.White;
+                using var fillBrush = new SolidBrush(fillColor);
+                e.Graphics.FillPath(fillBrush, path);
                 e.Graphics.DrawPath(new Pen(NormalColor, 1.5f), path);
 
 
@@ -196,19 +205,11 @@ namespace SecureChat.Client
             }
             else
             {
-                e.Graphics.FillEllipse(new SolidBrush(_avatarColor == default ? TG.Blue : _avatarColor), rect);
+                // Vẽ nền tròn màu
+                using var fill = new SolidBrush(_avatarColor == default ? TG.Blue : _avatarColor);
+                e.Graphics.FillEllipse(fill, rect);
+
                 string initials = GetInitials(DisplayName);
-
-                using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                /*
-                float fontSizee = size * 0.32f;
-
-                // e.Graphics.DrawString(initials, TG.FontSemiBold(fontSize), Brushes.White, rect, sf);
-                // TẠO RECT RIÊNG CHO CHỮ: Đẩy Y xuống 2 pixel để bù trừ độ lệch của Font
-                RectangleF textRect = new RectangleF(rect.X, rect.Y + 2, rect.Width, rect.Height);
-
-                e.Graphics.DrawString(initials, TG.FontSemiBold(fontSizee), Brushes.White, textRect, sf);
-                */
 
                 // Draw initials as strict single-line text to avoid wrap/clipping artifacts.
                 float fontSize = Math.Max(10f, size * 0.34f);
@@ -229,10 +230,15 @@ namespace SecureChat.Client
             if (ShowOnline)
             {
                 int dotSize = Math.Max(8, size / 5);
-                int dotX = size - dotSize;
-                int dotY = size - dotSize;
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0xFF, 0xFF, 0xFF)), dotX - 1, dotY - 1, dotSize + 2, dotSize + 2);
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(0x4D, 0xD9, 0x64)), dotX, dotY, dotSize, dotSize);
+                int dotX = rect.Right - dotSize + 1;
+                int dotY = rect.Bottom - dotSize + 1;
+                // Border = parent bg để không thấy viền răng cưa trắng trên nền tối
+                var borderColor = Parent?.BackColor ?? TG.WindowBg;
+                using var borderBrush = new SolidBrush(borderColor);
+                e.Graphics.FillEllipse(borderBrush, dotX - 2, dotY - 2, dotSize + 4, dotSize + 4);
+                // Chấm xanh
+                using var greenBrush = new SolidBrush(Color.FromArgb(0x4D, 0xD9, 0x64));
+                e.Graphics.FillEllipse(greenBrush, dotX, dotY, dotSize, dotSize);
             }
         }
 
@@ -268,6 +274,16 @@ namespace SecureChat.Client
         public char PasswordChar { get => _tb.PasswordChar; set => _tb.PasswordChar = value; }
         public bool Multiline { get => _tb.Multiline; set => _tb.Multiline = value; }
         public new event EventHandler TextChanged { add => _tb.TextChanged += value; remove => _tb.TextChanged -= value; }
+
+        public void RefreshTheme()
+        {
+            BackColor = TG.InputBg;
+            _tb.BackColor = TG.InputBg;
+            _tb.ForeColor = TG.TextPrimary;
+            _placeholderLabel.ForeColor = TG.TextHint;
+            _btnTogglePassword.ForeColor = TG.TextHint;
+            Invalidate();
+        }
 
         public TelegramTextBox()
         {
@@ -425,8 +441,8 @@ namespace SecureChat.Client
             {
                 _showBack = value;
                 _btnBack.Visible = value;
-                if (value) _btnBack.BringToFront();
                 UpdateLayout();
+                if (value) _btnBack.BringToFront();
             }
         }
         public event EventHandler BackClicked { add => _btnBack.Click += value; remove => _btnBack.Click -= value; }
@@ -501,7 +517,8 @@ namespace SecureChat.Client
                 leftX += 44; // Width 36 + Margin 8
             }
 
-            _lblTitle.BringToFront();
+            if (!_showBack)
+                _lblTitle.BringToFront();
 
             int availableWidth = Math.Max(0, Width - leftX - 100);
 

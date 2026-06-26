@@ -9,13 +9,10 @@ namespace SecureChat.Client.Components.Group
         private const int RIGHT_PAD = 10;
         private const int TEXT_LEFT = LEFT_PAD + AVATAR_SIZE + 12;
         public const int ITEM_HEIGHT = 100;
-        private static readonly Color C_BG_HOVER = Color.FromArgb(0xF4, 0xF7, 0xFB);
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUBTEXT = Color.FromArgb(0x8A, 0x98, 0xA6);
-        private static readonly Color C_ROLE = Color.FromArgb(0x7D, 0x5F, 0xC9);
 
-        private PictureBox _avatar = null!;
-        private Label _lblInitial = null!;
+        private Panel _avatar = null!;
+        private Image? _avatarImage;
+        private string _initialText = "?";  // text để DrawCircleAvatar vẽ antialiased
         private Label _lblName = null!;
         private Label _lblStatus = null!;
         private Label _lblRole = null!;
@@ -46,16 +43,16 @@ namespace SecureChat.Client.Components.Group
 
         public Image AvatarImage
         {
-            get => _avatar.Image;
+            get => _avatarImage!;
             set
             {
-                if (_avatar.Image != value)
+                if (_avatarImage != value)
                 {
-                    var old = _avatar.Image;
-                    _avatar.Image = value;
+                    var old = _avatarImage;
+                    _avatarImage = value;
                     old?.Dispose();
                 }
-                _lblInitial.Visible = value == null;
+                _avatar.Invalidate(); // redraw với/không có ảnh
                 _avatar.Invalidate();
             }
         }
@@ -67,7 +64,7 @@ namespace SecureChat.Client.Components.Group
             set
             {
                 _avatarColor = value;
-                _avatar.BackColor = value;
+                _avatar.Invalidate();
             }
         }
 
@@ -80,28 +77,35 @@ namespace SecureChat.Client.Components.Group
             BuildUI();
         }
 
+        public void OnNightModeChanged()
+        {
+            _lblName.ForeColor = TG.TextPrimary;
+            _lblStatus.ForeColor = TG.TextSecondary;
+            _lblRole.ForeColor = TG.Blue;
+            Invalidate();
+        }
+
         private void BuildUI()
         {
-            _avatar = new PictureBox
+            _avatar = new Panel
             {
                 Size = new Size(AVATAR_SIZE, AVATAR_SIZE),
                 Location = new Point(LEFT_PAD, 20),
-                BackColor = _avatarColor,
-                SizeMode = PictureBoxSizeMode.Zoom,
-            };
-            _avatar.SizeChanged += (_, __) => ClipCircle(_avatar);
-            ClipCircle(_avatar);
-
-            _lblInitial = new Label
-            {
-                AutoSize = false,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 18f),
                 BackColor = Color.Transparent,
             };
-            _avatar.Controls.Add(_lblInitial);
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(_avatar, true);
+            _avatar.Paint += (_, pe) =>
+            {
+                var g = pe.Graphics;
+                g.SmoothingMode      = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.InterpolationMode  = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode    = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+                var rect = new Rectangle(1, 1, _avatar.Width - 2, _avatar.Height - 2);
+                TG.DrawCircleAvatar(g, rect, _avatarImage, _initialText, _avatarColor, drawInitials: true);
+            };
 
             _lblName = new Label
             {
@@ -109,7 +113,7 @@ namespace SecureChat.Client.Components.Group
                 Location = new Point(TEXT_LEFT, 18),
                 Size = new Size(280, 32),
                 Font = new Font("Segoe UI Semibold", 12f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 Text = "Name",
                 BackColor = Color.Transparent,
                 AutoEllipsis = true,
@@ -121,7 +125,7 @@ namespace SecureChat.Client.Components.Group
                 Location = new Point(TEXT_LEFT, 54),
                 Size = new Size(280, 28),
                 Font = new Font("Segoe UI", 10f),
-                ForeColor = C_SUBTEXT,
+                ForeColor = TG.TextSecondary,
                 Text = "last seen...",
                 BackColor = Color.Transparent,
                 AutoEllipsis = true,
@@ -140,7 +144,7 @@ namespace SecureChat.Client.Components.Group
             {
                 AutoSize = true,
                 Font = new Font("Segoe UI Semibold", 9f),
-                ForeColor = C_ROLE,
+                ForeColor = TG.Blue,
                 Text = string.Empty,
                 BackColor = Color.Transparent,
             };
@@ -152,7 +156,7 @@ namespace SecureChat.Client.Components.Group
             Resize += (_, __) => { LayoutDynamic(); };
             LayoutDynamic();
 
-            MouseEnter += (_, __) => BackColor = C_BG_HOVER;
+            MouseEnter += (_, __) => BackColor = TG.SidebarHover;
             MouseLeave += (_, __) => BackColor = Color.Transparent;
         }
 
@@ -197,7 +201,8 @@ namespace SecureChat.Client.Components.Group
 
         public void SetInitial(string text)
         {
-            _lblInitial.Text = text;
+            _initialText = text;
+            _avatar.Invalidate();
         }
 
         /// <summary>
@@ -206,12 +211,5 @@ namespace SecureChat.Client.Components.Group
         /// Resize có fire đúng thứ tự hay không.
         /// </summary>
         public void RefreshLayout() => LayoutDynamic();
-
-        private static void ClipCircle(PictureBox pb)
-        {
-            using var path = new GraphicsPath();
-            path.AddEllipse(0, 0, pb.Width, pb.Height);
-            pb.Region = new Region(path);
-        }
     }
 }

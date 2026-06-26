@@ -2,6 +2,8 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using SecureChat.Client;
+using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -113,6 +115,7 @@ namespace SecureChat.Client.Forms.Chat
                 y += 4;
                 AppendInfoField("Bio", bio, ref y);
             }
+            UiLocalization.ApplyToForm(this);
 
             // Co lại đúng theo nội dung thật (tránh bị clip khi tên/email/bio dài), nhưng vẫn giữ tối thiểu cho thoáng
             ClientSize = new Size(ClientSize.Width, Math.Max(380, y + 12));

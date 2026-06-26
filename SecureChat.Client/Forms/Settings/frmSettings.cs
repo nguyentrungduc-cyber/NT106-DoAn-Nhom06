@@ -13,12 +13,6 @@ namespace SecureChat.Client.Forms.Settings
 {
     public class frmSettings : Form
     {
-        private static readonly Color C_BG = Color.White;
-        private static readonly Color C_HOVER = Color.FromArgb(0xF2, 0xF5, 0xF9);
-        private static readonly Color C_TEXT = Color.FromArgb(0x1F, 0x2D, 0x3D);
-        private static readonly Color C_SUB = Color.FromArgb(0x7A, 0x8A, 0x99);
-        private static readonly Color C_ACCENT = Color.FromArgb(0x33, 0x99, 0xFF);
-        private static readonly Color C_SEPARATOR = Color.FromArgb(0xE8, 0xEC, 0xF1);
         private static readonly int ITEM_HEIGHT = 54;
         private static readonly int HEADER_PADDING_X = 16;
         private static readonly int AVATAR_SIZE = 88;
@@ -36,6 +30,8 @@ namespace SecureChat.Client.Forms.Settings
         public frmSettings(ProfileModel profile)
         {
             _profile = profile ?? throw new ArgumentNullException(nameof(profile));
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             InitializeComponent();
             BuildUI();
         }
@@ -52,7 +48,7 @@ namespace SecureChat.Client.Forms.Settings
             ControlBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(520, 740);
-            BackColor = C_BG;
+            BackColor = TG.WindowBg;
             Font = TG.FontRegular(10f);
             DoubleBuffered = true;
             Resize += (_, __) => LayoutHeaderProfileText();
@@ -60,7 +56,7 @@ namespace SecureChat.Client.Forms.Settings
             _root = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 AutoScroll = true,
                 Padding = new Padding(0, 0, 0, 12)
             };
@@ -75,7 +71,7 @@ namespace SecureChat.Client.Forms.Settings
             AddMenuItem(ref y, "Privacy and Security", "privacy.png", OpenPrivacy);
             AddMenuItem(ref y, "Advanced", "advanced.png", OpenAdvanced);
             AddMenuItem(ref y, "Speakers and Camera", "devices.png", OpenSpeakersCamera);
-            AddMenuItem(ref y, "Language", "language.png", OpenLanguage, true, LanguagePrefs.GetDisplayLanguageName(), lbl => _lblLanguageMenu = lbl);
+            AddMenuItem(ref y, "Language", "language.png", OpenLanguage, true, GetLanguageDisplayName(), lbl => _lblLanguageMenu = lbl);
 
             // Add separator before logout
             y += 8;
@@ -83,7 +79,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Location = new Point(0, y),
                 Size = new Size(ClientSize.Width, 1),
-                BackColor = C_SEPARATOR,
+                BackColor = TG.Divider,
                 Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
             };
             _root.Controls.Add(logoutSeparator);
@@ -101,7 +97,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Location = new Point(0, y),
                 Size = new Size(ClientSize.Width, 176),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
 
@@ -109,7 +105,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = "Settings",
                 Font = TG.FontSemiBold(12.5f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 AutoSize = true,
                 Location = new Point(16, 14),
                 BackColor = Color.Transparent
@@ -154,7 +150,7 @@ namespace SecureChat.Client.Forms.Settings
             _lblName = new Label
             {
                 Font = TG.FontSemiBold(17f),
-                ForeColor = C_TEXT,
+                ForeColor = TG.TextPrimary,
                 AutoSize = false,
                 AutoEllipsis = true,
                 BackColor = Color.Transparent,
@@ -164,7 +160,7 @@ namespace SecureChat.Client.Forms.Settings
             _lblEmail = new Label
             {
                 Font = TG.FontRegular(11.2f),
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 AutoSize = false,
                 AutoEllipsis = true,
                 UseCompatibleTextRendering = true,
@@ -178,7 +174,7 @@ namespace SecureChat.Client.Forms.Settings
                 AutoSize = false,
                 AutoEllipsis = true,
                 UseCompatibleTextRendering = true,
-                ForeColor = C_ACCENT,
+                ForeColor = TG.CAccent,
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.TopLeft
             };
@@ -187,7 +183,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Dock = DockStyle.Bottom,
                 Height = 1,
-                BackColor = C_SEPARATOR
+                BackColor = TG.Divider
             };
 
             _headerPanel.Controls.AddRange(new Control[]
@@ -206,13 +202,13 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Location = new Point(0, y),
                 Size = new Size(ClientSize.Width, ITEM_HEIGHT),
-                BackColor = C_BG,
+                BackColor = TG.WindowBg,
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
             };
 
-            panel.MouseEnter += (_, __) => panel.BackColor = C_HOVER;
-            panel.MouseLeave += (_, __) => panel.BackColor = C_BG;
+            panel.MouseEnter += (_, __) => panel.BackColor = TG.SidebarHover;
+            panel.MouseLeave += (_, __) => panel.BackColor = TG.WindowBg;
             panel.Click += (_, __) => onClick();
 
             int labelX = 20; // Default position if no icon
@@ -228,8 +224,8 @@ namespace SecureChat.Client.Forms.Settings
                     Image = SettingsGlyphIcons.Create(iconFile, 24),
                     BackColor = Color.Transparent
                 };
-                icon.MouseEnter += (_, __) => panel.BackColor = C_HOVER;
-                icon.MouseLeave += (_, __) => panel.BackColor = C_BG;
+                icon.MouseEnter += (_, __) => panel.BackColor = TG.SidebarHover;
+                icon.MouseLeave += (_, __) => panel.BackColor = TG.WindowBg;
                 icon.Click += (_, __) => onClick();
                 panel.Controls.Add(icon);
                 labelX = 68; // Position after icon
@@ -239,13 +235,13 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Text = text,
                 Font = text.Contains("🔓") ? TG.FontSemiBold(12.2f) : TG.FontRegular(12.2f),
-                ForeColor = text.Contains("🔓") ? Color.FromArgb(0xE7, 0x2C, 0x3C) : C_TEXT, // Red for logout
+                ForeColor = text.Contains("🔓") ? Color.FromArgb(0xE7, 0x2C, 0x3C) : TG.TextPrimary, // Red for logout
                 AutoSize = true,
                 Location = new Point(labelX, (ITEM_HEIGHT - 22) / 2),
                 BackColor = Color.Transparent
             };
-            lbl.MouseEnter += (_, __) => panel.BackColor = C_HOVER;
-            lbl.MouseLeave += (_, __) => panel.BackColor = C_BG;
+                lbl.MouseEnter += (_, __) => panel.BackColor = TG.SidebarHover;
+                lbl.MouseLeave += (_, __) => panel.BackColor = TG.WindowBg;
             lbl.Click += (_, __) => onClick();
 
             panel.Controls.Add(lbl);
@@ -256,12 +252,13 @@ namespace SecureChat.Client.Forms.Settings
                 {
                     Text = extraText,
                     Font = TG.FontRegular(12f),
-                    ForeColor = C_ACCENT,
+                    ForeColor = TG.CAccent,
                     AutoSize = true,
-                    BackColor = Color.Transparent
+                    BackColor = Color.Transparent,
+                    Tag = "accent"
                 };
-                trailing.MouseEnter += (_, __) => panel.BackColor = C_HOVER;
-                trailing.MouseLeave += (_, __) => panel.BackColor = C_BG;
+                trailing.MouseEnter += (_, __) => panel.BackColor = TG.SidebarHover;
+                trailing.MouseLeave += (_, __) => panel.BackColor = TG.WindowBg;
                 trailing.Click += (_, __) => onClick();
                 panel.Controls.Add(trailing);
                 onTrailingCreated?.Invoke(trailing);
@@ -275,7 +272,7 @@ namespace SecureChat.Client.Forms.Settings
             {
                 Dock = DockStyle.Bottom,
                 Height = 1,
-                BackColor = C_SEPARATOR
+                BackColor = TG.Divider
             };
             panel.Controls.Add(sep);
 
@@ -328,7 +325,7 @@ namespace SecureChat.Client.Forms.Settings
             dlg.StartPosition = FormStartPosition.CenterParent;
             if (dlg.ShowDialog(this) == DialogResult.OK && _lblLanguageMenu != null)
             {
-                _lblLanguageMenu.Text = LanguagePrefs.GetDisplayLanguageName();
+                _lblLanguageMenu.Text = GetLanguageDisplayName();
             }
         }
 
@@ -336,8 +333,8 @@ namespace SecureChat.Client.Forms.Settings
         {
             var confirmResult = MessageBox.Show(
                 this,
-                "Are you sure you want to logout?",
-                "Confirm Logout",
+                LocalizationService.Translate("Are you sure you want to logout?"),
+                LocalizationService.Translate("Confirm Logout"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
 
@@ -362,8 +359,8 @@ namespace SecureChat.Client.Forms.Settings
             {
                 MessageBox.Show(
                     this,
-                    $"Logout error: {ex.Message}",
-                    "Error",
+                    string.Format(LocalizationService.Translate("Logout error: {0}"), ex.Message),
+                    LocalizationService.Translate("Error"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 Enabled = true;
@@ -372,7 +369,7 @@ namespace SecureChat.Client.Forms.Settings
 
         private void ShowPending()
         {
-            MessageBox.Show(this, "Feature coming soon", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, LocalizationService.Translate("Feature coming soon"), LocalizationService.Translate("Info"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private static Button FlatIconButton(string text)
@@ -384,7 +381,7 @@ namespace SecureChat.Client.Forms.Settings
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = C_SUB,
+                ForeColor = TG.TextSecondary,
                 Font = TG.FontSemiBold(12f),
                 TabStop = false,
                 Cursor = Cursors.Hand,
@@ -392,8 +389,8 @@ namespace SecureChat.Client.Forms.Settings
                 Padding = new Padding(8, 3, 8, 3)
             };
             b.FlatAppearance.BorderSize = 0;
-            b.FlatAppearance.MouseOverBackColor = C_HOVER;
-            b.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xEA, 0xEA, 0xEA);
+            b.FlatAppearance.MouseOverBackColor = TG.SidebarHover;
+            b.FlatAppearance.MouseDownBackColor = TG.SidebarHover;
             return b;
         }
 
@@ -423,10 +420,10 @@ namespace SecureChat.Client.Forms.Settings
         {
             _lblName.Text = string.IsNullOrWhiteSpace(_profile.FullName) ? "Unknown User" : _profile.FullName;
             _lblEmail.Text = string.IsNullOrWhiteSpace(_profile.Email) ? "---" : _profile.Email;
-            _avatarPanel.BackColor = TG.GetAvatarColor(_profile.FullName);
+            _avatarPanel.BackColor = Color.Transparent;
 
             _lblUsername.Text = string.IsNullOrWhiteSpace(_profile.Username) ? "Add username" : _profile.Username;
-            _lblUsername.ForeColor = string.IsNullOrWhiteSpace(_profile.Username) ? C_SUB : C_ACCENT;
+            _lblUsername.ForeColor = string.IsNullOrWhiteSpace(_profile.Username) ? TG.TextSecondary : TG.CAccent;
 
             LayoutHeaderProfileText();
 
@@ -543,6 +540,44 @@ namespace SecureChat.Client.Forms.Settings
                 panel.Location = new Point(0, y);
                 y += ITEM_HEIGHT;
             }
+        }
+
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            _root.BackColor = TG.WindowBg;
+            _headerPanel.BackColor = TG.WindowBg;
+            _lblName.ForeColor = TG.TextPrimary;
+            _lblEmail.ForeColor = TG.TextSecondary;
+            _lblUsername.ForeColor = string.IsNullOrWhiteSpace(_profile.Username) ? TG.TextSecondary : TG.CAccent;
+            _avatarPanel.BackColor = Color.Transparent;
+            _avatarPanel.Invalidate();
+            foreach (var panel in _menuItems)
+            {
+                panel.BackColor = TG.WindowBg;
+                foreach (Control c in panel.Controls)
+                {
+                    if (c is Label lbl)
+                    {
+                        if (lbl.Text.Contains("🔓"))
+                            lbl.ForeColor = Color.FromArgb(0xE7, 0x2C, 0x3C);
+                        else if (lbl.Tag as string == "accent")
+                            lbl.ForeColor = TG.CAccent;
+                        else
+                            lbl.ForeColor = TG.TextPrimary;
+                    }
+                    else if (c is Panel s && s.Height == 1)
+                        s.BackColor = TG.Divider;
+                    c.Invalidate();
+                }
+            }
+            Invalidate(true);
+        }
+
+        private static string GetLanguageDisplayName()
+        {
+            return LocalizationService.CurrentLanguage == LanguageType.Vietnamese ? "Tiếng Việt" : "English";
         }
     }
 

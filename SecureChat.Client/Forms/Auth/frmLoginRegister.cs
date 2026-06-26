@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Net.Mail;
 using SecureChat.Client.Forms.Shared;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Client.Services;
 using SecureChat.Client.Security;
 using SecureChat.DTOs;
@@ -33,6 +34,7 @@ namespace SecureChat.Client
             // Bật DoubleBuffered để giảm flickering khi resize hoặc đổi mode
             this.DoubleBuffered = true;
             InitializeComponent();
+            ThemeRefreshHelper.Hook(this);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -81,7 +83,7 @@ namespace SecureChat.Client
             };
             _lblTagline = new Label
             {
-                Text = "Nhắn tin an toàn và mã hóa đầu cuối",
+                Text = "Secure, end-to-end encrypted messaging",
                 Font = TG.FontRegular(9f),
                 ForeColor = Color.FromArgb(200, 235, 255),
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -105,21 +107,21 @@ namespace SecureChat.Client
             };
 
             // Khởi tạo các ô nhập liệu
-            _lblDisplayName = MakeFieldLabel("Họ và tên");
+            _lblDisplayName = MakeFieldLabel("Full Name");
             _tbDisplayName = new TelegramTextBox { Height = 44 };
-            _tbDisplayName.SetPlaceholder("Nguyễn Văn A");
+            _tbDisplayName.SetPlaceholder("John Doe");
 
-            _lblEmail = MakeFieldLabel("Địa chỉ Email");
+            _lblEmail = MakeFieldLabel("Email Address");
             _tbEmail = new TelegramTextBox { Height = 44 };
             _tbEmail.SetPlaceholder("example@email.com");
 
-            _lblPassword = MakeFieldLabel("Mật khẩu");
+            _lblPassword = MakeFieldLabel("Password");
             _tbPassword = new TelegramTextBox { Height = 44, PasswordCharValue = '●' };
-            _tbPassword.SetPlaceholder("Nhập mật khẩu...");
+            _tbPassword.SetPlaceholder("Enter password...");
 
-            _lblConfirmPass = MakeFieldLabel("Xác nhận mật khẩu");
+            _lblConfirmPass = MakeFieldLabel("Confirm Password");
             _tbConfirmPass = new TelegramTextBox { Height = 44, PasswordCharValue = '●' };
-            _tbConfirmPass.SetPlaceholder("Nhập lại mật khẩu...");
+            _tbConfirmPass.SetPlaceholder("Re-enter password...");
 
             _lblError = new Label
             {
@@ -131,7 +133,7 @@ namespace SecureChat.Client
 
             _btnLogin = new TelegramButton
             {
-                Text = "ĐĂNG NHẬP",
+                Text = "Login",
                 Height = 46,
                 Font = TG.FontSemiBold(10.5f),
                 Radius = TG.RadiusSmall
@@ -140,7 +142,7 @@ namespace SecureChat.Client
 
             _btnRegister = new TelegramButton
             {
-                Text = "TẠO TÀI KHOẢN",
+                Text = "Create Account",
                 Height = 46,
                 Font = TG.FontSemiBold(10.5f),
                 Radius = TG.RadiusSmall,
@@ -151,7 +153,7 @@ namespace SecureChat.Client
 
             _lnkForgot = new LinkLabel
             {
-                Text = "Quên mật khẩu?",
+                Text = "Forgot password?",
                 LinkColor = TG.Blue,
                 Font = TG.FontRegular(9f),
                 AutoSize = true
@@ -169,7 +171,7 @@ namespace SecureChat.Client
             Controls.AddRange(new Control[] { _pnlCard, _pnlLogo });
 
             this.Resize += (s, e) => DoLayout();
-            this.Load += (s, e) => SetLoginMode();
+            this.Load += (s, e) => { SetLoginMode(); UiLocalization.ApplyToForm(this); };
         }
 
         // add this new handler method in the frmLoginRegister class (near other event handlers)
@@ -184,7 +186,7 @@ namespace SecureChat.Client
             }
             catch (Exception ex)
             {
-                frmError.ShowError(this, "Không thể mở Quên mật khẩu", ex.Message);
+                frmError.ShowError(this, "Cannot open Forgot Password", ex.Message);
             }
         }
 
@@ -200,12 +202,12 @@ namespace SecureChat.Client
         private void SetLoginMode()
         {
             _isRegisterMode = false;
-            Text = "SecureChat – Đăng nhập";
+            Text = "SecureChat - Login";
             _lblDisplayName.Visible = _tbDisplayName.Visible = false;
             _lblConfirmPass.Visible = _tbConfirmPass.Visible = false;
 
-            _btnLogin.Text = "ĐĂNG NHẬP";
-            _btnRegister.Text = "TẠO TÀI KHOẢN MỚI";
+            _btnLogin.Text = LocalizationService.Translate("Login");
+            _btnRegister.Text = LocalizationService.Translate("Create New Account");
             _lnkForgot.Visible = true;
 
             this.ClientSize = new Size(420, 560);
@@ -215,12 +217,12 @@ namespace SecureChat.Client
         private void SetRegisterMode()
         {
             _isRegisterMode = true;
-            Text = "SecureChat – Đăng ký";
+            Text = "SecureChat - Register";
             _lblDisplayName.Visible = _tbDisplayName.Visible = true;
             _lblConfirmPass.Visible = _tbConfirmPass.Visible = true;
 
-            _btnLogin.Text = "TẠO TÀI KHOẢN";
-            _btnRegister.Text = "← Đã có tài khoản";
+            _btnLogin.Text = LocalizationService.Translate("Create Account");
+            _btnRegister.Text = LocalizationService.Translate("← Already have an account");
             _lnkForgot.Visible = false;
 
             this.ClientSize = new Size(420, 720);
@@ -262,7 +264,7 @@ namespace SecureChat.Client
             }
             catch (Exception ex)
             {
-                frmError.ShowError(this, "Lỗi kết nối", ex.Message);
+                frmError.ShowError(this, "Connection error", ex.Message);
             }
             finally
             {
@@ -276,17 +278,17 @@ namespace SecureChat.Client
             if (string.IsNullOrWhiteSpace(_tbEmail.Text) || string.IsNullOrWhiteSpace(_tbPassword.Text) ||
                 string.IsNullOrWhiteSpace(_tbDisplayName.Text))
             {
-                ShowError("Vui lòng nhập đầy đủ thông tin.");
+                ShowError("Please fill in all fields.");
                 return;
             }
             if (!IsValidEmail(_tbEmail.Text))
             {
-                ShowError("Định dạng email không hợp lệ.");
+                ShowError("Invalid email format.");
                 return;
             }
             if (_tbPassword.Text != _tbConfirmPass.Text)
             {
-                ShowError("Mật khẩu xác nhận không khớp.");
+                ShowError("Passwords do not match.");
                 return;
             }
 
@@ -308,12 +310,12 @@ namespace SecureChat.Client
             var (ok, _, err) = await ApiClient.Instance.PostAsync<RegisterRequest, object>("api/auth/register", req);
             if (ok)
             {
-                frmError.ShowSuccess(this, "Đăng ký thành công", "Tài khoản của bạn đã sẵn sàng. Hãy đăng nhập để bắt đầu.");
+                frmError.ShowSuccess(this, "Registration Successful", "Your account is ready. Please log in to get started.");
                 SetLoginMode();
             }
             else
             {
-                frmError.ShowApi(this, err, "Không thể tạo tài khoản. Vui lòng thử lại.");
+                frmError.ShowApi(this, err, "Unable to create account. Please try again.");
             }
         }
 
@@ -326,14 +328,14 @@ namespace SecureChat.Client
 
         private async Task HandleLogin()
         {
-            if (string.IsNullOrWhiteSpace(_tbEmail.Text)) { ShowError("Vui lòng nhập Email."); return; }
+            if (string.IsNullOrWhiteSpace(_tbEmail.Text)) { ShowError("Please enter your Email."); return; }
 
             var req = new LoginRequest(_tbEmail.Text, _tbPassword.Text, Environment.MachineName);
             var (ok, resElem, err) = await ApiClient.Instance.PostAsync<LoginRequest, System.Text.Json.JsonElement>("api/auth/login", req);
 
             if (!ok)
             {
-                frmError.ShowApi(this, err, "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.");
+                frmError.ShowApi(this, err, "Login failed. Please check your credentials.");
                 return;
             }
 
@@ -366,7 +368,7 @@ namespace SecureChat.Client
                     }
                     else
                     {
-                        ShowError("Xác minh 2 bước không thành công hoặc bị hủy.");
+                        ShowError("Two-factor verification failed or cancelled.");
                         return;
                     }
                 }
@@ -396,11 +398,11 @@ namespace SecureChat.Client
                     return;
                 }
 
-                frmError.ShowError(this, "Đăng nhập thất bại", "Phản hồi từ máy chủ không hợp lệ.");
+                frmError.ShowError(this, "Login Failed", "Invalid server response.");
             }
             catch (Exception ex)
             {
-                frmError.ShowError(this, "Lỗi xử lý phản hồi", ex.Message);
+                frmError.ShowError(this, "Response Processing Error", ex.Message);
             }
         }
 
@@ -413,7 +415,7 @@ namespace SecureChat.Client
         private void SetLoading(bool loading)
         {
             _btnLogin.Enabled = _btnRegister.Enabled = !loading;
-            _btnLogin.Text = loading ? "ĐANG XỬ LÝ..." : (_isRegisterMode ? "TẠO TÀI KHOẢN" : "ĐĂNG NHẬP");
+            _btnLogin.Text = loading ? LocalizationService.Translate("PROCESSING...") : (_isRegisterMode ? LocalizationService.Translate("Create Account") : LocalizationService.Translate("Login"));
         }
 
         private bool IsValidEmail(string email)

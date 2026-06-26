@@ -1,4 +1,7 @@
 using System.Drawing.Drawing2D;
+using System.Drawing;
+using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -16,13 +19,16 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmMuteNotifications(bool disableSound, bool isMuted, DateTime? muteUntilUtc)
         {
+            NightModeService.ThemeChanged += OnThemeChanged;
+            FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
             Text = "Mute notifications";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
+            SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(440, 330);
 
@@ -30,7 +36,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Text = "Mute notifications",
                 Font = new Font("Segoe UI Semibold", 14f),
-                ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
+                ForeColor = TG.TextPrimary,
                 Location = new Point(18, 16),
                 Size = new Size(330, 32)
             };
@@ -40,7 +46,7 @@ namespace SecureChat.Client.Forms.Chat
                 Text = "\u2715",
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.Transparent,
-                ForeColor = Color.FromArgb(0x2D, 0x3B, 0x4E),
+                ForeColor = TG.TextPrimary,
                 Font = new Font("Segoe UI", 11f),
                 Size = new Size(30, 28),
                 Location = new Point(390, 14)
@@ -121,11 +127,11 @@ namespace SecureChat.Client.Forms.Chat
 
             SyncMuteForControlState();
 
-            var btnCancel = BuildActionButton("Cancel", Color.FromArgb(0x2A, 0xAB, 0xEE), false);
+            var btnCancel = BuildActionButton("Cancel", TG.Blue, false);
             btnCancel.Location = new Point(234, 272);
             btnCancel.Click += (_, __) => DialogResult = DialogResult.Cancel;
 
-            var btnSave = BuildActionButton("Save", Color.FromArgb(0x2A, 0xAB, 0xEE), true);
+            var btnSave = BuildActionButton("Save", TG.Blue, true);
             btnSave.Location = new Point(328, 272);
             btnSave.Click += (_, __) =>
             {
@@ -156,12 +162,13 @@ namespace SecureChat.Client.Forms.Chat
                 _rbUnmuted, _rbMuteForever, _rbMuteFor, _cbDuration,
                 btnCancel, btnSave
             });
+            UiLocalization.ApplyToForm(this);
         }
 
         private void SyncMuteForControlState()
         {
             _cbDuration.Enabled = _rbMuteFor.Checked;
-            _cbDuration.BackColor = _cbDuration.Enabled ? Color.White : Color.FromArgb(0xF1, 0xF4, 0xF8);
+            _cbDuration.BackColor = _cbDuration.Enabled ? TG.WindowBg : TG.SidebarHover;
         }
 
         private TimeSpan GetSelectedDuration()
@@ -193,5 +200,30 @@ namespace SecureChat.Client.Forms.Chat
             btn.FlatAppearance.BorderColor = color;
             return btn;
         }
+        private void OnThemeChanged()
+        {
+            if (InvokeRequired) { Invoke(new Action(OnThemeChanged)); return; }
+            BackColor = TG.WindowBg;
+            Invalidate(true);
+            ApplyThemeToControls(Controls);
+        }
+
+        private static void ApplyThemeToControls(System.Windows.Forms.Control.ControlCollection controls)
+        {
+            foreach (Control c in controls)
+            {
+                if (c.BackColor != Color.Transparent &&
+                    c.BackColor != TG.Blue &&
+                    c.BackColor != TG.SidebarActive &&
+                    c.BackColor != TG.TitleBarBg &&
+                    c.Tag as string != "accent")
+                    c.BackColor = TG.WindowBg;
+                if (c.ForeColor != Color.White && c.Tag as string != "white-fg")
+                    c.ForeColor = TG.TextPrimary;
+                c.Invalidate();
+                ApplyThemeToControls(c.Controls);
+            }
+        }
+
     }
 }

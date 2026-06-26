@@ -4,6 +4,9 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using SecureChat.Client.Services;
+using SecureChat.Client.Forms.Settings;
+
 
 namespace SecureChat.Client.Forms.Chat
 {
@@ -25,6 +28,7 @@ namespace SecureChat.Client.Forms.Chat
 
         public frmLeaveGroup(string groupName, string nextOwnerName, IEnumerable<string>? groupMembers = null, IEnumerable<string>? groupMemberIds = null)
         {
+            ThemeRefreshHelper.Hook(this);
             _groupName = string.IsNullOrWhiteSpace(groupName) ? "this group" : groupName.Trim();
             _appointedAdminName = nextOwnerName?.Trim() ?? string.Empty;
 
@@ -59,7 +63,7 @@ namespace SecureChat.Client.Forms.Chat
             MaximizeBox = false;
             MinimizeBox = false;
             ControlBox = false;
-            BackColor = Color.White;
+            BackColor = TG.WindowBg;
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(430, 360);
 
@@ -67,7 +71,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(0, 0),
                 Size = new Size(430, 120),
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
             EnableDoubleBuffer(header);
 
@@ -89,7 +93,7 @@ namespace SecureChat.Client.Forms.Chat
             {
                 Location = new Point(196, 52),
                 Size = new Size(30, 18),
-                BackColor = Color.White
+                BackColor = TG.WindowBg
             };
 
             var badge = new Label
@@ -151,6 +155,7 @@ namespace SecureChat.Client.Forms.Chat
 
             Controls.AddRange(new Control[] { header, lblTitle, _lblInfo, btnAppoint, btnCancel, btnLeave });
             RefreshOwnerPreview();
+            UiLocalization.ApplyToForm(this);
         }
 
         private void OpenAppointAdminDialog()

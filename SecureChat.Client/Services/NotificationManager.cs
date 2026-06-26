@@ -324,27 +324,8 @@ namespace SecureChat.Client.Services
                 var avatarBmp = new Bitmap(38, 38);
                 using (var g = Graphics.FromImage(avatarBmp))
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    var rect = new Rectangle(0, 0, 37, 37);
-                    if (avatarImage != null)
-                    {
-                        using var path = new GraphicsPath();
-                        path.AddEllipse(rect);
-                        g.SetClip(path);
-                        g.DrawImage(avatarImage, rect);
-                        g.ResetClip();
-                    }
-                    else
-                    {
-                        g.FillEllipse(new SolidBrush(avatarColor), rect);
-                        float fontSize = 14f;
-                        using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-                        TextRenderer.DrawText(g, initials, font, rect, Color.White,
-                            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
-                    }
-                    using var borderPen = new Pen(C_AvatarBorder, 1f);
-                    g.DrawEllipse(borderPen, rect);
+                    var rect = new Rectangle(0, 0, 38, 38);
+                    TG.DrawCircleAvatar(g, rect, avatarImage, displayNameForInitials, avatarColor);
                 }
                 _avatarCtrl.Image = avatarBmp;
 

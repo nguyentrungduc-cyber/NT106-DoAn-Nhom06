@@ -14,6 +14,7 @@ using System.Windows.Forms;
 using SecureChat.Client.Media;
 using SecureChat.Client.Services;
 using SecureChat.Client.Services.RealTime;
+using SecureChat.Client.Forms.Settings;
 using SecureChat.Models;
 using Point = System.Drawing.Point;
 using Size = System.Drawing.Size;
@@ -132,7 +133,8 @@ namespace SecureChat.Client.Forms.Call
             _videoHandler.FrameCaptured += OnVideoHandlerFrame;
             _videoHandler.CameraError += OnVideoHandlerError;
 
-            int cameraIdx = LoadCameraIndexFromSettings();
+            DeviceConfig.Load();
+            int cameraIdx = DeviceConfig.GetCameraIndex();
             _videoHandler.Configure(cameraIndex: cameraIdx);
 
             _audioHandler = new AudioHandler();
@@ -146,9 +148,14 @@ namespace SecureChat.Client.Forms.Call
             Shown += (_, __) =>
             {
                 _ = _videoHandler.StartAsync();
-                _ = _audioHandler.StartAsync();
+                int inputDev = DeviceConfig.GetInputDeviceNumber();
+                int outputDev = DeviceConfig.GetOutputDeviceNumber();
+                _ = _audioHandler.StartAsync(inputDev, outputDev);
             };
             FormClosed += (_, __) => Cleanup();
+            ThemeRefreshHelper.Hook(this);
+            UiLocalization.ApplyToForm(this);
+            LocalizationService.LanguageChanged += OnLanguageChanged;
         }
 
         public frmVideoCall(string friendName, string callId, string conversationId, SignalRClient signalRClient, bool isGroupCall = false) : this(friendName)
@@ -229,6 +236,9 @@ namespace SecureChat.Client.Forms.Call
                 BackColor = TgBlue,
                 Cursor = Cursors.Default
             };
+            typeof(Panel).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(pnlAvatar, true);
             pnlAvatar.Paint += PnlAvatar_Paint;
 
             lblInitials = new Label
@@ -510,7 +520,7 @@ namespace SecureChat.Client.Forms.Call
             pnlAvatar.Location = new Point(
                 (ClientSize.Width - pnlAvatar.Width) / 2,
                 Math.Max(pnlGradientTop.Height + 8, avY));
-            ApplyCircle(pnlAvatar);
+            pnlAvatar.Invalidate();
 
             // Local preview – snap to bottom-right if user has not moved it
             if (!localPreviewMovedByUser && !isDragging)
@@ -544,9 +554,8 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         private void PnlAvatar_Paint(object? s, PaintEventArgs e)
         {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var br = new SolidBrush(TgBlue);
-            e.Graphics.FillEllipse(br, 0, 0, pnlAvatar.Width - 1, pnlAvatar.Height - 1);
+            var rect = new Rectangle(0, 0, pnlAvatar.Width, pnlAvatar.Height);
+            TG.DrawCircleAvatar(e.Graphics, rect, null, "", TgBlue, drawInitials: false);
         }
 
         private void PnlLocalWrap_Paint(object? s, PaintEventArgs e)
@@ -673,7 +682,7 @@ namespace SecureChat.Client.Forms.Call
                 }
 
                 lastRemoteFrameUtc = DateTime.UtcNow;
-                lblStatus.Text = "Video call";
+                lblStatus.Text = LocalizationService.Translate("Video call");
             }
             if (InvokeRequired) BeginInvoke((Action)Apply);
             else Apply();
@@ -755,7 +764,7 @@ namespace SecureChat.Client.Forms.Call
 
             if (!hasRemoteVideo)
             {
-                lblStatus.Text = el.TotalSeconds < 6 ? "Connecting..." : "Waiting for video...";
+                lblStatus.Text = el.TotalSeconds < 6 ? LocalizationService.Translate("Connecting...") : LocalizationService.Translate("Waiting for video...");
                 pnlAvatar.Visible = true;
             }
             else
@@ -764,12 +773,12 @@ namespace SecureChat.Client.Forms.Call
                 if (stale)
                 {
                     hasRemoteVideo = false;
-                    lblStatus.Text = "Reconnecting...";
+                    lblStatus.Text = LocalizationService.Translate("Reconnecting...");
                     pnlAvatar.Visible = true;
                 }
                 else
                 {
-                    lblStatus.Text = "Video call";
+                    lblStatus.Text = LocalizationService.Translate("Video call");
                     pnlAvatar.Visible = false;
                 }
             }
@@ -961,7 +970,7 @@ namespace SecureChat.Client.Forms.Call
         {
             if (IsDisposed) return;
             isScreenSharing = false;
-            BeginInvoke(new Action(() => lblStatus.Text = "Screen share stopped"));
+            BeginInvoke(new Action(() => lblStatus.Text = LocalizationService.Translate("Screen share stopped")));
         }
 
         private void ToggleScreenShare()
@@ -1012,7 +1021,7 @@ namespace SecureChat.Client.Forms.Call
                 _leaveInitiated = true;
                 BeginInvoke(new Action(() =>
                 {
-                    MessageBox.Show("Cuộc gọi đã kết thúc từ phía đối phương.", "Call ended", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(LocalizationService.Translate("Call ended from the other side."), LocalizationService.Translate("Call ended"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     Close();
                 }));
             }
@@ -1021,7 +1030,7 @@ namespace SecureChat.Client.Forms.Call
                 BeginInvoke(new Action(() =>
                 {
                     RemoveParticipant(senderId);
-                    lblStatus.Text = "Other participant left";
+                    lblStatus.Text = LocalizationService.Translate("Other participant left");
                 }));
             }
             else if (sig == "CALL_JOINED")
@@ -1029,7 +1038,7 @@ namespace SecureChat.Client.Forms.Call
                 BeginInvoke(new Action(() =>
                 {
                     EnsureParticipant(senderId, senderId);
-                    lblStatus.Text = "Video call";
+                    lblStatus.Text = LocalizationService.Translate("Video call");
                     lastRemoteFrameUtc = DateTime.UtcNow;
                 }));
             }
@@ -1054,14 +1063,14 @@ namespace SecureChat.Client.Forms.Call
             {
                 BeginInvoke(new Action(() =>
                 {
-                    lblStatus.Text = "Receiving screen share";
+                    lblStatus.Text = LocalizationService.Translate("Receiving screen share");
                 }));
             }
             else if (sig == "SCREEN_OFF")
             {
                 BeginInvoke(new Action(() =>
                 {
-                    lblStatus.Text = "Screen share ended";
+                    lblStatus.Text = LocalizationService.Translate("Screen share ended");
                 }));
             }
             return Task.CompletedTask;
@@ -1198,68 +1207,10 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         //  CLEANUP
         // ═════════════════════════════════════════════════════════════════════════
-        private static int LoadCameraIndexFromSettings()
+        private void OnLanguageChanged()
         {
-            try
-            {
-                var path = System.IO.Path.Combine(AppContext.BaseDirectory, "speakerscamera.config");
-                if (!System.IO.File.Exists(path)) return 0;
-
-                var text = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8);
-                var parts = text.Contains('\u001F') ? text.Split('\u001F') : text.Split('|');
-                var cameraName = parts.Length >= 7 ? parts[5] : null;
-                if (string.IsNullOrWhiteSpace(cameraName) || cameraName == "Default") return 0;
-
-                var nameToIndex = new Dictionary<string, int>();
-                int friendlyCursor = 0;
-                var friendlyNames = GetFriendlyCameraNames();
-
-                for (int i = 0; i < 8; i++)
-                {
-                    try
-                    {
-                        using var probe = new OpenCvSharp.VideoCapture(i);
-                        if (!probe.IsOpened()) continue;
-
-                        string label = friendlyCursor < friendlyNames.Count
-                            ? friendlyNames[friendlyCursor++]
-                            : $"Camera {i + 1}";
-
-                        if (nameToIndex.ContainsKey(label))
-                            label = $"{label} ({i + 1})";
-
-                        nameToIndex[label] = i;
-                        probe.Release();
-                    }
-                    catch { }
-                }
-
-                if (nameToIndex.TryGetValue(cameraName, out var idx))
-                    return idx;
-                return 0;
-            }
-            catch
-            {
-                return 0;
-            }
-        }
-
-        private static List<string> GetFriendlyCameraNames()
-        {
-            var names = new List<string>();
-            try
-            {
-                using var searcher = new System.Management.ManagementObjectSearcher(
-                    "SELECT Name FROM Win32_PnPEntity WHERE PNPClass = 'Image'");
-                foreach (System.Management.ManagementObject obj in searcher.Get())
-                {
-                    var name = obj["Name"]?.ToString()?.Trim();
-                    if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name))
-                        names.Add(name);
-                }
-            }
-            catch { }
-            return names;
+            if (InvokeRequired) { BeginInvoke(new Action(OnLanguageChanged)); return; }
+            lblStatus.Text = LocalizationService.Translate(lblStatus.Text);
         }
 
         private void Cleanup()
@@ -1322,6 +1273,7 @@ namespace SecureChat.Client.Forms.Call
             previewSnapTimer.Stop();
             previewSnapTimer.Dispose();
             _cts.Dispose();
+            LocalizationService.LanguageChanged -= OnLanguageChanged;
         }
 
         private void NotifyUserInteraction()
@@ -1384,14 +1336,6 @@ namespace SecureChat.Client.Forms.Call
         {
             if (c.Width <= 0 || c.Height <= 0) return;
             using var path = RoundedRect(new Rectangle(0, 0, c.Width, c.Height), r);
-            c.Region = new Region(path);
-        }
-
-        private static void ApplyCircle(Control c)
-        {
-            if (c.Width <= 0 || c.Height <= 0) return;
-            var path = new GraphicsPath();
-            path.AddEllipse(0, 0, c.Width, c.Height);
             c.Region = new Region(path);
         }
 
