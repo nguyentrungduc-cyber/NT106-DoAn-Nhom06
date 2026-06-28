@@ -24,7 +24,7 @@ namespace SecureChat.Services
             _logger = logger;
 
             _smtpHost = _config["EmailSettings:SmtpHost"] ?? "smtp.gmail.com";
-            _smtpPort = int.TryParse(_config["EmailSettings:SmtpPort"], out var p) ? p : 587;
+            _smtpPort = int.TryParse(_config["EmailSettings:SmtpPort"], out var p) ? p : 465;
             _enableSsl = bool.TryParse(_config["EmailSettings:EnableSsl"], out var s) ? s : true;
             _senderEmail = _config["EmailSettings:SenderEmail"] ?? string.Empty;
             _senderPassword = _config["EmailSettings:SenderPassword"] ?? string.Empty;
@@ -52,11 +52,10 @@ namespace SecureChat.Services
                     EnableSsl = _enableSsl,
                     Credentials = new NetworkCredential(_senderEmail, _senderPassword),
                     UseDefaultCredentials = false,
-                    Timeout = 15000
+                    Timeout = 30000
                 };
 
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                await smtp.SendMailAsync(msg, cts.Token);
+                await smtp.SendMailAsync(msg);
 
                 _logger.LogInformation("SMTP send completed successfully. Recipient={Recipient}", toEmail);
                 _logger.LogInformation("OTP email sent to {Email}", toEmail);
