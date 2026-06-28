@@ -65,14 +65,13 @@ namespace SecureChat.Controllers
 				return NotFound(new { message = "User not found.", errorCode = "USER_NOT_FOUND" });
 
 			var otp = await otpService.GenerateOtpAsync(user.Email, "login-2fa");
-			try
-			{
-				await emailService.SendOtpEmailAsync(user.Email, otp);
-			}
-			catch (Exception ex)
-			{
-				logger.LogError(ex, "Failed to resend login OTP to {Email}", user.Email);
-			}
+			_ = emailService.SendOtpEmailAsync(user.Email, otp)
+				.ContinueWith(t =>
+				{
+					if (t.IsFaulted)
+						logger.LogError(t.Exception?.InnerException ?? t.Exception,
+							"Failed to resend login OTP to {Email}", user.Email);
+				}, TaskContinuationOptions.OnlyOnFaulted);
 
 			return Ok(new { message = "OTP resent" });
 		}
@@ -133,16 +132,15 @@ namespace SecureChat.Controllers
             if (user is null || !PasswordHasher.Verify(req.HashedPassword, user.HashedPassword, user.KeySalt))
                 return Unauthorized(new { error = "Thông tin đăng nhập không hợp lệ." });
 
-			// Generate OTP for login 2FA using OtpService and send via EmailService
+			// Generate OTP for login 2FA and fire-and-forget email (don't block response)
             var otp = await otpService.GenerateOtpAsync(user.Email, "login-2fa");
-			try
-			{
-				await emailService.SendOtpEmailAsync(user.Email, otp);
-			}
-			catch (Exception ex)
-			{
-				logger.LogError(ex, "Failed to send login OTP to {Email}", user.Email);
-			}
+            _ = emailService.SendOtpEmailAsync(user.Email, otp)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                        logger.LogError(t.Exception?.InnerException ?? t.Exception,
+                            "Failed to send login OTP to {Email}", user.Email);
+                }, TaskContinuationOptions.OnlyOnFaulted); 
 
 			// Return response indicating 2FA required. Mask email for display.
 			string MaskEmail(string e)

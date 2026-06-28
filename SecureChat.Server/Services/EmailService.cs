@@ -44,7 +44,6 @@ namespace SecureChat.Services
                     IsBodyHtml = false
                 };
 
-                // Log SMTP details before sending (temporary debug logs)
                 _logger.LogInformation("SMTP send starting. Host={Host} Port={Port} EnableSsl={Ssl} Sender={Sender} Recipient={Recipient}",
                     _smtpHost, _smtpPort, _enableSsl, _senderEmail, toEmail);
 
@@ -52,10 +51,12 @@ namespace SecureChat.Services
                 {
                     EnableSsl = _enableSsl,
                     Credentials = new NetworkCredential(_senderEmail, _senderPassword),
-                    UseDefaultCredentials = false
+                    UseDefaultCredentials = false,
+                    Timeout = 15000
                 };
 
-                await smtp.SendMailAsync(msg);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                await smtp.SendMailAsync(msg, cts.Token);
 
                 _logger.LogInformation("SMTP send completed successfully. Recipient={Recipient}", toEmail);
                 _logger.LogInformation("OTP email sent to {Email}", toEmail);
