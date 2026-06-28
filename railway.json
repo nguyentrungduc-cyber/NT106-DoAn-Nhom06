@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_ROOT=/usr/share/dotnet /usr/local/bin/dotnet SecureChat.Server/bin/Release/net8.0/SecureChat.Server.dll",
+    "startCommand": "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_ROOT=/usr/share/dotnet /usr/share/dotnet/dotnet SecureChat.Server/bin/Release/net8.0/SecureChat.Server.dll",
     "healthcheckPath": "/",
     "healthcheckTimeout": 120,
     "restartPolicyType": "on_failure"
