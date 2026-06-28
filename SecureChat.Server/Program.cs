@@ -14,8 +14,18 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
 
-var connStr = builder.Configuration.GetConnectionString("Default")
-	?? throw new InvalidOperationException("Connection string 'Default' not found.");
+var connStr = builder.Configuration.GetConnectionString("Default");
+var mySqlHost = Environment.GetEnvironmentVariable("MYSQL_HOST");
+if (!string.IsNullOrEmpty(mySqlHost))
+{
+    var mySqlPort  = Environment.GetEnvironmentVariable("MYSQL_PORT") ?? "3306";
+    var mySqlDb    = Environment.GetEnvironmentVariable("MYSQL_DATABASE") ?? "railway";
+    var mySqlUser  = Environment.GetEnvironmentVariable("MYSQL_USER") ?? "railway";
+    var mySqlPass  = Environment.GetEnvironmentVariable("MYSQL_PASSWORD") ?? "";
+    connStr = $"server={mySqlHost};port={mySqlPort};database={mySqlDb};user={mySqlUser};password={mySqlPass}";
+}
+if (connStr == null)
+    throw new InvalidOperationException("Connection string not found. Set ConnectionStrings:Default or MYSQL_HOST env vars.");
 
 if (connStr.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
 	|| connStr.Contains(".db", StringComparison.OrdinalIgnoreCase)
@@ -24,9 +34,11 @@ if (connStr.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
 	throw new InvalidOperationException("SQLite connection string detected. SecureChat.Server only supports MariaDB/MySQL.");
 }
 
+var mySqlVersion = Environment.GetEnvironmentVariable("MYSQL_VERSION") ?? "8.0.0";
+
 builder.Services.AddDbContext<AppDbContext>(o => o.UseMySql(
     connStr,
-	ServerVersion.AutoDetect(connStr),
+	ServerVersion.Parse(mySqlVersion),
 	my => {
 		my.MigrationsAssembly("SecureChat.Server");
 		my.EnableRetryOnFailure(maxRetryCount: 3);
