@@ -10,6 +10,15 @@ using SecureChat.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Khi deploy lên Render/Fly.io/Railway... platform tự gán cổng qua biến môi trường PORT,
+// và cần bind 0.0.0.0 (không phải localhost) để nhận traffic từ ngoài internet.
+// Nếu không có PORT (chạy local qua dotnet run/Visual Studio) thì giữ behavior cũ (launchSettings.json).
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
 
 var connStr = builder.Configuration.GetConnectionString("Default")
