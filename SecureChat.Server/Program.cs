@@ -16,20 +16,23 @@ builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
 
 var connStr = builder.Configuration.GetConnectionString("Default");
 var mySqlHost = Environment.GetEnvironmentVariable("MYSQL_HOST");
-if (!string.IsNullOrEmpty(mySqlHost))
+if (!string.IsNullOrWhiteSpace(mySqlHost))
 {
-    var mySqlPort  = Environment.GetEnvironmentVariable("MYSQL_PORT") ?? "3306";
-    var mySqlDb    = Environment.GetEnvironmentVariable("MYSQL_DATABASE") ?? "railway";
-    var mySqlUser  = Environment.GetEnvironmentVariable("MYSQL_USER") ?? "railway";
+    var mySqlPort  = (Environment.GetEnvironmentVariable("MYSQL_PORT") ?? "3306").Trim();
+    var mySqlDb    = (Environment.GetEnvironmentVariable("MYSQL_DATABASE") ?? "railway").Trim();
+    var mySqlUser  = (Environment.GetEnvironmentVariable("MYSQL_USER") ?? "railway").Trim();
     var mySqlPass  = Environment.GetEnvironmentVariable("MYSQL_PASSWORD") ?? "";
-    connStr = $"server={mySqlHost};port={mySqlPort};database={mySqlDb};user={mySqlUser};password={mySqlPass}";
+    connStr = $"server={mySqlHost.Trim()};port={mySqlPort};database={mySqlDb};user={mySqlUser};password={mySqlPass}";
 }
+if (connStr != null)
+    connStr = connStr.Trim();
 if (string.IsNullOrEmpty(connStr))
 {
     Console.Error.WriteLine("MYSQL_HOST=" + (Environment.GetEnvironmentVariable("MYSQL_HOST") ?? "(null)"));
     Console.Error.WriteLine("ConnectionStrings:Default=" + (builder.Configuration.GetConnectionString("Default") ?? "(null)"));
     throw new InvalidOperationException("Connection string not found. Set ConnectionStrings:Default or MYSQL_HOST env vars.");
 }
+Console.Error.WriteLine($"DB conn str prefix: {connStr[..Math.Min(connStr.Length, 60)]}");
 
 if (connStr.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
 	|| connStr.Contains(".db", StringComparison.OrdinalIgnoreCase)
