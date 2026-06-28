@@ -24,8 +24,12 @@ if (!string.IsNullOrEmpty(mySqlHost))
     var mySqlPass  = Environment.GetEnvironmentVariable("MYSQL_PASSWORD") ?? "";
     connStr = $"server={mySqlHost};port={mySqlPort};database={mySqlDb};user={mySqlUser};password={mySqlPass}";
 }
-if (connStr == null)
+if (string.IsNullOrEmpty(connStr))
+{
+    Console.Error.WriteLine("MYSQL_HOST=" + (Environment.GetEnvironmentVariable("MYSQL_HOST") ?? "(null)"));
+    Console.Error.WriteLine("ConnectionStrings:Default=" + (builder.Configuration.GetConnectionString("Default") ?? "(null)"));
     throw new InvalidOperationException("Connection string not found. Set ConnectionStrings:Default or MYSQL_HOST env vars.");
+}
 
 if (connStr.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
 	|| connStr.Contains(".db", StringComparison.OrdinalIgnoreCase)
