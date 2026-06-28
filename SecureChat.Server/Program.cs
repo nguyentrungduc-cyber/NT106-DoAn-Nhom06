@@ -119,9 +119,32 @@ c.AddSecurityRequirement(new OpenApiSecurityRequirement {
 	});
 });
 
-builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+// Railway: bind to dynamic $PORT, fallback to 5000
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+// Production CORS: allow SignalR with credentials from configured origins
+var corsOrigins = (builder.Configuration["CorsOrigins"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+if (corsOrigins.Length > 0)
+{
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
+        p.WithOrigins(corsOrigins).AllowCredentials().AllowAnyMethod().AllowAnyHeader()));
+}
+else
+{
+    // Development fallback (no credentials needed without SignalR cookies)
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
+        p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+}
 
 var app = builder.Build();
+
+// Auto-apply EF Core migrations on startup (idempotent, safe for Railway)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 
 if (app.Environment.IsDevelopment()) {
     app.UseSwagger();
@@ -144,6 +167,10 @@ app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Health check endpoint for Railway
+app.MapGet("/", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+
 app.MapControllers();
 app.MapHub<SecureChat.Server.Hubs.ChatHub>("/hubs/chat");
 
