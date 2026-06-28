@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = ["curl"]
+
+[phases.install]
+commands = [
+    "curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh",
+    "bash /tmp/dotnet-install.sh --channel 8.0 --install-dir ~/.dotnet",
+    "mkdir -p ~/.nix-profile/bin",
+    "ln -sf ~/.dotnet/dotnet ~/.nix-profile/bin/dotnet",
+    "dotnet restore SecureChat.Server/SecureChat.Server.csproj"
+]
+
+[phases.build]
+commands = [
+    "dotnet build SecureChat.Server/SecureChat.Server.csproj -c Release --self-contained false"
+]
