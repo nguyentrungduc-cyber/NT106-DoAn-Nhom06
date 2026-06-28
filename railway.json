@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "dotnet run --project SecureChat.Server --configuration Release",
+    "startCommand": "DOTNET_ROOT=/usr/share/dotnet /usr/local/bin/dotnet SecureChat.Server/bin/Release/net8.0/SecureChat.Server.dll",
     "healthcheckPath": "/",
     "healthcheckTimeout": 120,
     "restartPolicyType": "on_failure"

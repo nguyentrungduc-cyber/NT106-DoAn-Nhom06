@@ -4,13 +4,13 @@ nixPkgs = ["curl"]
 [phases.install]
 commands = [
     "curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh",
-    "bash /tmp/dotnet-install.sh --channel 8.0 --install-dir ~/.dotnet",
-    "mkdir -p ~/.nix-profile/bin",
-    "ln -sf ~/.dotnet/dotnet ~/.nix-profile/bin/dotnet",
-    "dotnet restore SecureChat.Server/SecureChat.Server.csproj"
+    "bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet",
+    "mkdir -p /usr/local/bin",
+    "ln -sf /usr/share/dotnet/dotnet /usr/local/bin/dotnet",
+    "export DOTNET_ROOT=/usr/share/dotnet; export PATH=/usr/share/dotnet:$PATH; dotnet restore SecureChat.Server/SecureChat.Server.csproj"
 ]
 
 [phases.build]
 commands = [
-    "dotnet build SecureChat.Server/SecureChat.Server.csproj -c Release --self-contained false"
+    "export DOTNET_ROOT=/usr/share/dotnet; export PATH=/usr/share/dotnet:$PATH; dotnet build SecureChat.Server/SecureChat.Server.csproj -c Release --self-contained false"
 ]
