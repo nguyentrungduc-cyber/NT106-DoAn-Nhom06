@@ -15,6 +15,28 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
 
 var connStr = builder.Configuration.GetConnectionString("Default");
+
+// Railway MySQL plugin injects MYSQL_URL as mysql://user:pass@host:port/db
+var mySqlUrl = Environment.GetEnvironmentVariable("MYSQL_URL");
+if (string.IsNullOrWhiteSpace(connStr) && !string.IsNullOrWhiteSpace(mySqlUrl) && mySqlUrl.StartsWith("mysql://"))
+{
+    // Parse MySQL URL format into ADO.NET format
+    var rest = mySqlUrl["mysql://".Length..];
+    var atIdx = rest.IndexOf('@');
+    if (atIdx > 0)
+    {
+        var userPass = rest[..atIdx].Split(':');
+        var hostPortDb = rest[(atIdx + 1)..];
+        var slashIdx = hostPortDb.IndexOf('/');
+        var hostPort = slashIdx > 0 ? hostPortDb[..slashIdx] : hostPortDb;
+        var db = slashIdx > 0 ? hostPortDb[(slashIdx + 1)..] : "railway";
+        var colonIdx = hostPort.IndexOf(':');
+        var srvHost = colonIdx > 0 ? hostPort[..colonIdx] : hostPort;
+        var srvPort = colonIdx > 0 ? hostPort[(colonIdx + 1)..] : "3306";
+        connStr = $"server={srvHost};port={srvPort};database={db};user={userPass[0]};password={userPass[1]}";
+    }
+}
+
 var mySqlHost = Environment.GetEnvironmentVariable("MYSQL_HOST");
 if (!string.IsNullOrWhiteSpace(mySqlHost))
 {
@@ -28,6 +50,7 @@ if (connStr != null)
     connStr = connStr.Trim();
 if (string.IsNullOrEmpty(connStr))
 {
+    Console.Error.WriteLine("MYSQL_URL=" + (Environment.GetEnvironmentVariable("MYSQL_URL") ?? "(null)"));
     Console.Error.WriteLine("MYSQL_HOST=" + (Environment.GetEnvironmentVariable("MYSQL_HOST") ?? "(null)"));
     Console.Error.WriteLine("ConnectionStrings:Default=" + (builder.Configuration.GetConnectionString("Default") ?? "(null)"));
     throw new InvalidOperationException("Connection string not found. Set ConnectionStrings:Default or MYSQL_HOST env vars.");
