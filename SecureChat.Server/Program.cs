@@ -16,27 +16,37 @@ builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
 
 var connStr = builder.Configuration.GetConnectionString("Default");
 
-// Railway MySQL plugin injects MYSQL_URL as mysql://user:pass@host:port/db
-var mySqlUrl = Environment.GetEnvironmentVariable("MYSQL_URL");
-if (string.IsNullOrWhiteSpace(connStr) && !string.IsNullOrWhiteSpace(mySqlUrl) && mySqlUrl.StartsWith("mysql://"))
+// Parse mysql://user:pass@host:port/db (Railway MySQL URL format) into ADO.NET format
+static string? ParseMySqlUrl(string url)
 {
-    // Parse MySQL URL format into ADO.NET format
-    var rest = mySqlUrl["mysql://".Length..];
+    if (string.IsNullOrWhiteSpace(url) || !url.StartsWith("mysql://"))
+        return null;
+    var rest = url["mysql://".Length..];
     var atIdx = rest.IndexOf('@');
-    if (atIdx > 0)
-    {
-        var userPass = rest[..atIdx].Split(':');
-        var hostPortDb = rest[(atIdx + 1)..];
-        var slashIdx = hostPortDb.IndexOf('/');
-        var hostPort = slashIdx > 0 ? hostPortDb[..slashIdx] : hostPortDb;
-        var db = slashIdx > 0 ? hostPortDb[(slashIdx + 1)..] : "railway";
-        var colonIdx = hostPort.IndexOf(':');
-        var srvHost = colonIdx > 0 ? hostPort[..colonIdx] : hostPort;
-        var srvPort = colonIdx > 0 ? hostPort[(colonIdx + 1)..] : "3306";
-        connStr = $"server={srvHost};port={srvPort};database={db};user={userPass[0]};password={userPass[1]}";
-    }
+    if (atIdx <= 0) return null;
+    var userPass = rest[..atIdx].Split(':');
+    if (userPass.Length < 2) return null;
+    var hostPortDb = rest[(atIdx + 1)..];
+    var slashIdx = hostPortDb.IndexOf('/');
+    var hostPort = slashIdx > 0 ? hostPortDb[..slashIdx] : hostPortDb;
+    var db = slashIdx > 0 ? hostPortDb[(slashIdx + 1)..] : "railway";
+    var colonIdx = hostPort.IndexOf(':');
+    var srvHost = colonIdx > 0 ? hostPort[..colonIdx] : hostPort;
+    var srvPort = colonIdx > 0 ? hostPort[(colonIdx + 1)..] : "3306";
+    return $"server={srvHost};port={srvPort};database={db};user={userPass[0]};password={userPass[1]}";
 }
 
+// ConnectionStrings:Default from config might already be mysql:// (Railway sets it)
+if (connStr != null && connStr.StartsWith("mysql://"))
+    connStr = ParseMySqlUrl(connStr);
+
+// MYSQL_URL env var overrides config (also mysql:// format)
+var mySqlUrl = Environment.GetEnvironmentVariable("MYSQL_URL");
+var parsedUrl = ParseMySqlUrl(mySqlUrl);
+if (parsedUrl != null)
+    connStr = parsedUrl;
+
+// MYSQL_HOST + individual env vars (overrides)
 var mySqlHost = Environment.GetEnvironmentVariable("MYSQL_HOST");
 if (!string.IsNullOrWhiteSpace(mySqlHost))
 {
