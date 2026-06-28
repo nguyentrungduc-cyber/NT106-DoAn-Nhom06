@@ -7,10 +7,10 @@ commands = [
     "bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet",
     "mkdir -p /usr/local/bin",
     "ln -sf /usr/share/dotnet/dotnet /usr/local/bin/dotnet",
-    "export DOTNET_ROOT=/usr/share/dotnet; export PATH=/usr/share/dotnet:$PATH; dotnet restore SecureChat.Server/SecureChat.Server.csproj"
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_ROOT=/usr/share/dotnet dotnet restore SecureChat.Server/SecureChat.Server.csproj"
 ]
 
 [phases.build]
 commands = [
-    "export DOTNET_ROOT=/usr/share/dotnet; export PATH=/usr/share/dotnet:$PATH; dotnet build SecureChat.Server/SecureChat.Server.csproj -c Release --self-contained false"
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_ROOT=/usr/share/dotnet dotnet build SecureChat.Server/SecureChat.Server.csproj -c Release --self-contained false"
 ]
