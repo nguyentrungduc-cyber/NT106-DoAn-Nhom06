@@ -26,7 +26,7 @@ namespace SecureChat.Server.Migrations
                     birthday_privacy = table.Column<byte>(type: "tinyint unsigned", nullable: false),
                     bio_privacy = table.Column<byte>(type: "tinyint unsigned", nullable: false),
                     auto_delete_mode = table.Column<byte>(type: "tinyint unsigned", nullable: false),
-                    updated_at = table.Column<DateTime>(type: "datetime(6)", nullable: false, defaultValueSql: "current_timestamp")
+                    updated_at = table.Column<DateTime>(type: "datetime(6)", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP(6)")
                 },
                 constraints: table =>
                 {
