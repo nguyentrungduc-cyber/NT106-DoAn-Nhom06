@@ -8,6 +8,8 @@ using SecureChat.Repositories;
 using SecureChat.Server.Services;
 using SecureChat.Services;
 
+try
+{
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
@@ -209,3 +211,20 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine("=== STARTUP EXCEPTION (FATAL) ===");
+    var current = ex;
+    int depth = 0;
+    while (current != null)
+    {
+        Console.Error.WriteLine($"--- Depth {depth}: {current.GetType().FullName} ---");
+        Console.Error.WriteLine($"Message: {current.Message}");
+        Console.Error.WriteLine($"StackTrace: {current.StackTrace}");
+        current = current.InnerException;
+        depth++;
+    }
+    Console.Error.WriteLine("===================================");
+    throw;
+}
