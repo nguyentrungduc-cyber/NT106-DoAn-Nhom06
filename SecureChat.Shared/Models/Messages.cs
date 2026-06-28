@@ -59,13 +59,13 @@ namespace SecureChat.Models
 		public Message? ReplyTo { get; set; }
 
 		[InverseProperty(nameof(MessageAttachment.Message))]
-		public ICollection<MessageAttachment> Attachments { get; set; } = [];
+		public ICollection<MessageAttachment> Attachments { get; set; } = new List<MessageAttachment>();
 
 		[InverseProperty(nameof(MessageReaction.Message))]
-		public ICollection<MessageReaction> Reactions { get; set; } = [];
+		public ICollection<MessageReaction> Reactions { get; set; } = new List<MessageReaction>();
 
 		[InverseProperty(nameof(MessageMention.Message))]
-		public ICollection<MessageMention> Mentions { get; set; } = [];
+		public ICollection<MessageMention> Mentions { get; set; } = new List<MessageMention>();
 	}
 
 	[Table("MessageAttachments")]
