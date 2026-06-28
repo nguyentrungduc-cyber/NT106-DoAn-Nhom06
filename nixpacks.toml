@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["dotnet-sdk_8"]
+nixPkgs = ["dotnet-sdk_9"]
 
 [phases.install]
 commands = ["dotnet restore SecureChat.Server/SecureChat.Server.csproj"]
