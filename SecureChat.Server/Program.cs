@@ -197,6 +197,15 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    // MySQL 9.x strict sql_mode rejects DEFAULT current_timestamp
+    // Open connection first so SET SESSION applies to the same connection Migrate() uses
+    var dbConn = db.Database.GetDbConnection();
+    dbConn.Open();
+    using (var cmd = dbConn.CreateCommand())
+    {
+        cmd.CommandText = "SET SESSION sql_mode = ''";
+        cmd.ExecuteNonQuery();
+    }
     db.Database.Migrate();
 }
 
