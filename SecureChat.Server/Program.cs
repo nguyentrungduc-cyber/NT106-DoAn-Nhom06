@@ -198,6 +198,22 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    try
+    {
+        db.Database.ExecuteSqlRaw(@"
+            SET @_ce = (SELECT COUNT(*) FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Messages' AND COLUMN_NAME = 'expires_at');
+            SET @_cs = IF(@_ce = 0, 'ALTER TABLE Messages ADD COLUMN expires_at datetime(6) NULL', 'SELECT 1');
+            PREPARE _st FROM @_cs; EXECUTE _st; DEALLOCATE PREPARE _st;
+
+            SET @_ie = (SELECT COUNT(*) FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Messages' AND INDEX_NAME = 'idx_messages_expires_at');
+            SET @_is = IF(@_ie = 0, 'CREATE INDEX idx_messages_expires_at ON Messages (expires_at)', 'SELECT 1');
+            PREPARE _st2 FROM @_is; EXECUTE _st2; DEALLOCATE PREPARE _st2;
+        ");
+    }
+    catch { /* column already exists — ignore */ }
 }
 
 if (app.Environment.IsDevelopment()) {
