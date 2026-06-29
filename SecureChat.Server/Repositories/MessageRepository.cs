@@ -67,6 +67,15 @@ namespace SecureChat.Repositories
 				?? throw new KeyNotFoundException($"Không tìm thấy tin nhắn {messageID} not found.");
 
 			message.DeletedAt = DateTime.UtcNow;
+
+			// If this was the conversation's last message, clear the reference
+			var conv = await db.Conversations.FirstOrDefaultAsync(c => c.LastMessageID == messageID);
+			if (conv is not null)
+			{
+				conv.LastMessageID = null;
+				conv.LastActivityAt = null;
+			}
+
 			await db.SaveChangesAsync();
 		}
 

@@ -28,8 +28,10 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, Task>? ConversationDeleted;
 		public event Func<string, int, Task>? ConversationUpdated;
         public event Func<string, Task>? MessagesCleared;
-        public event Func<string, string, string, string, Task>? MessagePinned;
-        public event Func<string, string, Task>? MessageUnpinned;
+public event Func<string, string, string, string, Task>? MessagePinned;
+public event Func<string, string, Task>? MessageUnpinned;
+public event Func<string, MessageResponse, Task>? MessageEdited;
+public event Func<string, string, Task>? MessageDeleted;
 public event Func<string, string, Task>? MemberAdded;
 public event Func<string, string, Task>? MemberRemoved;
 		public event Func<string, string, DateTime?, Task>? UserStatusChanged;
@@ -79,6 +81,18 @@ public event Func<string, string, Task>? MemberRemoved;
             {
                 if (MessageRecalled is not null)
                     await MessageRecalled.Invoke(message);
+            });
+
+            _connection.On<string, MessageResponse>("MessageEdited", async (conversationId, message) =>
+            {
+                if (MessageEdited is not null)
+                    await MessageEdited.Invoke(conversationId, message);
+            });
+
+            _connection.On<string, string>("MessageDeleted", async (conversationId, messageId) =>
+            {
+                if (MessageDeleted is not null)
+                    await MessageDeleted.Invoke(conversationId, messageId);
             });
 
             _connection.On<string, string>("CallSignalReceived", async (callId, signal) =>

@@ -2719,12 +2719,12 @@ namespace SecureChat.Client
                                     HandleHybridEncryptedAttachment(msgRes.MessageID, att);
                                     SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, aesKey, aesIv);
                                     string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
-                                    _messageDates[msgRes.MessageID] = msgRes.SentAt.ToLocalTime();
-                                    _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToLocalTime().ToString("HH:mm"), msgRes.SenderUsername ?? ""));
                                     if (msgRes.ExpiresAt.HasValue)
                                         _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
                                     this.BeginInvoke(new Action(() =>
                                     {
+                                        _messageDates[msgRes.MessageID] = msgRes.SentAt.ToLocalTime();
+                                        _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToLocalTime().ToString("HH:mm"), msgRes.SenderUsername ?? ""));
                                         BuildMessages();
                                         var time = msgRes.SentAt.ToLocalTime().ToString("HH:mm");
                                         RefreshConversationItem(_activeConvId, payload, true, "", time, messageId: msgRes.MessageID);
@@ -2969,12 +2969,12 @@ namespace SecureChat.Client
                                             HandleHybridEncryptedAttachment(msgRes.MessageID, att);
                                             SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, key, iv);
                                             string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
-                                            _messageDates[msgRes.MessageID] = msgRes.SentAt.ToLocalTime();
-                                            _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToLocalTime().ToString("HH:mm"), msgRes.SenderUsername ?? ""));
                                             if (msgRes.ExpiresAt.HasValue)
                                                 _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
                                             this.BeginInvoke(new Action(() =>
                                             {
+                                                _messageDates[msgRes.MessageID] = msgRes.SentAt.ToLocalTime();
+                                                _currentMsgs.Add((msgRes.MessageID, payload, true, msgRes.SentAt.ToLocalTime().ToString("HH:mm"), msgRes.SenderUsername ?? ""));
                                                 BuildMessages();
                                                 var time = msgRes.SentAt.ToLocalTime().ToString("HH:mm");
                                                 RefreshConversationItem(_activeConvId, payload, true, "", time, messageId: msgRes.MessageID);
@@ -6197,7 +6197,7 @@ namespace SecureChat.Client
             if (msg.Id != null) Clipboard.SetText(ExtractActualText(msg.Text));
         }
 
-        private void OnEditMessage(string messageId)
+        private async void OnEditMessage(string messageId)
         {
             var msgIndex = _currentMsgs.FindIndex(m => m.Id == messageId);
             if (msgIndex < 0) return;
@@ -6205,10 +6205,8 @@ namespace SecureChat.Client
             var msg = _currentMsgs[msgIndex];
             if (!msg.Out) return;
 
-            // HIỂN THỊ TEXT ĐÃ LỌC CHO NGƯỜI DÙNG SỬA
             if (TryShowEditDialog(ExtractActualText(msg.Text), out var newText))
             {
-                // Kiểm tra xem tin gốc có phải là tin reply không để giữ lại phần quote
                 string finalNewText = newText;
                 if (msg.Text.StartsWith("reply::"))
                 {
@@ -6216,10 +6214,39 @@ namespace SecureChat.Client
                     if (parts.Length == 3) finalNewText = $"reply::{parts[0]}::{parts[1]}::{newText}";
                 }
 
-                _currentMsgs[msgIndex] = (msg.Id, finalNewText, msg.Out, msg.Time, msg.Sender);
-                BuildMessages();
-                UpdatePinnedBar();
-                RefreshSidebarPreview();
+                try
+                {
+                    // Encrypt the new content
+                    byte[]? conversationKey = await _decryptor.EnsureConversationKeyAsync(_activeConvId);
+                    if (conversationKey is null)
+                        throw new InvalidOperationException("Cannot get encryption key for this conversation.");
+
+                    var encryptionService = new MessageEncryptionService();
+                    var (encryptedContent, contentIV) = encryptionService.EncryptMessage(finalNewText, conversationKey);
+
+                    // Persist edit to server
+                    var http = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
+                    var editReq = new SecureChat.DTOs.EditMessageRequest(encryptedContent, contentIV);
+                    var json = System.Text.Json.JsonSerializer.Serialize(editReq);
+                    var reqContent = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                    var res = await http.PatchAsync($"api/conversations/{_activeConvId}/messages/{messageId}", reqContent);
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var err = await res.Content.ReadAsStringAsync();
+                        MessageBox.Show(this, $"Edit error: {err}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    // Update local state on success; server broadcasts to group
+                    _currentMsgs[msgIndex] = (msg.Id, finalNewText, msg.Out, msg.Time, msg.Sender);
+                    BuildMessages();
+                    UpdatePinnedBar();
+                    RefreshSidebarPreview();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, $"Edit error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
@@ -6677,6 +6704,8 @@ namespace SecureChat.Client
 
             _signalRClient.MessageReceived += HandleSignalRMessageAsync;
             _signalRClient.MessageRecalled += HandleSignalRRecalledAsync;
+            _signalRClient.MessageEdited += HandleSignalREditedAsync;
+            _signalRClient.MessageDeleted += HandleSignalRDeletedAsync;
             _signalRClient.MessageStatusUpdated += HandleMessageStatusUpdatedAsync;
             _signalRClient.CallSignalReceived += HandleSignalRCallSignalAsync;
             _signalRClient.CallIncoming += HandleCallIncomingAsync;
@@ -7363,6 +7392,88 @@ namespace SecureChat.Client
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[SignalR] HandleSignalRRecalledAsync failed: {ex.Message}");
+            }
+        }
+
+        private async Task HandleSignalREditedAsync(string conversationId, MessageResponse message)
+        {
+            try
+            {
+                // Decrypt before dispatching to UI thread to avoid deadlock
+                var dm = await _decryptor.ProcessAsync(message, null);
+
+                BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        if (!_allMsgs.TryGetValue(conversationId, out var list))
+                            return;
+
+                        var idx = list.FindIndex(m => m.Id == message.MessageID);
+                        if (idx < 0) return;
+
+                        var old = list[idx];
+                        list[idx] = (old.Id, dm.Text, old.Out, old.Time, old.Sender);
+
+                        if (conversationId == _activeConvId)
+                            BuildMessages();
+
+                        RefreshSidebarPreview();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SignalR] Edit UI update failed: {ex.Message}");
+                    }
+                }));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SignalR] HandleSignalREditedAsync failed: {ex.Message}");
+            }
+        }
+
+        private async Task HandleSignalRDeletedAsync(string conversationId, string messageId)
+        {
+            try
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        // Remove from current message list
+                        var idx = _currentMsgs.FindIndex(m => m.Id == messageId);
+                        if (idx >= 0)
+                        {
+                            _currentMsgs.RemoveAt(idx);
+                            _messageDates.Remove(messageId);
+                            _forwardMetadata.TryRemove(messageId, out _);
+                            _forwardOriginalSenderId.TryRemove(messageId, out _);
+                            _pinnedByMap.TryRemove(messageId, out _);
+                            _pinnedMessageIds.Remove(messageId);
+
+                            if (conversationId == _activeConvId)
+                                BuildMessages();
+
+                            RefreshSidebarPreview();
+                        }
+
+                        // Also remove from _allMsgs cache
+                        if (_allMsgs.TryGetValue(conversationId, out var list))
+                        {
+                            int allIdx = list.FindIndex(m => m.Id == messageId);
+                            if (allIdx >= 0)
+                                list.RemoveAt(allIdx);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SignalR] Delete UI update failed: {ex.Message}");
+                    }
+                }));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SignalR] HandleSignalRDeletedAsync failed: {ex.Message}");
             }
         }
 

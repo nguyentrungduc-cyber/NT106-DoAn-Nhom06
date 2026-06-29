@@ -22,7 +22,7 @@ namespace SecureChat.Server.Hubs
         private string Me => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
         // Track connectionId → userId để dùng GroupExcept khi block
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _connToUser = new();
+        internal static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> ConnectionUserMap = new();
 
         public override async Task OnConnectedAsync()
         {
@@ -34,7 +34,7 @@ namespace SecureChat.Server.Hubs
                 return;
             }
 
-            _connToUser[Context.ConnectionId] = Me;
+            ConnectionUserMap[Context.ConnectionId] = Me;
 
             // Track presence via UserPresenceService (DB + broadcast)
             await presence.UserConnectedAsync(Me, Context.ConnectionId);
@@ -60,7 +60,7 @@ namespace SecureChat.Server.Hubs
                 return;
             }
 
-            _connToUser.TryRemove(Context.ConnectionId, out _);
+            ConnectionUserMap.TryRemove(Context.ConnectionId, out _);
 
             // Track presence via UserPresenceService (DB + broadcast)
             await presence.UserDisconnectedAsync(Me, Context.ConnectionId);
@@ -147,7 +147,7 @@ namespace SecureChat.Server.Hubs
                     if (isBlocked)
                     {
                         // Lấy tất cả connectionId của user bị chặn
-                        var blockedConns = _connToUser
+                        var blockedConns = ConnectionUserMap
                             .Where(kv => kv.Value == m.UserID)
                             .Select(kv => kv.Key)
                             .ToList();

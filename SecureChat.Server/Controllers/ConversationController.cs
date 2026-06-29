@@ -451,6 +451,18 @@ namespace SecureChat.Controllers
 
 			await conversations.RemoveMemberAsync(memberID);
 
+			// Remove the user from the SignalR group so they stop receiving realtime messages
+			try
+			{
+				var targetConnIds = ChatHub.ConnectionUserMap
+					.Where(kv => kv.Value == target.UserID)
+					.Select(kv => kv.Key)
+					.ToList();
+				foreach (var connId in targetConnIds)
+					await hubContext.Groups.RemoveFromGroupAsync(connId, conversationID);
+			}
+			catch { /* best-effort */ }
+
 			// Notify the removed member (so their UI removes the conversation)
 			try
 			{

@@ -266,7 +266,15 @@ namespace SecureChat.Controllers
 			}
 
 			var loaded = await messages.GetByIdAsync(msg.MessageID);
-			return CreatedAtAction(nameof(GetMessage), new { conversationID, messageID = msg.MessageID }, MessageResponse.From(loaded!));
+			var resp = MessageResponse.From(loaded!);
+
+			try
+			{
+				await hub.Clients.Group(conversationID).SendAsync("MessageReceived", resp);
+			}
+			catch { /* best-effort broadcast */ }
+
+			return CreatedAtAction(nameof(GetMessage), new { conversationID, messageID = msg.MessageID }, resp);
 		}
 
 		[HttpPatch("{messageID}")]
@@ -286,8 +294,15 @@ namespace SecureChat.Controllers
 
 			var updated = await messages.EditAsync(messageID, req.Content, req.ContentIV);
 			var loaded  = await messages.GetByIdAsync(updated.MessageID);
+			var resp = MessageResponse.From(loaded!);
 
-			return Ok(MessageResponse.From(loaded!));
+			try
+			{
+				await hub.Clients.Group(conversationID).SendAsync("MessageEdited", conversationID, resp);
+			}
+			catch { /* best-effort broadcast */ }
+
+			return Ok(resp);
 		}
 
 		[HttpPost("{messageID}/recall")]
@@ -309,8 +324,15 @@ namespace SecureChat.Controllers
 
 			await messages.RecallAsync(messageID);
 			var loaded = await messages.GetByIdAsync(messageID);
+			var resp = MessageResponse.From(loaded!);
 
-			return Ok(MessageResponse.From(loaded!));
+			try
+			{
+				await hub.Clients.Group(conversationID).SendAsync("MessageRecalled", resp);
+			}
+			catch { /* best-effort broadcast */ }
+
+			return Ok(resp);
 		}
 
 		[HttpDelete("{messageID}")]
@@ -329,6 +351,13 @@ namespace SecureChat.Controllers
 				return Forbid();
 
 			await messages.SoftDeleteAsync(messageID);
+
+			try
+			{
+				await hub.Clients.Group(conversationID).SendAsync("MessageDeleted", conversationID, messageID);
+			}
+			catch { /* best-effort broadcast */ }
+
 			return NoContent();
 		}
 
