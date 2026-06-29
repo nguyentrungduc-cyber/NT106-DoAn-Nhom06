@@ -338,8 +338,7 @@ namespace SecureChat.Client
             _tabs.Padding = new Point(0, 0); // Loại bỏ khoảng cách đệm giữa các TabPage và nội dung bên trong
                                              // giúp giao diện khít sát và gọn gàng.
             _tabs.Dock = DockStyle.Fill; // Làm cho bộ Tab này lấp đầy toàn bộ diện tích của Form hoặc Panel chứa nó.
-            _tabs.ItemSize = new Size(0, 32); // Thiết lập chiều cao của thanh tiêu đề Tabstrip là 32 pixel.
-                                              // Số 0 ở đầu có nghĩa là chiều rộng sẽ được tự động tính toán.
+            _tabs.ItemSize = new Size(0, 38);
             _tabs.SizeMode = TabSizeMode.FillToRight; // Các tiêu đề Tab sẽ tự động giãn ra để dàn đều theo chiều ngang,
                                                       // lấp đầy thanh menu phía trên thay vì chỉ co cụm ở bên trái.
 
@@ -378,25 +377,6 @@ namespace SecureChat.Client
 
 
             LoadBlockedUsers();
-        }
-
-        // Hàm xử lý resize panel. Khi panel thay đổi kích thước khi tôi kéo to nhỏ form,
-        // Tất cả các row bên trong cũng được cập nhật độ rộng theo
-        // row là các đoạn chat trong tabpage để không bị khoảnh trắng lúc ta kéo
-        private void Pnl_UpdateRowsWidth(object? sender, EventArgs e)
-        {
-            if (sender is Panel pnl) // kiểm tra và ép kiểu để sài các function của 1 panel
-                                     // tránh gây lỗi "văng" ứng dụng (crash) nếu lỡ tay gán sự kiện này cho một cái nút hay cái nhãn.
-            {
-                pnl.SuspendLayout(); // tạm dừng bố cục lại, giúp hệ thống chỉ tính toán một lần duy nhất ở cuối nếu kéo lâu lần.
-                int targetWidth = pnl.ClientSize.Width;
-                // int targetWidth = pnl.Width;
-                foreach (Control row in pnl.Controls)
-                {
-                    row.Width = targetWidth;
-                }
-                pnl.ResumeLayout();
-            }
         }
 
         private void DrawTabItem(object? sender, DrawItemEventArgs e)
@@ -444,12 +424,8 @@ namespace SecureChat.Client
             _contactSubTabs.Margin = new Padding(0);
             _contactSubTabs.Padding = new Point(0, 0); // Ép khoảng cách giữa nội dung và viền tab về 0
 
-            _contactSubTabs.ItemSize = new Size(0, 30); // Đặt chiều cao của thanh tab là 30 pixel. Giá trị 0 ở chiều rộng sẽ tự động điều chỉnh theo SizeMode.
-            // _contactSubTabs.ItemSize = new Size(180, 30); // Size(180, 30): Ép buộc chiều rộng mỗi Tab đúng 180 pixel.
-            // _contactSubTabs.ItemSize = new Size(_contactSubTabs.Width / 2 - 2, 30);
-
-            // _contactSubTabs.SizeMode = TabSizeMode.FillToRight; // Các Tab sẽ tự co giãn để lấp đầy toàn bộ chiều ngang của Control.
-            _contactSubTabs.SizeMode = TabSizeMode.Fixed; // TabSizeMode.Fixed: Tất cả các Tab đều có kích thước bằng hệt nhau
+            _contactSubTabs.ItemSize = new Size(0, 38);
+            _contactSubTabs.SizeMode = TabSizeMode.FillToRight;
 
 
             _contactSubTabs.Multiline = false; // Đảm bảo chỉ trên 1 dòng
@@ -494,12 +470,10 @@ namespace SecureChat.Client
             _pnlFriends.AutoScroll = true;
 
             _pnlFriends.BackColor = TG.WindowBg;
-            _pnlFriends.Resize += Pnl_UpdateRowsWidth;
 
             _pnlGroups.Dock = DockStyle.Fill;
             _pnlGroups.AutoScroll = true;
             _pnlGroups.BackColor = TG.WindowBg;
-            _pnlGroups.Resize += Pnl_UpdateRowsWidth;
 
             BuildFriendList(_friends, _pnlFriends);
             BuildGroupList(_groups, _pnlGroups);
@@ -508,20 +482,6 @@ namespace SecureChat.Client
             tpGroups.Controls.Add(_pnlGroups);
 
             _tabContacts.Controls.Add(_contactSubTabs);
-
-            _contactSubTabs.Resize += (s, e) =>
-            {
-                if (_contactSubTabs.TabCount > 0 && _contactSubTabs.Width > 10)
-                {
-                    // Trừ hẳn 6-8 pixel để tạo "khoảng thở" an toàn cho thanh Tab
-                    int tabWidth = (_contactSubTabs.Width - 22) / _contactSubTabs.TabCount;
-
-                    if (_contactSubTabs.ItemSize.Width != tabWidth && tabWidth > 0)
-                    {
-                        _contactSubTabs.ItemSize = new Size(tabWidth, 30);
-                    }
-                }
-            };
 
         }
 
@@ -925,7 +885,7 @@ namespace SecureChat.Client
 
         private Panel BuildGroupRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 62, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 62, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
 
             var avatar = new AvatarControl { Size = new Size(44, 44), Location = new Point(10, 9), ShowOnline = false };
             avatar.SetName(c.DisplayName);
@@ -1034,8 +994,8 @@ namespace SecureChat.Client
             _requestSubTabs.DrawMode = TabDrawMode.OwnerDrawFixed;
             _requestSubTabs.Margin = new Padding(0);  // ✅ FIX: _contactSubTabs → _requestSubTabs
             _requestSubTabs.Padding = new Point(0, 0);  // ✅ FIX: _contactSubTabs → _requestSubTabs
-            _requestSubTabs.ItemSize = new Size(0, 30);
-            _requestSubTabs.SizeMode = TabSizeMode.Fixed;
+            _requestSubTabs.ItemSize = new Size(0, 38);
+            _requestSubTabs.SizeMode = TabSizeMode.FillToRight;
 
 
             _requestSubTabs.Multiline = false;  // ✅ FIX: _contactSubTabs → _requestSubTabs
@@ -1062,13 +1022,11 @@ namespace SecureChat.Client
             // Gán Panel cho tab "Đã chặn"
             _pnlBlockedUsers.Dock = DockStyle.Fill;
             _pnlBlockedUsers.AutoScroll = true;
-            _pnlBlockedUsers.Resize += Pnl_UpdateRowsWidth;
             _tpBlocked.Controls.Add(_pnlBlockedUsers);
             LoadBlockedUsers();  // ✅ FIX: Gọi hàm load dữ liệu
 
             // ============ TAB "Đã nhận" ============
             _pnlIncoming = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.WindowBg };
-            _pnlIncoming.Resize += Pnl_UpdateRowsWidth;
             int y = 0;
             int initInWidth = _pnlIncoming.ClientSize.Width > 0 ? _pnlIncoming.ClientSize.Width : 360;
             foreach (var req in _requests.FindAll(r => r.IsIncoming))
@@ -1082,7 +1040,6 @@ namespace SecureChat.Client
 
             // ============ TAB "Đã gửi" ============
             _pnlSentRequests = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = TG.WindowBg };
-            _pnlSentRequests.Resize += Pnl_UpdateRowsWidth;
             y = 0;
             int initSentWidth = _pnlSentRequests.ClientSize.Width > 0 ? _pnlSentRequests.ClientSize.Width : 360;
             foreach (var req in _requests.FindAll(r => !r.IsIncoming))
@@ -1095,25 +1052,11 @@ namespace SecureChat.Client
             _tpSent.Controls.Add(_pnlSentRequests);
 
             _tabRequests.Controls.Add(_requestSubTabs);
-
-            // ============ Tab Size Calculation ============
-            _requestSubTabs.Resize += (s, e) =>
-            {
-                if (_requestSubTabs.TabCount > 0 && _requestSubTabs.Width > 10)
-                {
-                    // ✅ FIX: Tăng margin từ 22 lên 30 (vì có 3 tabs thay vì 2)
-                    int tabWidth = (_requestSubTabs.Width - 33) / _requestSubTabs.TabCount;
-                    if (_requestSubTabs.ItemSize.Width != tabWidth && tabWidth > 0)
-                    {
-                        _requestSubTabs.ItemSize = new Size(tabWidth, 30);
-                    }
-                }
-            };
         }
 
         private Panel BuildRequestRow(FriendRequestItem req, bool isIncoming, int initialWidth)
         {
-            var pnl = new Panel { Height = 86, Width = initialWidth, BackColor = TG.WindowBg };
+            var pnl = new Panel { Height = 86, Width = initialWidth, BackColor = TG.WindowBg, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
 
             var avatar = new AvatarControl { Size = new Size(44, 44), Location = new Point(12, 10) };
             avatar.SetName(req.DisplayName);
@@ -1269,7 +1212,6 @@ namespace SecureChat.Client
             _pnlSearchResults.Dock = DockStyle.Fill;
             _pnlSearchResults.AutoScroll = true;
             _pnlSearchResults.BackColor = TG.WindowBg;
-            _pnlSearchResults.Resize += Pnl_UpdateRowsWidth;
             _pnlSearchResults.Controls.Add(_lblSearchHint);
 
             _tabSearch.Controls.AddRange(new Control[] { _pnlSearchResults, pnlSearch });
@@ -1375,7 +1317,7 @@ namespace SecureChat.Client
 
         private Panel BuildSearchRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
 
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10), ShowOnline = c.IsOnline };
             avatar.SetName(c.DisplayName);
@@ -1567,7 +1509,7 @@ namespace SecureChat.Client
 
         private Panel BuildBlockedUserRow(ContactItem c, int initialWidth)
         {
-            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand };
+            var pnl = new Panel { Height = 60, Width = initialWidth, BackColor = TG.WindowBg, Cursor = Cursors.Hand, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
 
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10) };
             avatar.SetName(c.DisplayName);
