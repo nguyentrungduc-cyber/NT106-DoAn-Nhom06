@@ -589,6 +589,7 @@ namespace SecureChat.Client
                 ShowOnline = c.IsOnline
             };
             avatar.SetName(c.DisplayName);
+            TryLoadAvatar(avatar, c.AvatarUrl);
 
             // 3. Tên và Username
             string displayText = string.IsNullOrWhiteSpace(c.Nickname) ? c.DisplayName : c.Nickname;
@@ -928,6 +929,7 @@ namespace SecureChat.Client
 
             var avatar = new AvatarControl { Size = new Size(44, 44), Location = new Point(10, 9), ShowOnline = false };
             avatar.SetName(c.DisplayName);
+            TryLoadAvatar(avatar, c.AvatarUrl);
 
             var lblName = new Label
             {
@@ -1115,6 +1117,7 @@ namespace SecureChat.Client
 
             var avatar = new AvatarControl { Size = new Size(44, 44), Location = new Point(12, 10) };
             avatar.SetName(req.DisplayName);
+            TryLoadAvatar(avatar, req.AvatarUrl);
 
             var lblName = new Label
             {
@@ -1376,6 +1379,7 @@ namespace SecureChat.Client
 
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10), ShowOnline = c.IsOnline };
             avatar.SetName(c.DisplayName);
+            TryLoadAvatar(avatar, c.AvatarUrl);
 
             var lblName = new Label
             {
@@ -1567,6 +1571,7 @@ namespace SecureChat.Client
 
             var avatar = new AvatarControl { Size = new Size(40, 40), Location = new Point(10, 10) };
             avatar.SetName(c.DisplayName);
+            TryLoadAvatar(avatar, c.AvatarUrl);
 
             // FIX: tính width đúng = tổng panel - left offset avatar - right btn - margins
             const int btnW = 80, rightMargin = 12, gap = 8, nameLeft = 58;
@@ -1669,6 +1674,23 @@ namespace SecureChat.Client
             pnl.MouseLeave += (s, e) => pnl.BackColor = TG.WindowBg;
 
             return pnl;
+        }
+
+        private static void TryLoadAvatar(AvatarControl avatar, string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return;
+            var photo = AvatarCacheService.LoadImage(url);
+            if (photo != null)
+            {
+                var old = avatar.Photo;
+                if (old != null)
+                {
+                    avatar.Photo = null;
+                    old.Dispose();
+                }
+                avatar.Photo = new Bitmap(photo);
+                avatar.Invalidate();
+            }
         }
 
         private sealed class ContactsMenuColorTable : ProfessionalColorTable

@@ -224,6 +224,8 @@ namespace SecureChat.Client
             };
             NightModeService.ThemeChanged += OnNightModeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnNightModeChanged;
+            SecureChat.Client.Services.AvatarService.CurrentUserChanged += OnExternalAvatarChanged;
+            FormClosed += (_, __) => SecureChat.Client.Services.AvatarService.CurrentUserChanged -= OnExternalAvatarChanged;
         }
 
         private async void FrmMainChat_Load(object? sender, EventArgs e)
@@ -252,6 +254,8 @@ namespace SecureChat.Client
                         _currentAvatarUrl = me.AvatarURL ?? string.Empty;
                         _decryptor.CurrentUserId = me.UserID;
                         _decryptor.CurrentUsername = me.Username;
+                        SecureChat.Client.Services.AvatarService.SetCurrentUser(
+                            me.UserID, me.DisplayName, me.Username, me.Email, me.AvatarURL);
                     }
                 }
             }
@@ -3378,6 +3382,9 @@ namespace SecureChat.Client
                                 if (!string.IsNullOrWhiteSpace(profile.AvatarUrl))
                                     _currentAvatarUrl = profile.AvatarUrl;
                                 _decryptor.CurrentUsername = profile.Username;
+                                SecureChat.Client.Services.AvatarService.UpdateAvatar(_currentAvatarUrl);
+                                SecureChat.Client.Services.AvatarService.UpdateProfile(
+                                    _currentDisplayName, _currentUsername, _currentEmail);
                                 UpdateSettingsHeaderUI();
                             }
                         }
@@ -3918,43 +3925,30 @@ namespace SecureChat.Client
                 _lblSettingsUserName.Text = _currentDisplayName;
         }
 
-        private static string GetAvatarCacheDir()
+        private void OnExternalAvatarChanged()
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SecureChat", "AvatarCache");
-            Directory.CreateDirectory(dir);
-            return dir;
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(OnExternalAvatarChanged));
+                return;
+            }
+            _currentAvatarUrl = SecureChat.Client.Services.AvatarService.CurrentAvatarUrl;
+            _currentDisplayName = SecureChat.Client.Services.AvatarService.CurrentDisplayName;
+            UpdateSettingsHeaderUI();
         }
 
         private string? DownloadAndCacheAvatar(string url)
         {
-            if (string.IsNullOrWhiteSpace(url)) return null;
-            try
-            {
-                var http = Services.ApiClient.Instance.GetHttpClient();
-                var cacheKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)));
-                var cachePath = Path.Combine(GetAvatarCacheDir(), cacheKey + ".png");
-                if (File.Exists(cachePath))
-                    return cachePath;
-
-                using var response = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result;
-                if (!response.IsSuccessStatusCode) return null;
-                using var stream = response.Content.ReadAsStreamAsync().Result;
-                using var img = Image.FromStream(stream);
-                img.Save(cachePath, System.Drawing.Imaging.ImageFormat.Png);
-                return cachePath;
-            }
-            catch
-            {
-                return null;
-            }
+            return SecureChat.Client.Services.AvatarCacheService.DownloadAsync(url)
+                .GetAwaiter().GetResult();
         }
 
         private void LoadAvatarToControl(AvatarControl ctrl, string url)
         {
             try
             {
-                var localPath = DownloadAndCacheAvatar(url);
-                if (localPath != null && File.Exists(localPath))
+                var img = SecureChat.Client.Services.AvatarCacheService.LoadImage(url);
+                if (img != null)
                 {
                     var old = ctrl.Photo;
                     if (old != null)
@@ -3962,8 +3956,6 @@ namespace SecureChat.Client
                         ctrl.Photo = null;
                         old.Dispose();
                     }
-                    using var fs = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    using var img = Image.FromStream(fs);
                     ctrl.Photo = new Bitmap(img);
                     ctrl.Invalidate();
                 }
@@ -6771,6 +6763,9 @@ namespace SecureChat.Client
                         _currentUsername = username ?? string.Empty;
                         _currentAvatarUrl = avatarUrl ?? string.Empty;
                         _decryptor.CurrentUsername = username ?? string.Empty;
+                        SecureChat.Client.Services.AvatarService.UpdateAvatar(avatarUrl);
+                        SecureChat.Client.Services.AvatarService.UpdateProfile(
+                            displayName ?? string.Empty, username ?? string.Empty, string.Empty);
                         UpdateSettingsHeaderUI();
                     }
                     // If this is a profile update for another user in a direct conversation,

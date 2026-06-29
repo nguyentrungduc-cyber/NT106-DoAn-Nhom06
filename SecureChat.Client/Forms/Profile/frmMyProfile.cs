@@ -32,6 +32,8 @@ namespace SecureChat.Client.Forms.Profile
         {
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            AvatarService.CurrentUserChanged += OnExternalAvatarChanged;
+            FormClosed += (_, __) => AvatarService.CurrentUserChanged -= OnExternalAvatarChanged;
             _profile = profile ?? throw new ArgumentNullException(nameof(profile));
             InitializeComponent();
             BuildUI();
@@ -39,6 +41,17 @@ namespace SecureChat.Client.Forms.Profile
             Resize += (_, __) => LayoutDynamic();
             LayoutDynamic();
             UiLocalization.ApplyToForm(this);
+        }
+
+        private void OnExternalAvatarChanged()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(OnExternalAvatarChanged));
+                return;
+            }
+            _profile.AvatarUrl = AvatarService.CurrentAvatarUrl;
+            ApplyAvatarImage();
         }
 
         private void BuildUI()
@@ -178,11 +191,22 @@ namespace SecureChat.Client.Forms.Profile
                 _avatar.Image?.Dispose();
                 _avatar.Image = null;
 
+                Image? img = null;
+
                 if (!string.IsNullOrWhiteSpace(_profile.AvatarPath) && File.Exists(_profile.AvatarPath))
                 {
                     using var fs = new FileStream(_profile.AvatarPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    using var img = Image.FromStream(fs);
-                    _avatar.Image = new Bitmap(img);
+                    using var src = Image.FromStream(fs);
+                    img = new Bitmap(src);
+                }
+                else if (!string.IsNullOrWhiteSpace(_profile.AvatarUrl))
+                {
+                    img = AvatarCacheService.LoadImage(_profile.AvatarUrl);
+                }
+
+                if (img != null)
+                {
+                    _avatar.Image = img;
                     _lblInitial.Visible = false;
                     return;
                 }

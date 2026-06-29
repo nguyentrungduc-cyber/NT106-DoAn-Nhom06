@@ -23,7 +23,7 @@ namespace SecureChat.Client.Forms.Settings
         private Label _lblName = null!;
         private Label _lblEmail = null!;
         private Label _lblUsername = null!;
-        private Panel _avatarPanel = null!;
+        private AvatarControl _avatarControl = null!;
         private Label? _lblLanguageMenu;
         private readonly List<Panel> _menuItems = new();
 
@@ -32,8 +32,20 @@ namespace SecureChat.Client.Forms.Settings
             _profile = profile ?? throw new ArgumentNullException(nameof(profile));
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            AvatarService.CurrentUserChanged += OnAvatarChanged;
+            FormClosed += (_, __) => AvatarService.CurrentUserChanged -= OnAvatarChanged;
             InitializeComponent();
             BuildUI();
+        }
+
+        private void OnAvatarChanged()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(OnAvatarChanged));
+                return;
+            }
+            RefreshHeader();
         }
 
         private void InitializeComponent() { }
@@ -116,36 +128,13 @@ namespace SecureChat.Client.Forms.Settings
             btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnClose.Click += (_, __) => Close();
 
-            _avatarPanel = new Panel
+            _avatarControl = new AvatarControl
             {
                 Size = new Size(AVATAR_SIZE, AVATAR_SIZE),
                 Location = new Point(HEADER_PADDING_X, 56),
-                BackColor = TG.GetAvatarColor(_profile.FullName)
             };
-            _avatarPanel.Paint += (_, e) =>
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = new GraphicsPath();
-                path.AddEllipse(0, 0, _avatarPanel.Width, _avatarPanel.Height);
-                _avatarPanel.Region = new Region(path);
-
-                var avatarImage = LoadAvatarImage(_profile.AvatarPath);
-                if (avatarImage != null)
-                {
-                    e.Graphics.SetClip(path);
-                    e.Graphics.DrawImage(avatarImage, new Rectangle(0, 0, _avatarPanel.Width, _avatarPanel.Height));
-                    e.Graphics.ResetClip();
-                    avatarImage.Dispose();
-                    return;
-                }
-
-                using var f = TG.FontSemiBold(28f);
-                var initials = GetInitials(_profile.FullName);
-                var sz = e.Graphics.MeasureString(initials, f);
-                e.Graphics.DrawString(initials, f, Brushes.White,
-                    (_avatarPanel.Width - sz.Width) / 2,    
-                    (_avatarPanel.Height - sz.Height) / 2);
-            };
+            _avatarControl.SetName(_profile.FullName);
+            RefreshAvatarPhoto();
 
             _lblName = new Label
             {
@@ -188,7 +177,7 @@ namespace SecureChat.Client.Forms.Settings
 
             _headerPanel.Controls.AddRange(new Control[]
             {
-                lblTitle, btnClose, _avatarPanel, _lblName, _lblEmail, _lblUsername, headerSep
+                lblTitle, btnClose, _avatarControl, _lblName, _lblEmail, _lblUsername, headerSep
             });
 
             _root.Controls.Add(_headerPanel);
@@ -420,69 +409,41 @@ namespace SecureChat.Client.Forms.Settings
         {
             _lblName.Text = string.IsNullOrWhiteSpace(_profile.FullName) ? "Unknown User" : _profile.FullName;
             _lblEmail.Text = string.IsNullOrWhiteSpace(_profile.Email) ? "---" : _profile.Email;
-            _avatarPanel.BackColor = Color.Transparent;
 
             _lblUsername.Text = string.IsNullOrWhiteSpace(_profile.Username) ? "Add username" : _profile.Username;
             _lblUsername.ForeColor = string.IsNullOrWhiteSpace(_profile.Username) ? TG.TextSecondary : TG.CAccent;
 
             LayoutHeaderProfileText();
-
-            _avatarPanel.Invalidate();
+            RefreshAvatarPhoto();
         }
 
-        private static Image? LoadAvatarImage(string avatarPath)
+        private void RefreshAvatarPhoto()
         {
-            try
+            _avatarControl.SetName(_profile.FullName);
+            var img = AvatarCacheService.LoadImage(
+                !string.IsNullOrWhiteSpace(_profile.AvatarUrl) ? _profile.AvatarUrl :
+                !string.IsNullOrWhiteSpace(AvatarService.CurrentAvatarUrl) ? AvatarService.CurrentAvatarUrl :
+                null);
+            if (img != null)
             {
-                if (string.IsNullOrWhiteSpace(avatarPath)) return null;
-                if (File.Exists(avatarPath))
+                var old = _avatarControl.Photo;
+                if (old != null)
                 {
-                    using var fs = new FileStream(avatarPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    using var img = Image.FromStream(fs);
-                    return new Bitmap(img);
+                    _avatarControl.Photo = null;
+                    old.Dispose();
                 }
-                if (avatarPath.StartsWith("/") || avatarPath.StartsWith("http"))
+                _avatarControl.Photo = new Bitmap(img);
+            }
+            else
+            {
+                if (_avatarControl.Photo != null)
                 {
-                    var local = DownloadAndCacheAvatar(avatarPath);
-                    if (local != null && File.Exists(local))
-                    {
-                        using var fs = new FileStream(local, FileMode.Open, FileAccess.Read, FileShare.Read);
-                        using var img = Image.FromStream(fs);
-                        return new Bitmap(img);
-                    }
+                    var old = _avatarControl.Photo;
+                    _avatarControl.Photo = null;
+                    old.Dispose();
                 }
-                return null;
             }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static string? DownloadAndCacheAvatar(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url)) return null;
-            try
-            {
-                var http = ApiClient.Instance.GetHttpClient();
-                var cacheKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)));
-                var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SecureChat", "AvatarCache");
-                Directory.CreateDirectory(cacheDir);
-                var cachePath = Path.Combine(cacheDir, cacheKey + ".png");
-                if (File.Exists(cachePath))
-                    return cachePath;
-
-                using var response = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result;
-                if (!response.IsSuccessStatusCode) return null;
-                using var stream = response.Content.ReadAsStreamAsync().Result;
-                using var img = Image.FromStream(stream);
-                img.Save(cachePath, System.Drawing.Imaging.ImageFormat.Png);
-                return cachePath;
-            }
-            catch
-            {
-                return null;
-            }
+            _avatarControl.Invalidate();
         }
 
         private void LayoutHeaderProfileText()
@@ -490,7 +451,7 @@ namespace SecureChat.Client.Forms.Settings
             if (_headerPanel == null || _lblName == null || _lblEmail == null || _lblUsername == null)
                 return;
 
-            int textLeft = _avatarPanel.Right + 18;
+            int textLeft = _avatarControl.Right + 18;
             int textWidth = Math.Max(120, _headerPanel.Width - textLeft - HEADER_PADDING_X);
 
             int nameHeight;
@@ -505,7 +466,7 @@ namespace SecureChat.Client.Forms.Settings
             }
 
             nameHeight = Math.Max(32, Math.Min(nameHeight, 56));
-            int nameTop = _avatarPanel.Top + 4;
+            int nameTop = _avatarControl.Top + 4;
 
             int emailHeight;
             int usernameHeight;
@@ -522,7 +483,7 @@ namespace SecureChat.Client.Forms.Settings
             _lblEmail.SetBounds(textLeft, _lblName.Bottom + 6, textWidth, emailHeight);
             _lblUsername.SetBounds(textLeft, _lblEmail.Bottom + 6, textWidth, usernameHeight);
 
-            int neededHeaderHeight = Math.Max(_avatarPanel.Bottom + 24, _lblUsername.Bottom + 24);
+            int neededHeaderHeight = Math.Max(_avatarControl.Bottom + 24, _lblUsername.Bottom + 24);
             if (_headerPanel.Height != neededHeaderHeight)
             {
                 _headerPanel.Height = neededHeaderHeight;
@@ -551,8 +512,7 @@ namespace SecureChat.Client.Forms.Settings
             _lblName.ForeColor = TG.TextPrimary;
             _lblEmail.ForeColor = TG.TextSecondary;
             _lblUsername.ForeColor = string.IsNullOrWhiteSpace(_profile.Username) ? TG.TextSecondary : TG.CAccent;
-            _avatarPanel.BackColor = Color.Transparent;
-            _avatarPanel.Invalidate();
+            _avatarControl.Invalidate();
             foreach (var panel in _menuItems)
             {
                 panel.BackColor = TG.WindowBg;
