@@ -5069,12 +5069,8 @@ namespace SecureChat.Client
         {
             _pnlMessages.SuspendLayout();
 
-            // Preserve scroll offset if user is reading history
-            bool isAtBottom = _pnlMessages.VerticalScroll.Value >= _pnlMessages.VerticalScroll.Maximum - 50;
+            _pnlMessages.AutoScrollPosition = new Point(0, 0);
 
-            // Dispose old controls to prevent GDI handle leak
-            foreach (Control c in _pnlMessages.Controls)
-                c.Dispose();
             _pnlMessages.Controls.Clear();
 
             int y = 8;
@@ -5148,23 +5144,8 @@ namespace SecureChat.Client
 
             _pnlMessages.ResumeLayout(true);
 
-            if (bubbles.Count > 0 && _pnlMessages.ClientSize.Height > 0)
-            {
-                int lastContentBottom = y - 4;
-                int viewportBottom = _pnlMessages.ClientSize.Height - _pnlMessages.Padding.Bottom;
-
-                if (lastContentBottom <= viewportBottom)
-                {
-                    int offset = viewportBottom - lastContentBottom;
-                    _pnlMessages.AutoScrollMinSize = Size.Empty;
-                    foreach (Control c in _pnlMessages.Controls)
-                        c.Top += offset;
-                }
-                else if (isAtBottom)
-                {
-                    _pnlMessages.ScrollControlIntoView(bubbles[^1]);
-                }
-            }
+            if (bubbles.Count > 0)
+                _pnlMessages.ScrollControlIntoView(bubbles[^1]);
         }
 
         private static string FormatDateHeader(DateTime date)
