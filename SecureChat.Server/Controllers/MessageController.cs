@@ -144,6 +144,8 @@ namespace SecureChat.Controllers
 			if (member is null)
 				return Forbid();
 
+			await using var tx = await conversations.DbContext.Database.BeginTransactionAsync();
+
 		// For direct conversations, check if recipient allows messages from this sender
 		var conv = await conversations.GetByIdWithMembersAsync(conversationID);
 		if (conv?.Type == ConversationType.Direct)
@@ -267,6 +269,8 @@ namespace SecureChat.Controllers
 
 			var loaded = await messages.GetByIdAsync(msg.MessageID);
 			var resp = MessageResponse.From(loaded!);
+
+			await tx.CommitAsync();
 
 			try
 			{

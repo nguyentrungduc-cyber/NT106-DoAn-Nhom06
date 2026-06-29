@@ -234,6 +234,25 @@ Directory.CreateDirectory(Path.Combine(webRoot, "uploads"));
 Directory.CreateDirectory(Path.Combine(webRoot, "voice"));
 Console.Error.WriteLine($"[StaticFiles] Serving from: {webRoot}");
 
+app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Protect uploaded files and voice recordings — require valid JWT
+app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/uploads") || ctx.Request.Path.StartsWithSegments("/voice"),
+    pb =>
+    {
+        pb.Use(async (context, next) =>
+        {
+            if (context.User?.Identity?.IsAuthenticated != true)
+            {
+                context.Response.StatusCode = 401;
+                return;
+            }
+            await next();
+        });
+    });
+
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(webRoot),
@@ -241,10 +260,6 @@ app.UseStaticFiles(new StaticFileOptions
     ServeUnknownFileTypes = true,
     DefaultContentType = "application/octet-stream"
 });
-
-app.UseCors();
-app.UseAuthentication();
-app.UseAuthorization();
 
 // Health check endpoint for Railway
 app.MapGet("/", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));

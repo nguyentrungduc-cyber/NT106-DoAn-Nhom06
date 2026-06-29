@@ -119,6 +119,7 @@ namespace SecureChat.Client
         private string _currentUsername = string.Empty;
         private string _currentEmail = string.Empty;
         private bool _isLoggingOut;
+        private bool _isSending;
         private string _currentAvatarUrl = string.Empty;
 
         private readonly List<(string Id, string Name, string Preview, string Time, int Unread, bool IsGroup)> _convs = new();
@@ -5069,8 +5070,12 @@ namespace SecureChat.Client
         {
             _pnlMessages.SuspendLayout();
 
-            _pnlMessages.AutoScrollPosition = new Point(0, 0);
+            // Preserve scroll offset if user is reading history
+            bool isAtBottom = _pnlMessages.VerticalScroll.Value >= _pnlMessages.VerticalScroll.Maximum - 50;
 
+            // Dispose old controls to prevent GDI handle leak
+            foreach (Control c in _pnlMessages.Controls)
+                c.Dispose();
             _pnlMessages.Controls.Clear();
 
             int y = 8;
@@ -5144,7 +5149,7 @@ namespace SecureChat.Client
 
             _pnlMessages.ResumeLayout(true);
 
-            if (bubbles.Count > 0)
+            if (bubbles.Count > 0 && isAtBottom)
                 _pnlMessages.ScrollControlIntoView(bubbles[^1]);
         }
 
@@ -7252,8 +7257,20 @@ namespace SecureChat.Client
                             _forwardMetadata[dm.Id] = message.OriginalSenderName;
                             _forwardOriginalSenderId[dm.Id] = message.OriginalSenderID!;
                         }
-                        _messageDates[dm.Id] = message.SentAt.ToLocalTime();
-                        list.Add((dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
+                        var msgTime = message.SentAt.ToLocalTime();
+                        _messageDates[dm.Id] = msgTime;
+
+                        // Insert in chronological order (oldest first)
+                        int insertIdx = list.Count;
+                        for (int i = list.Count - 1; i >= 0; i--)
+                        {
+                            if (_messageDates.TryGetValue(list[i].Id, out var existingTime) && existingTime <= msgTime)
+                            {
+                                insertIdx = i + 1;
+                                break;
+                            }
+                        }
+                        list.Insert(insertIdx, (dm.Id, dm.Text, dm.Out, dm.Time, dm.Sender));
 
                         // Cập nhật preview ở sidebar (best-effort) và đưa lên đầu.
                         int idx = _convs.FindIndex(c => c.Id == message.ConversationID);
@@ -7922,10 +7939,17 @@ namespace SecureChat.Client
         private async void SendMessage()
         {
             // ─────────────────────────────────────────────────────────────────
+            // DOUBLE-SEND GUARD: chặn Enter spam / click liên tục
+            // ─────────────────────────────────────────────────────────────────
+            if (_isSending) return;
+            _isSending = true;
+
+            // ─────────────────────────────────────────────────────────────────
             // VALIDATION: Kiểm tra input và trạng thái
             // ─────────────────────────────────────────────────────────────────
             if (string.IsNullOrWhiteSpace(_tbMessage.Text))
             {
+                _isSending = false;
                 return;
             }
 
@@ -7934,6 +7958,7 @@ namespace SecureChat.Client
             // Validate message length
             if (text.Length > 4096)
             {
+                _isSending = false;
                 MessageBox.Show(this,
                     LocalizationService.Translate("Message is too long. Please limit to 4096 characters."),
                     LocalizationService.Translate("Error"),
@@ -7945,6 +7970,7 @@ namespace SecureChat.Client
             // Check for active conversation
             if (string.IsNullOrWhiteSpace(_activeConvId))
             {
+                _isSending = false;
                 MessageBox.Show(this,
                     LocalizationService.Translate("Please select a conversation before sending a message."),
                     LocalizationService.Translate("Error"),
@@ -8113,9 +8139,11 @@ namespace SecureChat.Client
                     BuildMessages();
                     RefreshConversationItem(_activeConvId, finalMessageText, true, "", timeStr);
                 }
+                _isSending = false;
             }
             catch (InvalidOperationException ex)
             {
+                _isSending = false;
                 // ─────────────────────────────────────────────────────────────────
                 // ERROR HANDLING: Xử lý lỗi và thông báo cho user
                 // ─────────────────────────────────────────────────────────────────
@@ -8143,6 +8171,7 @@ namespace SecureChat.Client
             }
             catch (Exception ex)
             {
+                _isSending = false;
                 // ─────────────────────────────────────────────────────────────────
                 // UNEXPECTED ERROR: Xử lý lỗi không mong đợi
                 // ─────────────────────────────────────────────────────────────────
