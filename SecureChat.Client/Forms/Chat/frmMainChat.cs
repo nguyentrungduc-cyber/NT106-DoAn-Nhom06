@@ -5148,8 +5148,23 @@ namespace SecureChat.Client
 
             _pnlMessages.ResumeLayout(true);
 
-            if (bubbles.Count > 0 && isAtBottom)
-                _pnlMessages.ScrollControlIntoView(bubbles[^1]);
+            if (bubbles.Count > 0 && _pnlMessages.ClientSize.Height > 0)
+            {
+                int lastContentBottom = y - 4;
+                int viewportBottom = _pnlMessages.ClientSize.Height - _pnlMessages.Padding.Bottom;
+
+                if (lastContentBottom <= viewportBottom)
+                {
+                    int offset = viewportBottom - lastContentBottom;
+                    _pnlMessages.AutoScrollMinSize = Size.Empty;
+                    foreach (Control c in _pnlMessages.Controls)
+                        c.Top += offset;
+                }
+                else if (isAtBottom)
+                {
+                    _pnlMessages.ScrollControlIntoView(bubbles[^1]);
+                }
+            }
         }
 
         private static string FormatDateHeader(DateTime date)
