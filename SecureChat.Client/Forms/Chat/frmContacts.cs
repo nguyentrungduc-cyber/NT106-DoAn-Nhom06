@@ -338,9 +338,8 @@ namespace SecureChat.Client
             _tabs.Padding = new Point(0, 0); // Loại bỏ khoảng cách đệm giữa các TabPage và nội dung bên trong
                                              // giúp giao diện khít sát và gọn gàng.
             _tabs.Dock = DockStyle.Fill; // Làm cho bộ Tab này lấp đầy toàn bộ diện tích của Form hoặc Panel chứa nó.
-            _tabs.ItemSize = new Size(0, 38);
-            _tabs.SizeMode = TabSizeMode.FillToRight; // Các tiêu đề Tab sẽ tự động giãn ra để dàn đều theo chiều ngang,
-                                                      // lấp đầy thanh menu phía trên thay vì chỉ co cụm ở bên trái.
+            _tabs.ItemSize = new Size(100, 38);
+            _tabs.SizeMode = TabSizeMode.Fixed;
 
             // Hình thức
             _tabs.Appearance = TabAppearance.FlatButtons; // Thay đổi kiểu hiển thị từ dạng "thẻ kẹp hồ sơ" truyền thống của Windows sang dạng nút phẳng.
@@ -360,6 +359,18 @@ namespace SecureChat.Client
             BuildContactsTab();
             BuildRequestsTab();
             BuildSearchTab();
+
+            _tabs.Resize += (s, e) =>
+            {
+                if (_tabs.TabCount > 0 && _tabs.ClientSize.Width > 10)
+                {
+                    int tabWidth = _tabs.ClientSize.Width / _tabs.TabCount;
+                    if (tabWidth > 0 && _tabs.ItemSize.Width != tabWidth)
+                    {
+                        _tabs.ItemSize = new Size(tabWidth, 38);
+                    }
+                }
+            };
 
             // 3. Panel Content (Fill) - PHẢI ADD TRƯỚC HEADER
 
@@ -424,9 +435,8 @@ namespace SecureChat.Client
             _contactSubTabs.Margin = new Padding(0);
             _contactSubTabs.Padding = new Point(0, 0); // Ép khoảng cách giữa nội dung và viền tab về 0
 
-            _contactSubTabs.ItemSize = new Size(0, 38);
-            _contactSubTabs.SizeMode = TabSizeMode.FillToRight;
-
+            _contactSubTabs.ItemSize = new Size(150, 38);
+            _contactSubTabs.SizeMode = TabSizeMode.Fixed;
 
             _contactSubTabs.Multiline = false; // Đảm bảo chỉ trên 1 dòng
 
@@ -482,6 +492,18 @@ namespace SecureChat.Client
             tpGroups.Controls.Add(_pnlGroups);
 
             _tabContacts.Controls.Add(_contactSubTabs);
+
+            _contactSubTabs.Resize += (s, e) =>
+            {
+                if (_contactSubTabs.TabCount > 0 && _contactSubTabs.ClientSize.Width > 10)
+                {
+                    int tabWidth = _contactSubTabs.ClientSize.Width / _contactSubTabs.TabCount;
+                    if (tabWidth > 0 && _contactSubTabs.ItemSize.Width != tabWidth)
+                    {
+                        _contactSubTabs.ItemSize = new Size(tabWidth, 38);
+                    }
+                }
+            };
 
         }
 
@@ -994,9 +1016,8 @@ namespace SecureChat.Client
             _requestSubTabs.DrawMode = TabDrawMode.OwnerDrawFixed;
             _requestSubTabs.Margin = new Padding(0);  // ✅ FIX: _contactSubTabs → _requestSubTabs
             _requestSubTabs.Padding = new Point(0, 0);  // ✅ FIX: _contactSubTabs → _requestSubTabs
-            _requestSubTabs.ItemSize = new Size(0, 38);
-            _requestSubTabs.SizeMode = TabSizeMode.FillToRight;
-
+            _requestSubTabs.ItemSize = new Size(100, 38);
+            _requestSubTabs.SizeMode = TabSizeMode.Fixed;
 
             _requestSubTabs.Multiline = false;  // ✅ FIX: _contactSubTabs → _requestSubTabs
             _requestSubTabs.Font = TG.FontRegular(9f);
@@ -1052,6 +1073,18 @@ namespace SecureChat.Client
             _tpSent.Controls.Add(_pnlSentRequests);
 
             _tabRequests.Controls.Add(_requestSubTabs);
+
+            _requestSubTabs.Resize += (s, e) =>
+            {
+                if (_requestSubTabs.TabCount > 0 && _requestSubTabs.ClientSize.Width > 10)
+                {
+                    int tabWidth = _requestSubTabs.ClientSize.Width / _requestSubTabs.TabCount;
+                    if (tabWidth > 0 && _requestSubTabs.ItemSize.Width != tabWidth)
+                    {
+                        _requestSubTabs.ItemSize = new Size(tabWidth, 38);
+                    }
+                }
+            };
         }
 
         private Panel BuildRequestRow(FriendRequestItem req, bool isIncoming, int initialWidth)
