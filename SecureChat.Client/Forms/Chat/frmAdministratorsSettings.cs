@@ -137,7 +137,7 @@ namespace SecureChat.Client.Forms.Chat
                 var admins = view.Admins;
                 _adminsCount = admins.Count;
 
-                BeginInvoke(new Action(() =>
+                if (!IsDisposed) BeginInvoke(new Action(() =>
                 {
                     _pnlAdmins.Controls.Clear();
                     int y = 0;

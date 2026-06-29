@@ -106,6 +106,7 @@ namespace SecureChat.Controllers
 		[HttpPost]
 		public async Task<IActionResult> CreateConversation([FromBody] CreateConversationRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (req.Type == ConversationType.SavedMessages)
 				return BadRequest(new { error = "Cannot create Saved Messages through this endpoint." });
 
@@ -315,6 +316,7 @@ namespace SecureChat.Controllers
 		[HttpPost("{conversationID}/members")]
 		public async Task<IActionResult> AddMember(string conversationID, [FromBody] AddMemberRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var myMember = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (myMember is null || myMember.LeftAt is not null)
 				return Forbid();

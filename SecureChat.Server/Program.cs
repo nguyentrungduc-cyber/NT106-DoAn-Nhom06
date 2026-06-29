@@ -202,6 +202,12 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
+        // Reset stale UserPresence rows — server restart means all sessions are gone
+        db.Database.ExecuteSqlRaw(@"
+            UPDATE UserPresences SET Status = 0, ActiveSessionCount = 0, LastSeenUtc = NOW(6)
+            WHERE ActiveSessionCount > 0;
+        ");
+
         db.Database.ExecuteSqlRaw(@"
             SET @_ce = (SELECT COUNT(*) FROM information_schema.COLUMNS
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Messages' AND COLUMN_NAME = 'expires_at');

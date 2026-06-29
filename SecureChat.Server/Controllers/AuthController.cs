@@ -22,6 +22,7 @@ namespace SecureChat.Controllers
 		[HttpPost("register")]
 		public async Task<IActionResult> Register([FromBody] RegisterRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (await users.ExistsByUsernameAsync(req.Username))
 				return Conflict(new { error = "Tên người dùng đã được sử dụng." });
 			if (await users.ExistsByEmailAsync(req.Email))
@@ -53,6 +54,7 @@ namespace SecureChat.Controllers
 		[HttpPost("resend-login-otp")]
 		public async Task<IActionResult> ResendLoginOtp([FromBody] ResendLoginOtpRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (string.IsNullOrWhiteSpace(req.Identifier))
 				return BadRequest(new { message = "Invalid identifier.", errorCode = "INVALID_IDENTIFIER" });
 
@@ -82,6 +84,7 @@ namespace SecureChat.Controllers
 		[HttpPost("verify-login-otp")]
 		public async Task<IActionResult> VerifyLoginOtp([FromBody] VerifyLoginOtpRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (string.IsNullOrWhiteSpace(req.Identifier))
 				return BadRequest(new { message = "Invalid identifier.", errorCode = "INVALID_IDENTIFIER" });
 
@@ -125,6 +128,7 @@ namespace SecureChat.Controllers
 		[HttpPost("login")]
 		public async Task<IActionResult> Login([FromBody] LoginRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var user = req.UsernameOrEmail.Contains('@')
 				? await users.GetByEmailAsync(req.UsernameOrEmail)
 				: await users.GetByUsernameAsync(req.UsernameOrEmail);
@@ -156,6 +160,7 @@ namespace SecureChat.Controllers
 		[HttpPost("refresh")]
 		public async Task<IActionResult> RefreshAccessToken([FromBody] RefreshRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var session = await users.GetSessionByRefreshTokenAsync(req.RefreshToken);
 			if (session is null)
 				return Unauthorized(new { error = "Refresh token không hợp lệ." });
@@ -175,6 +180,7 @@ namespace SecureChat.Controllers
 		[HttpPost("forgot-password/request-otp")]
 		public async Task<IActionResult> RequestForgotPasswordOtp([FromBody] ForgotPasswordRequestOtpRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
           if (string.IsNullOrWhiteSpace(req.Email))
 			{
 				return BadRequest(new { message = "Invalid email format.", errorCode = "INVALID_EMAIL" });
@@ -193,6 +199,7 @@ namespace SecureChat.Controllers
 		[HttpPost("forgot-password/verify-otp")]
 		public async Task<IActionResult> VerifyForgotPasswordOtp([FromBody] ForgotPasswordVerifyOtpRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
           if (string.IsNullOrWhiteSpace(req.Email))
 			{
 				return BadRequest(new { message = "Invalid email format.", errorCode = "INVALID_EMAIL" });
@@ -229,6 +236,7 @@ namespace SecureChat.Controllers
 		[HttpPost("forgot-password/reset")]
 		public async Task<IActionResult> ResetForgotPassword([FromBody] ForgotPasswordResetRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
           if (string.IsNullOrWhiteSpace(req.ResetToken))
 			{
 				return BadRequest(new { message = "Invalid reset token.", errorCode = "INVALID_TOKEN" });

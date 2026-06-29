@@ -58,6 +58,7 @@ namespace SecureChat.Controllers
 		[HttpPost]
 		public async Task<IActionResult> StartCall(string conversationID, [FromBody] StartCallRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
@@ -109,6 +110,7 @@ namespace SecureChat.Controllers
 		[HttpPut("{callID}/status")]
 		public async Task<IActionResult> UpdateCallStatus(string conversationID, string callID, [FromBody] UpdateCallStatusRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
@@ -297,6 +299,7 @@ namespace SecureChat.Controllers
 		[HttpPut("{callID}/participants/{participantID}")]
 		public async Task<IActionResult> UpdateParticipant(string conversationID, string callID, string participantID, [FromBody] UpdateParticipantStatusRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();

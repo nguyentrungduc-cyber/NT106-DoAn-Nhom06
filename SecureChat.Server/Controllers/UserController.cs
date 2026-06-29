@@ -135,6 +135,7 @@ namespace SecureChat.Controllers
         [HttpPut("me/password")]
         public async Task<IActionResult> ChangeHashedPassword([FromBody] UpdateHashedPasswordRequest req)
         {
+            if (req is null) return BadRequest(new { error = "Invalid request body." });
             var user = await users.GetByIdAsync(Me);
             if (user is null)
                 return NotFound();
@@ -159,6 +160,8 @@ namespace SecureChat.Controllers
 		public async Task<IActionResult> UpdatePrivacySettings([FromBody] UpdatePrivacyRequest req)
 		{
 			await users.UpdatePrivacySettingsAsync(Me, req.ShowReadStatus, req.ShowOnlineStatus);
+			// Broadcast presence change so contacts see the updated status immediately
+			await presence.BroadcastCurrentStatusAsync(Me);
 			return NoContent();
 		}
 

@@ -133,7 +133,7 @@ namespace SecureChat.Client.Forms.Chat
                         status = "offline";
                     return (f.Friend.UserID, f.Friend.DisplayName, status);
                 });
-                BeginInvoke(new Action(() => LoadUserList(users)));
+                if (!IsDisposed) BeginInvoke(new Action(() => LoadUserList(users)));
             }
             catch { /* Giữ list rỗng nếu lỗi mạng */ }
         }
@@ -411,7 +411,7 @@ namespace SecureChat.Client.Forms.Chat
                 Text = LocalizationService.Translate("New Group");
                 _btnAction.Text = LocalizationService.Translate("Next");
                 UpdateActionButton();
-                BeginInvoke((Action)(() => _txtGroupName.Focus()));
+                if (!IsDisposed) BeginInvoke((Action)(() => _txtGroupName.Focus()));
             }
             else
             {
@@ -420,7 +420,7 @@ namespace SecureChat.Client.Forms.Chat
                 _btnAction.Enabled = true;
                 _btnAction.ForeColor = TG.Blue;
                 RefreshCount();
-                BeginInvoke((Action)(() => _txtSearch.Focus()));
+                if (!IsDisposed) BeginInvoke((Action)(() => _txtSearch.Focus()));
             }
         }
 

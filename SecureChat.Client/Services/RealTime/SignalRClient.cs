@@ -208,6 +208,45 @@ public event Func<string, string, Task>? MemberRemoved;
                 if (MessageStatusUpdated is not null)
                     await MessageStatusUpdated.Invoke(messageId, status);
             });
+
+            _connection.On<string>("ForceDisconnect", async reason =>
+            {
+                // Server is forcing this client to disconnect (logout, session revoke, etc.)
+                await _connection.StopAsync();
+                if (Closed is not null)
+                    await Closed.Invoke(new Exception(reason));
+            });
+        }
+
+        /// <summary>Null all event delegates so the SignalRClient can be safely disposed.</summary>
+        public void ClearHandlers()
+        {
+            MessageReceived = null;
+            MessageRecalled = null;
+            MessageEdited = null;
+            MessageDeleted = null;
+            CallSignalReceived = null;
+            CallIncoming = null;
+            VideoFrameReceived = null;
+            AudioDataReceived = null;
+            UserTyping = null;
+            UserStoppedTyping = null;
+            MessageStatusUpdated = null;
+            Closed = null;
+            Reconnecting = null;
+            Reconnected = null;
+            ConversationCreated = null;
+            ProfileUpdated = null;
+            ConversationDeleted = null;
+            ConversationUpdated = null;
+            MessagesCleared = null;
+            MessagePinned = null;
+            MessageUnpinned = null;
+            MemberAdded = null;
+            MemberRemoved = null;
+            UserStatusChanged = null;
+            CallMissed = null;
+            GroupSettingsUpdated = null;
         }
 
         public Task StartAsync() => _connection.StartAsync();
@@ -347,6 +386,8 @@ public event Func<string, string, Task>? MemberRemoved;
 
         public async ValueTask DisposeAsync()
         {
+            try { await _connection.StopAsync(); } catch { }
+            ClearHandlers();
             await _connection.DisposeAsync();
         }
 

@@ -376,8 +376,17 @@ namespace SecureChat.Client.Forms.Chat
 
                 _allMembers = view.Members.Select(m =>
                 {
-                    var status = (m.User?.ShowOnlineStatus == true)
-                        ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(m.IsOnline, m.User?.LastSeenUtc)
+                    // Merge with real-time presence cache if available
+                    bool isOnline = m.IsOnline;
+                    DateTime? lastSeen = m.User?.LastSeenUtc;
+                    if (m.UserID != null && SecureChat.Client.frmMainChat.GlobalPresence.TryGetValue(m.UserID, out var pp))
+                    {
+                        isOnline = pp.IsOnline;
+                        lastSeen = pp.LastSeenUtc;
+                    }
+                    bool canShow = m.User?.ShowOnlineStatus ?? true;
+                    var status = canShow
+                        ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(isOnline, lastSeen)
                         : "offline";
                     return new MemberItemData(
                         m.User?.DisplayName ?? m.Nickname ?? "Unknown",

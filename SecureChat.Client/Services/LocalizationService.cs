@@ -34,7 +34,6 @@ namespace SecureChat.Client.Services
         public static string Translate(string text)
         {
             if (string.IsNullOrEmpty(text)) return text;
-            if (CurrentLanguage == LanguageType.English) return text;
             return _translations.TryGetValue(text, out var translated) ? translated : text;
         }
 
@@ -86,21 +85,21 @@ namespace SecureChat.Client.Services
         private static void LoadDictionary()
         {
             _translations.Clear();
-            if (CurrentLanguage == LanguageType.English) return;
 
             try
             {
+                string fileName = CurrentLanguage == LanguageType.Vietnamese ? "vi.json" : "en.json";
                 string langDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Lang");
-                string filePath = Path.Combine(langDir, "vi.json");
+                string filePath = Path.Combine(langDir, fileName);
                 if (!File.Exists(filePath))
                 {
                     langDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "Lang");
-                    filePath = Path.Combine(langDir, "vi.json");
+                    filePath = Path.Combine(langDir, fileName);
                 }
                 if (!File.Exists(filePath))
                 {
                     langDir = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Resources", "Lang"));
-                    filePath = Path.Combine(langDir, "vi.json");
+                    filePath = Path.Combine(langDir, fileName);
                 }
                 if (!File.Exists(filePath)) return;
 

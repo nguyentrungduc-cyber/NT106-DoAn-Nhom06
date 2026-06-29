@@ -140,6 +140,7 @@ namespace SecureChat.Controllers
 		[HttpPost]
 		public async Task<IActionResult> SendMessage(string conversationID, [FromBody] SendMessageRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();

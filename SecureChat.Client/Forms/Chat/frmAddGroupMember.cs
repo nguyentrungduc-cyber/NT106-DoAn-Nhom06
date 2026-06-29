@@ -146,7 +146,7 @@ namespace SecureChat.Client.Forms.Chat
                 // Loại bỏ những người đã là thành viên nhóm
                 var candidates = list.Where(f => !_existingMemberIds.Contains(f.Friend.UserID)).ToList();
 
-                BeginInvoke(new Action(() =>
+                if (!IsDisposed) BeginInvoke(new Action(() =>
                 {
                     _allUsers.Clear();
                     _flpList.Controls.Clear();
