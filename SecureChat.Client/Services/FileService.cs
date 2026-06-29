@@ -44,7 +44,7 @@ namespace SecureChat.Client.Services
         {
             if (string.IsNullOrWhiteSpace(url)) throw new ArgumentException("Empty URL", nameof(url));
 
-            using var client = SecureChat.Client.Services.ApiClient.Create();
+            var client = SecureChat.Client.Services.ApiClient.Instance.GetHttpClient();
             using var resp = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             resp.EnsureSuccessStatusCode();
 
