@@ -2586,14 +2586,13 @@ namespace SecureChat.Client
                     // Upload file via multipart/form-data to API
                     try
                     {
-                        var client = ApiClient.Create();
                         using var fs = new FileStream(encryptedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                         using var content = new MultipartFormDataContent();
                         var streamContent = new StreamContent(fs);
                         streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
                         content.Add(streamContent, "file", Path.GetFileName(encryptedPath));
 
-                        var resp = await client.PostAsync("api/files/upload", content).ConfigureAwait(false);
+                        var resp = await ApiClient.Instance.GetHttpClient().PostAsync("api/files/upload", content).ConfigureAwait(false);
                         var respStr = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                         if (!resp.IsSuccessStatusCode)
                         {

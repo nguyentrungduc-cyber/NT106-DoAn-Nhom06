@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Security.Cryptography;
 using System.Linq;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +18,7 @@ namespace SecureChat.Controllers
 
     [ApiController]
     [Route("api/files")]
+    [Authorize]
     public class FilesController : ControllerBase
     {
         private readonly IWebHostEnvironment _env;
