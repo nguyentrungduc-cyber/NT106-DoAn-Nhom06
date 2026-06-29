@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SecureChat.Models;
@@ -225,11 +226,18 @@ if (app.Environment.IsDevelopment()) {
 	});
 }
 
-// Serve static files from wwwroot (uploads will be available under /uploads)
+// Ensure wwwroot directories exist BEFORE static file middleware
+// On Railway/Linux, PhysicalFileProvider needs the root directory to exist at startup
+var webRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "wwwroot"));
+Directory.CreateDirectory(webRoot);
+Directory.CreateDirectory(Path.Combine(webRoot, "uploads"));
+Directory.CreateDirectory(Path.Combine(webRoot, "voice"));
+Console.Error.WriteLine($"[StaticFiles] Serving from: {webRoot}");
 
-// With this:
-app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+app.UseStaticFiles(new StaticFileOptions
 {
+    FileProvider = new PhysicalFileProvider(webRoot),
+    RequestPath = "",
     ServeUnknownFileTypes = true,
     DefaultContentType = "application/octet-stream"
 });

@@ -41,6 +41,8 @@ namespace SecureChat.Controllers
                 return BadRequest(new { error = "File is empty." });
 
             var uploadsDir = Path.Combine(_env.ContentRootPath, "wwwroot", "uploads");
+            _logger.LogInformation("File upload: ContentRootPath={Root}, uploadsDir={Dir}, WebRootPath={Web}",
+                _env.ContentRootPath, uploadsDir, _env.WebRootPath);
             try
             {
                 Directory.CreateDirectory(uploadsDir);

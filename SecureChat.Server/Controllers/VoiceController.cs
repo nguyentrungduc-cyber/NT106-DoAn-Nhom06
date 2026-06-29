@@ -47,6 +47,8 @@ namespace SecureChat.Controllers
                 return BadRequest(new { error = "Invalid voice file format." });
 
             var voiceDir = Path.Combine(_env.ContentRootPath, "wwwroot", "voice");
+            _logger.LogInformation("Voice upload: ContentRootPath={Root}, voiceDir={Dir}, WebRootPath={Web}",
+                _env.ContentRootPath, voiceDir, _env.WebRootPath);
             try
             {
                 Directory.CreateDirectory(voiceDir);
