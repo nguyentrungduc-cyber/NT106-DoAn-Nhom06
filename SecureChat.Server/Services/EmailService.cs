@@ -14,6 +14,7 @@ namespace SecureChat.Services
         private readonly ILogger<EmailService> _logger;
         private readonly string _smtpHost;
         private readonly int _smtpPort;
+        private readonly string _smtpUsername;
         private readonly string _senderEmail;
         private readonly string _senderPassword;
         private readonly string _senderName;
@@ -25,6 +26,7 @@ namespace SecureChat.Services
 
             _smtpHost = _config["EmailSettings:SmtpHost"] ?? "smtp.gmail.com";
             _smtpPort = int.TryParse(_config["EmailSettings:SmtpPort"], out var p) ? p : 587;
+            _smtpUsername = _config["EmailSettings:SmtpUsername"] ?? _config["EmailSettings:SenderEmail"] ?? "apikey";
             _senderEmail = _config["EmailSettings:SenderEmail"] ?? string.Empty;
             _senderPassword = _config["EmailSettings:SenderPassword"] ?? string.Empty;
             _senderName = _config["EmailSettings:SenderName"] ?? "SecureChat";
@@ -50,7 +52,7 @@ namespace SecureChat.Services
                 smtp.Timeout = 15000;
 
                 await smtp.ConnectAsync(_smtpHost, _smtpPort, SecureSocketOptions.Auto);
-                await smtp.AuthenticateAsync(_senderEmail, _senderPassword);
+                await smtp.AuthenticateAsync(_smtpUsername, _senderPassword);
                 await smtp.SendAsync(msg);
                 await smtp.DisconnectAsync(true);
 
