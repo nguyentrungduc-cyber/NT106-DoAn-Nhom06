@@ -20,7 +20,8 @@ namespace SecureChat.Client.Forms.Call
         private readonly CallType _callType;
 
         private static readonly Color TgBlue = Color.FromArgb(0x2C, 0xA5, 0xE0);
-        private static readonly Color TgBg = Color.White;
+        private static readonly Color AcceptGreen = Color.FromArgb(0x21, 0xA1, 0x66);
+        private static readonly Color DeclineRed = Color.FromArgb(0xE0, 0x24, 0x24);
 
         public frmIncomingCall(string callerName, CallType callType)
         {
@@ -32,7 +33,6 @@ namespace SecureChat.Client.Forms.Call
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(360, 260);
-            BackColor = TgBg;
             Font = new Font("Segoe UI", 10f);
             DoubleBuffered = true;
 
@@ -40,7 +40,7 @@ namespace SecureChat.Client.Forms.Call
             {
                 Size = new Size(80, 80),
                 Location = new Point(140, 24),
-                BackColor = TgBlue
+                Tag = "accent"
             };
             _pnlAvatar.Paint += (s, e) =>
             {
@@ -66,7 +66,8 @@ namespace SecureChat.Client.Forms.Call
                 Font = new Font("Segoe UI Semibold", 14f),
                 ForeColor = Color.FromArgb(0x1F, 0x2D, 0x3D),
                 AutoSize = true,
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                Tag = "white-fg"
             };
             _lblCaller.Location = new Point((ClientSize.Width - _lblCaller.Width) / 2, 112);
             Controls.Add(_lblCaller);
@@ -78,7 +79,8 @@ namespace SecureChat.Client.Forms.Call
                 Font = new Font("Segoe UI", 10f),
                 ForeColor = Color.FromArgb(0x7A, 0x8A, 0x99),
                 AutoSize = true,
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                Tag = "white-fg"
             };
             _lblInfo.Location = new Point((ClientSize.Width - _lblInfo.Width) / 2, 138);
             Controls.Add(_lblInfo);
@@ -88,14 +90,17 @@ namespace SecureChat.Client.Forms.Call
                 Text = LocalizationService.Translate("Accept"),
                 Size = new Size(120, 42),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0x21, 0xA1, 0x66),
+                BackColor = AcceptGreen,
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI Semibold", 11f),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Tag = "accent"
             };
             _btnAccept.FlatAppearance.BorderSize = 0;
+            _btnAccept.FlatAppearance.MouseOverBackColor = Color.FromArgb(0x1E, 0x93, 0x5D);
+            _btnAccept.FlatAppearance.MouseDownBackColor = Color.FromArgb(0x1A, 0x82, 0x52);
             _btnAccept.Location = new Point(40, 190);
-            _btnAccept.Click += (_, __) => { Accepted = true; Close(); };
+            _btnAccept.Click += (_, __) => { if (!_btnAccept.Enabled) return; _btnAccept.Enabled = false; _btnReject.Enabled = false; Accepted = true; Close(); };
             Controls.Add(_btnAccept);
 
             _btnReject = new Button
@@ -103,14 +108,17 @@ namespace SecureChat.Client.Forms.Call
                 Text = LocalizationService.Translate("Decline"),
                 Size = new Size(120, 42),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(0xE0, 0x24, 0x24),
+                BackColor = DeclineRed,
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI Semibold", 11f),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Tag = "accent"
             };
             _btnReject.FlatAppearance.BorderSize = 0;
+            _btnReject.FlatAppearance.MouseOverBackColor = Color.FromArgb(0xC0, 0x1E, 0x1E);
+            _btnReject.FlatAppearance.MouseDownBackColor = Color.FromArgb(0xA0, 0x18, 0x18);
             _btnReject.Location = new Point(200, 190);
-            _btnReject.Click += (_, __) => Close();
+            _btnReject.Click += (_, __) => { if (!_btnReject.Enabled) return; _btnAccept.Enabled = false; _btnReject.Enabled = false; Close(); };
             Controls.Add(_btnReject);
             SecureChat.Client.Services.ThemeRefreshHelper.Hook(this);
             SecureChat.Client.Services.ThemeRefreshHelper.ApplyTo(this);

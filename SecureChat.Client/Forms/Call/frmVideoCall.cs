@@ -177,6 +177,10 @@ namespace SecureChat.Client.Forms.Call
             Shown += (_, __) => _ = JoinCallGroupAsync();
             FormClosing += async (_, __) =>
             {
+                _leaveInitiated = true;
+                // Send CALL_ENDED via SignalR BEFORE HTTP cleanup, so the remote
+                // participant is notified even if the server /end is called later.
+                try { if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId)) await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED"); } catch { }
                 // Always notify the server on close, regardless of _leaveInitiated.
                 // This fixes the bug where the call stays Ongoing in the DB if
                 // EndCallAsync from the button handler failed silently (catch { }).

@@ -4115,6 +4115,41 @@ namespace SecureChat.Client
             _currentAvatarUrl = SecureChat.Client.Services.AvatarService.CurrentAvatarUrl;
             _currentDisplayName = SecureChat.Client.Services.AvatarService.CurrentDisplayName;
             UpdateSettingsHeaderUI();
+
+            // Refresh chat header avatar if viewing Saved Messages or a DM
+            if (!string.IsNullOrWhiteSpace(_activeConvId))
+            {
+                _chatAvatar.SetName(_currentDisplayName);
+                _ = RefreshAvatarForConversationAsync(_activeConvId, _currentAvatarUrl);
+            }
+
+            // Refresh Saved Messages row in sidebar
+            if (!string.IsNullOrWhiteSpace(_savedMessagesConvId))
+            {
+                _ = RefreshAvatarForConversationAsync(_savedMessagesConvId, _currentAvatarUrl);
+            }
+
+            // Refresh all DM rows in sidebar (where current user is the other party)
+            for (int i = 0; i < _convs.Count; i++)
+            {
+                var c = _convs[i];
+                if (!c.IsGroup && _convOtherUserId.TryGetValue(c.Id, out var oid) && oid == _currentUserId)
+                {
+                    _convs[i] = (c.Id, _currentDisplayName, c.Preview, c.Time, c.Unread, c.IsGroup);
+                    _ = RefreshAvatarForConversationAsync(c.Id, _currentAvatarUrl);
+                    if (_convRowCache.TryGetValue(c.Id, out var row))
+                    {
+                        foreach (Control ctrl in row.Controls)
+                        {
+                            if (ctrl is Label lbl && lbl.Location.Y == 10)
+                                lbl.Text = _currentDisplayName;
+                            else if (ctrl is AvatarControl av)
+                                av.SetName(_currentDisplayName);
+                        }
+                        _convRowCache[c.Id] = row;
+                    }
+                }
+            }
         }
 
         private string? DownloadAndCacheAvatar(string url)
@@ -6973,40 +7008,49 @@ namespace SecureChat.Client
                         SecureChat.Client.Services.AvatarService.UpdateProfile(
                             displayName ?? string.Empty, username ?? string.Empty, string.Empty);
                         UpdateSettingsHeaderUI();
+
+                        // Refresh Saved Messages row in sidebar
+                        if (!string.IsNullOrWhiteSpace(_savedMessagesConvId))
+                        {
+                            for (int i = 0; i < _convs.Count; i++)
+                            {
+                                var c = _convs[i];
+                                if (c.Id == _savedMessagesConvId)
+                                {
+                                    _convs[i] = (c.Id, "Saved Messages", c.Preview, c.Time, c.Unread, c.IsGroup);
+                                    _ = RefreshAvatarForConversationAsync(c.Id, _currentAvatarUrl);
+                                    break;
+                                }
+                            }
+                        }
                     }
                     // If this is a profile update for another user in a direct conversation,
-                    // update the conversation name and avatar
+                    // update the conversation name and avatar using userId-based lookup
                     if (!string.IsNullOrWhiteSpace(capturedUserId))
                     {
+                        string newName = displayName ?? capturedUsername;
+
                         for (int i = 0; i < _convs.Count; i++)
                         {
                             var c = _convs[i];
-                            if (!c.IsGroup && !string.IsNullOrWhiteSpace(c.Name))
+                            if (c.IsGroup) continue;
+
+                            if (_convOtherUserId.TryGetValue(c.Id, out var otherId) && otherId == capturedUserId)
                             {
-                                bool nameMatches = (!string.IsNullOrWhiteSpace(displayName) && c.Name == displayName)
-                                    || (_senderDisplayNameMap.TryGetValue(capturedUsername, out var dn) && c.Name == dn)
-                                    || c.Name == capturedUsername;
+                                _convs[i] = (c.Id, newName, c.Preview, c.Time, c.Unread, c.IsGroup);
 
-                                if (nameMatches && !string.IsNullOrWhiteSpace(displayName) && c.Name != displayName)
+                                if (_convRowCache.TryGetValue(c.Id, out var row))
                                 {
-                                    _convs[i] = (c.Id, displayName, c.Preview, c.Time, c.Unread, c.IsGroup);
-
-                                    if (_convRowCache.TryGetValue(c.Id, out var row))
+                                    foreach (Control ctrl in row.Controls)
                                     {
-                                        foreach (Control ctrl in row.Controls)
-                                        {
-                                            if (ctrl is Label lbl && lbl.Location.Y == 10)
-                                                lbl.Text = displayName;
-                                            else if (ctrl is AvatarControl av)
-                                                av.SetName(displayName);
-                                        }
+                                        if (ctrl is Label lbl && lbl.Location.Y == 10)
+                                            lbl.Text = newName;
+                                        else if (ctrl is AvatarControl av)
+                                            av.SetName(newName);
                                     }
                                 }
 
-                                if (nameMatches)
-                                {
-                                    _ = RefreshAvatarForConversationAsync(c.Id, capturedUrl);
-                                }
+                                _ = RefreshAvatarForConversationAsync(c.Id, capturedUrl);
                             }
                         }
                     }
@@ -7068,7 +7112,13 @@ namespace SecureChat.Client
                         _allMsgs.TryRemove(convId, out _);
                         _syncedConversations.Remove(convId);
                         _myMemberIdByConv.TryRemove(convId, out _);
-                        _convAvatarCache.Remove(convId);
+                        if (_convAvatarCache.TryGetValue(convId, out var oldImg))
+                        {
+                            oldImg?.Dispose();
+                            _convAvatarCache.Remove(convId);
+                        }
+                        else
+                            _convAvatarCache.Remove(convId);
 
                         if (_activeConvId == convId)
                         {
@@ -7781,9 +7831,21 @@ namespace SecureChat.Client
             if (!_activeCallIds.TryAdd(callId, 0))
                 return Task.CompletedTask;
 
+            // Check if caller already cancelled before we show the dialog
+            if (_pendingCallSignals.TryGetValue(callId, out var existing))
+            {
+                if (existing.Any(s => s == "CALL_ENDED" || s == "CALL_REJECTED"))
+                {
+                    _pendingCallSignals.TryRemove(callId, out _);
+                    _activeCallIds.TryRemove(callId, out _);
+                    return Task.CompletedTask;
+                }
+            }
+
             DeviceConfig.Load();
             if (!DeviceConfig.AcceptCallsOnThisDevice)
             {
+                _pendingCallSignals.TryRemove(callId, out _);
                 _activeCallIds.TryRemove(callId, out _);
                 _ = Task.Run(async () =>
                 {
@@ -7819,12 +7881,19 @@ namespace SecureChat.Client
                         var joinResponse = await http.PostAsync($"api/conversations/{conversationId}/calls/{callId}/join", null);
                         if (!joinResponse.IsSuccessStatusCode)
                         {
+                            var body = await joinResponse.Content.ReadAsStringAsync();
+                            MessageBox.Show(string.Format(LocalizationService.Translate("Could not join call: {0}"), body),
+                                LocalizationService.Translate("Call Failed"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            _pendingCallSignals.TryRemove(callId, out _);
                             _activeCallIds.TryRemove(callId, out _);
                             return;
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        MessageBox.Show(string.Format(LocalizationService.Translate("Could not join call: {0}"), ex.Message),
+                            LocalizationService.Translate("Call Failed"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        _pendingCallSignals.TryRemove(callId, out _);
                         _activeCallIds.TryRemove(callId, out _);
                         return;
                     }
@@ -7855,12 +7924,14 @@ namespace SecureChat.Client
                     {
                         // Join succeeded but form failed — send CALL_ENDED to avoid orphan call
                         try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_ENDED"); } catch { }
+                        _pendingCallSignals.TryRemove(callId, out _);
                         _activeCallIds.TryRemove(callId, out _);
                         System.Diagnostics.Debug.WriteLine($"[Call] Failed to open call form: {ex.Message}");
                     }
                 }
                 catch (Exception ex)
                 {
+                    _pendingCallSignals.TryRemove(callId, out _);
                     _activeCallIds.TryRemove(callId, out _);
                     System.Diagnostics.Debug.WriteLine($"[Call] HandleCallIncomingAsync failed: {ex.Message}");
                 }

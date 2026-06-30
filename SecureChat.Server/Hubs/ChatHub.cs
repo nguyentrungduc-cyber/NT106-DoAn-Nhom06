@@ -65,6 +65,22 @@ namespace SecureChat.Server.Hubs
             // Track presence via UserPresenceService (DB + broadcast)
             await presence.UserDisconnectedAsync(Me, Context.ConnectionId);
 
+            // Orphaned call cleanup: end any active calls for this user
+            try
+            {
+                var myConvs = await conversations.GetConversationsByMemberAsync(Me);
+                foreach (var conv in myConvs)
+                {
+                    var activeCall = await calls.GetActiveCallAsync(conv.ConversationID);
+                    if (activeCall != null && activeCall.Status != CallStatus.Ended)
+                    {
+                        await calls.EndCallAsync(activeCall.CallID);
+                        try { await Clients.Group(activeCall.CallID).SendAsync("CallSignalReceived", activeCall.CallID, "CALL_ENDED"); } catch { }
+                    }
+                }
+            }
+            catch { /* best-effort cleanup */ }
+
             await base.OnDisconnectedAsync(exception);
         }
 

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using SecureChat.Client.Forms.Settings;
+using SecureChat.Client.Helpers;
 using SecureChat.Client.Services;
 
 namespace SecureChat.Client
@@ -1716,6 +1717,7 @@ namespace SecureChat.Client
         private void OnGlobalUserStatusChanged(string userId, string status, DateTime? lastSeenUtc)
         {
             var isOnline = status == "Online";
+            var presenceText = PresenceFormatter.GetPresenceText(status, lastSeenUtc);
 
             // Update contact item in cached lists
             foreach (var list in new[] { _friends, _blockedUsers })
@@ -1724,11 +1726,10 @@ namespace SecureChat.Client
                 if (contact != null)
                 {
                     contact.IsOnline = isOnline;
-                    break;
                 }
             }
 
-            // Update AvatarControl in the visible friend/blocked panels
+            // Update AvatarControl + status text in the visible friend/blocked panels
             if (!IsDisposed) BeginInvoke(new Action(() =>
             {
                 foreach (var pnl in new[] { _pnlFriends, _pnlBlockedUsers })
@@ -1741,7 +1742,10 @@ namespace SecureChat.Client
                         {
                             avatar.ShowOnline = isOnline;
                             avatar.Invalidate();
-                            return;
+                            var statusLabel = row.Controls.OfType<Label>().FirstOrDefault(l => l.Name == "lblSub");
+                            if (statusLabel != null)
+                                statusLabel.Text = presenceText;
+                            break;
                         }
                     }
                 }

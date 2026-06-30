@@ -177,6 +177,11 @@ namespace SecureChat.Controllers
 
 			await calls.EndCallAsync(callID);
 
+			// Broadcast CALL_ENDED to the SignalR group so the remote client
+			// immediately knows the call ended (e.g. if caller closed via system X
+			// without sending the SignalR signal).
+			try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+
 			if (preEndStatus == CallStatus.Ongoing)
 			{
 				var ended = await calls.GetByIdAsync(callID) ?? call;
@@ -220,6 +225,8 @@ namespace SecureChat.Controllers
 
 				await calls.EndCallAsync(callID);
 
+				try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+
 				if (preEndStatus == CallStatus.Ongoing)
 				{
 					var ended = await calls.GetByIdAsync(callID) ?? call;
@@ -241,6 +248,8 @@ namespace SecureChat.Controllers
 					var preEndStatus = call.Status;
 
 					await calls.EndCallAsync(callID);
+
+					try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
 
 					if (preEndStatus == CallStatus.Ongoing)
 					{
