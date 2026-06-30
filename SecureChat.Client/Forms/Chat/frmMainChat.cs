@@ -166,7 +166,7 @@ namespace SecureChat.Client
         // Sau khi sync từ MariaDB, dictionary này được điền runtime
         // bằng MessageDecryptor.ProcessAsync (E2EE: server không thấy plaintext).
 
-        private readonly Dictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new();
+        private readonly ConcurrentDictionary<string, List<(string Id, string Text, bool Out, string Time, string Sender)>> _allMsgs = new();
         // Track delivery status cho từng messageId
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SecureChat.DTOs.DeliveryStatus> _msgDelivery = new();
         private readonly Dictionary<string, DateTime> _messageDates = new();
@@ -1176,20 +1176,23 @@ namespace SecureChat.Client
             _btnVideoCall = btnVideo;
             btnVideo.Click += async (s, e) =>
             {
-                if (string.IsNullOrWhiteSpace(_activeConvId))
-                {
-                    MessageBox.Show(LocalizationService.Translate("Please select a conversation first."), LocalizationService.Translate("Video Call"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (_isCallInitiating)
                     return;
-                }
-
-                if (_signalRClient == null || !_signalRClient.IsConnected)
-                {
-                        MessageBox.Show(LocalizationService.Translate("SignalR is not connected. Please wait..."), LocalizationService.Translate("Video Call"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-
+                _isCallInitiating = true;
                 try
                 {
+                    if (string.IsNullOrWhiteSpace(_activeConvId))
+                    {
+                        MessageBox.Show(LocalizationService.Translate("Please select a conversation first."), LocalizationService.Translate("Video Call"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    if (_signalRClient == null || !_signalRClient.IsConnected)
+                    {
+                            MessageBox.Show(LocalizationService.Translate("SignalR is not connected. Please wait..."), LocalizationService.Translate("Video Call"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
                     var createPayload = new { type = 1 };
                     var json = System.Text.Json.JsonSerializer.Serialize(createPayload);
                     var http = ApiClient.Instance.GetHttpClient();
@@ -1215,11 +1218,16 @@ namespace SecureChat.Client
                     bool isGroupCall = _convs.Find(c => c.Id == _activeConvId).IsGroup;
                     var callForm = new Forms.Call.frmVideoCall(_lblChatName.Text, callData.CallID, _activeConvId, _signalRClient, isGroupCall);
                     callForm.FormClosed += (_, __) => this.Activate();
+                    callForm.FormClosed += (_, __) => _isCallInitiating = false;
                     callForm.Show();
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show($"Cannot start call: {ex.Message}", LocalizationService.Translate("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    _isCallInitiating = false;
                 }
             };
             var btnMore = MakeChatHeaderBtn("⋮");
@@ -2133,7 +2141,7 @@ namespace SecureChat.Client
             _convs.RemoveAll(c => c.Id == conversationId);
 
             // Xóa tất cả tin nhắn của conversation
-            _allMsgs.Remove(conversationId);
+            _allMsgs.TryRemove(conversationId, out _);
 
             // Xóa khỏi cache sync
             _syncedConversations.Remove(conversationId);
@@ -4770,6 +4778,21 @@ namespace SecureChat.Client
                 return;
             }
 
+            // Fetch unread counts for ALL conversations in parallel
+            var unreadDict = new Dictionary<string, int>();
+            var unreadTasks = list
+                .Where(c => !string.IsNullOrWhiteSpace(c.ConversationID))
+                .Select(async c =>
+                {
+                    var (uOk, uData, _) = await _messageService.GetUnreadCountAsync(c.ConversationID);
+                    if (uOk && uData is not null)
+                    {
+                        lock (unreadDict) { unreadDict[c.ConversationID] = uData.Count; }
+                    }
+                }).ToArray();
+            if (unreadTasks.Length > 0)
+                await Task.WhenAll(unreadTasks);
+
             SafeBeginInvoke(() =>
             {
                 // Lưu preview/thời gian hiện tại trước khi rebuild
@@ -4787,7 +4810,7 @@ namespace SecureChat.Client
                 // Xoá cache của các conversation không còn trong danh sách
                 var newIds = new HashSet<string>(list.Select(c => c.ConversationID));
                 foreach (var key in _allMsgs.Keys.Where(k => !newIds.Contains(k)).ToList())
-                    _allMsgs.Remove(key);
+                    _allMsgs.TryRemove(key, out _);
                 foreach (var key in _syncedConversations.Where(k => !newIds.Contains(k)).ToList())
                     _syncedConversations.Remove(key);
                 foreach (var key in _myMemberIdByConv.Keys.Where(k => !newIds.Contains(k)).ToList())
@@ -4809,7 +4832,8 @@ namespace SecureChat.Client
                     if (c.LastActivityAt == null && existingTimes.TryGetValue(c.ConversationID, out var oldTime))
                         time = oldTime;
 
-                    _convs.Add((c.ConversationID, display, convPreview, time, 0, isGroup));
+                    int unread = unreadDict.TryGetValue(c.ConversationID, out var u) ? u : 0;
+                    _convs.Add((c.ConversationID, display, convPreview, time, unread, isGroup));
                 }
 
                 // Pin saved messages to the top
@@ -4978,6 +5002,10 @@ namespace SecureChat.Client
                             merged.Add(m);
                     _allMsgs[convId] = merged;
                 }
+
+                _allMsgs[convId] = _allMsgs[convId]
+                    .OrderBy(m => _messageDates.TryGetValue(m.Id, out var d) ? d : DateTime.MinValue)
+                    .ToList();
 
                 if (decrypted.Count > 0)
                     UpdateConversationPreview(convId, decrypted[^1]);
@@ -6890,6 +6918,8 @@ namespace SecureChat.Client
                     _savedMessagesConvId = convId;
                     return;
                 }
+                // Join the SignalR group immediately so realtime messages arrive
+                await _signalRClient.JoinConversationAsync(convId);
                 SafeBeginInvoke(() =>
                 {
                     if (_convs.Any(c => c.Id == convId)) return;
@@ -7035,7 +7065,7 @@ namespace SecureChat.Client
                 {
                     if (_convs.RemoveAll(c => c.Id == convId) > 0)
                     {
-                        _allMsgs.Remove(convId);
+                        _allMsgs.TryRemove(convId, out _);
                         _syncedConversations.Remove(convId);
                         _myMemberIdByConv.TryRemove(convId, out _);
                         _convAvatarCache.Remove(convId);
@@ -7121,7 +7151,7 @@ namespace SecureChat.Client
                 SafeBeginInvoke(() =>
                 {
                     // Always remove cached messages so this conversation re-fetches from server
-                    _allMsgs.Remove(convId);
+                    _allMsgs.TryRemove(convId, out _);
                     _syncedConversations.Remove(convId);
 
                     // Only refresh UI state when this conversation is currently visible
@@ -7283,34 +7313,56 @@ namespace SecureChat.Client
             _signalRClient.Reconnected += async _ =>
             {
                 await ReRegisterPublicKeyAsync();
+
+                // Rejoin ALL conversation groups — reconnect does NOT re-trigger
+                // OnConnectedAsync, so group membership is lost after reconnect
+                var allConvs = _convs.ToList();
+                foreach (var c in allConvs)
+                {
+                    try { await _signalRClient.JoinConversationAsync(c.Id); } catch { /* best-effort per conversation */ }
+                }
+
+                // Force re-sync ALL conversations — clear sync guards so
+                // SyncMessagesForActiveConversationAsync re-fetches from API
+                _syncedConversations.Clear();
+                lock (_processedMessageIdsLock)
+                {
+                    _processedMessageIds.Clear();
+                }
+
+                // Full message sync for active conversation only
                 if (!string.IsNullOrWhiteSpace(_activeConvId))
                 {
-                    await _signalRClient.JoinConversationAsync(_activeConvId);
+                    await SyncMessagesForActiveConversationAsync(_activeConvId);
+                }
 
-                    SafeBeginInvoke(() =>
+                // Metadata refresh for ALL conversations (preview, unread, sidebar order).
+                // Internally calls LoadConversation for the active conversation, which
+                // triggers mark-read, delivery-status refresh, and pin reload.
+                await SyncConversationsAsync();
+
+                SafeBeginInvoke(() =>
+                {
+                    if (!string.IsNullOrWhiteSpace(_activeConvId))
                     {
                         var conv = _convs.Find(c => c.Id == _activeConvId);
                         if (conv != default && !conv.IsGroup && _convOtherUserId.TryGetValue(_activeConvId, out var otherId))
                         {
                             var _q = _signalRClient.QueryUserPresenceAsync(otherId);
                         }
+                    }
 
-                        _syncedConversations.Remove(_activeConvId);
-                        _pinnedMessageIds.Clear();
-                        _pinnedByMap.Clear();
+                    // Re-query presence for all sidebar conversations
+                    foreach (var kvp in _convOtherUserId)
+                    {
+                        var _p = _signalRClient.QueryUserPresenceAsync(kvp.Value);
+                    }
 
-                        // Re-query presence for all sidebar conversations
-                        foreach (var kvp in _convOtherUserId)
-                        {
-                            var _p = _signalRClient.QueryUserPresenceAsync(kvp.Value);
-                        }
-
-                        if (_isSidebarOpen)
-                        {
-                            var _s = LoadRightSidebarContentAsync();
-                        }
-                    });
-                }
+                    if (_isSidebarOpen)
+                    {
+                        var _s = LoadRightSidebarContentAsync();
+                    }
+                });
             };
 
             try
@@ -7669,17 +7721,19 @@ namespace SecureChat.Client
                         if (idx >= 0)
                         {
                             _currentMsgs.RemoveAt(idx);
-                            _messageDates.Remove(messageId);
-                            _forwardMetadata.TryRemove(messageId, out _);
-                            _forwardOriginalSenderId.TryRemove(messageId, out _);
-                            _pinnedByMap.TryRemove(messageId, out _);
-                            _pinnedMessageIds.Remove(messageId);
 
                             if (conversationId == _activeConvId)
                                 BuildMessages();
 
                             RefreshSidebarPreview();
                         }
+
+                        // Clean up metadata regardless of active conversation
+                        _messageDates.Remove(messageId);
+                        _forwardMetadata.TryRemove(messageId, out _);
+                        _forwardOriginalSenderId.TryRemove(messageId, out _);
+                        _pinnedByMap.TryRemove(messageId, out _);
+                        _pinnedMessageIds.Remove(messageId);
 
                         // Also remove from _allMsgs cache
                         if (_allMsgs.TryGetValue(conversationId, out var list))
@@ -7702,10 +7756,16 @@ namespace SecureChat.Client
         }
 
         private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _pendingCallSignals = new();
+        private readonly ConcurrentDictionary<string, byte> _activeCallIds = new();
+        private bool _isCallInitiating;
 
         private Task HandleSignalRCallSignalAsync(string callId, string signal)
         {
             if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(signal))
+                return Task.CompletedTask;
+
+            // If a frmVideoCall is already open for this call, it handles signals directly
+            if (_activeCallIds.ContainsKey(callId))
                 return Task.CompletedTask;
 
             var queue = _pendingCallSignals.GetOrAdd(callId, _ => new ConcurrentQueue<string>());
@@ -7717,9 +7777,14 @@ namespace SecureChat.Client
         {
             if (IsDisposed) return Task.CompletedTask;
 
+            // Prevent duplicate incoming dialogs for the same callId
+            if (!_activeCallIds.TryAdd(callId, 0))
+                return Task.CompletedTask;
+
             DeviceConfig.Load();
             if (!DeviceConfig.AcceptCallsOnThisDevice)
             {
+                _activeCallIds.TryRemove(callId, out _);
                 _ = Task.Run(async () =>
                 {
                     try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED"); } catch { }
@@ -7743,6 +7808,7 @@ namespace SecureChat.Client
                     if (!form.Accepted)
                     {
                         _pendingCallSignals.TryRemove(callId, out _);
+                        _activeCallIds.TryRemove(callId, out _);
                         try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED"); } catch { }
                         return;
                     }
@@ -7751,9 +7817,17 @@ namespace SecureChat.Client
                     {
                         var http = ApiClient.Instance.GetHttpClient();
                         var joinResponse = await http.PostAsync($"api/conversations/{conversationId}/calls/{callId}/join", null);
-                        if (!joinResponse.IsSuccessStatusCode) return;
+                        if (!joinResponse.IsSuccessStatusCode)
+                        {
+                            _activeCallIds.TryRemove(callId, out _);
+                            return;
+                        }
                     }
-                    catch { return; }
+                    catch
+                    {
+                        _activeCallIds.TryRemove(callId, out _);
+                        return;
+                    }
 
                     try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_JOINED"); } catch { }
 
@@ -7761,24 +7835,33 @@ namespace SecureChat.Client
 
                     try
                     {
-                        bool isGroupCall = _convs.Find(c => c.Id == conversationId).IsGroup;
+                        var convInfo = _convs.Find(c => c.Id == conversationId);
+                        bool isGroupCall = convInfo.IsGroup;
                         var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!, isGroupCall);
                         callForm.FormClosed += (s, e) =>
                         {
                             _pendingCallSignals.TryRemove(callId, out _);
+                            _activeCallIds.TryRemove(callId, out _);
                             this.Activate();
                         };
                         if (_pendingCallSignals.TryRemove(callId, out var pending))
+                        {
+                            _activeCallIds.TryAdd(callId, 0);
                             callForm.ReplayPendingSignals(pending);
+                        }
                         callForm.Show();
                     }
                     catch (Exception ex)
                     {
+                        // Join succeeded but form failed — send CALL_ENDED to avoid orphan call
+                        try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_ENDED"); } catch { }
+                        _activeCallIds.TryRemove(callId, out _);
                         System.Diagnostics.Debug.WriteLine($"[Call] Failed to open call form: {ex.Message}");
                     }
                 }
                 catch (Exception ex)
                 {
+                    _activeCallIds.TryRemove(callId, out _);
                     System.Diagnostics.Debug.WriteLine($"[Call] HandleCallIncomingAsync failed: {ex.Message}");
                 }
             });

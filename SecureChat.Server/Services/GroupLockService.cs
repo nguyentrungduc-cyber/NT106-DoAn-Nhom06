@@ -32,9 +32,11 @@ namespace SecureChat.Server.Services
                 if (_disposed) return;
                 _disposed = true;
                 _sem.Release();
-                // Cleanup: if no waiters, remove from dictionary to prevent memory leak
-                if (_sem.CurrentCount == 1)
-                    _store.TryRemove(_key, out _);
+                // Intentionally NOT removing from _store: removing the semaphore while
+                // another thread may have already retrieved it via GetOrAdd creates a
+                // TOCTOU race that lets two threads enter the critical section
+                // simultaneously. SemaphoreSlim is ~40 bytes; the dictionary is bounded
+                // by conversation count, not by lock acquisitions.
             }
         }
     }

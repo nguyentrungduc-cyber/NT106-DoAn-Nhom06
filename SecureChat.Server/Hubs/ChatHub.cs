@@ -308,6 +308,19 @@ namespace SecureChat.Server.Hubs
                 throw new HubException("You are not a participant of this call.");
 
             await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, $"{Me}|{signal}");
+
+            // When a participant declines, update their server-side status so EndCall
+            // history logic can detect the decline and show the correct message.
+            if (signal == "CALL_REJECTED")
+            {
+                var rejectedParticipant = call.Participants?
+                    .FirstOrDefault(p => p.Member?.UserID == Me && p.Status == CallParticipantStatus.Ringing);
+                if (rejectedParticipant != null)
+                {
+                    await calls.UpdateParticipantStatusAsync(
+                        rejectedParticipant.ParticipantID, callId, CallParticipantStatus.Declined);
+                }
+            }
         }
 
         /// <summary>

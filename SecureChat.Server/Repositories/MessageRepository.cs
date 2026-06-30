@@ -68,13 +68,9 @@ namespace SecureChat.Repositories
 
 			message.DeletedAt = DateTime.UtcNow;
 
-			// If this was the conversation's last message, clear the reference
-			var conv = await db.Conversations.FirstOrDefaultAsync(c => c.LastMessageID == messageID);
-			if (conv is not null)
-			{
-				conv.LastMessageID = null;
-				conv.LastActivityAt = null;
-			}
+			// If this was the conversation's last message, find the previous visible one
+			if (db.Conversations.Any(c => c.LastMessageID == messageID))
+				await RefreshLastMessageAsync(message.ConversationID);
 
 			await db.SaveChangesAsync();
 		}
@@ -85,7 +81,34 @@ namespace SecureChat.Repositories
 				?? throw new KeyNotFoundException($"Không tìm thấy tin nhắn {messageID}.");
 
 			message.RecalledAt = DateTime.UtcNow;
+
+			// If this was the conversation's last message, find the previous visible one
+			if (db.Conversations.Any(c => c.LastMessageID == messageID))
+				await RefreshLastMessageAsync(message.ConversationID);
+
 			await db.SaveChangesAsync();
+		}
+
+		/// <summary>
+		/// After deleting/recalling the current last message, find the newest
+		/// visible (non-deleted, non-recalled) message and set it as the new last message.
+		/// If none exists, LastMessageID is set to null.
+		/// </summary>
+		private async Task RefreshLastMessageAsync(string conversationID)
+		{
+			var conv = await db.Conversations.FindAsync(conversationID);
+			if (conv is null) return;
+
+			var previous = await db.Messages
+				.Where(m => m.ConversationID == conversationID
+					&& m.DeletedAt == null
+					&& m.RecalledAt == null
+					&& (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow))
+				.OrderByDescending(m => m.SentAt)
+				.FirstOrDefaultAsync();
+
+			conv.LastMessageID = previous?.MessageID;
+			conv.LastActivityAt = previous?.SentAt;
 		}
 
 		public async Task DeleteAsync(string messageID)

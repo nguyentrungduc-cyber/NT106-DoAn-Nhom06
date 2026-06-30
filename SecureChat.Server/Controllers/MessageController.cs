@@ -168,24 +168,26 @@ namespace SecureChat.Controllers
 			expiresAt = DateTime.UtcNow.AddSeconds(req.ExpiresAfterSeconds.Value);
 		}
 
-		var msg = await messages.CreateAsync(new Message {
-			MessageID        = NewID(),
-			ConversationID   = conversationID,
-			SenderID         = member.MemberID,
-			OriginalSenderID = req.OriginalSenderID,
-			ReplyToID        = req.ReplyToID,
-			Type             = req.Type,
-			Content          = req.Content,
-			ContentIV        = req.ContentIV,
-			ExpiresAt        = expiresAt
-		});
+		// Wrap all DB writes in a transaction so LastMessage is never stale
+		await using var tx = await conversations.DbContext.Database.BeginTransactionAsync();
+		try
+		{
+			var msg = await messages.CreateAsync(new Message {
+				MessageID        = NewID(),
+				ConversationID   = conversationID,
+				SenderID         = member.MemberID,
+				OriginalSenderID = req.OriginalSenderID,
+				ReplyToID        = req.ReplyToID,
+				Type             = req.Type,
+				Content          = req.Content,
+				ContentIV        = req.ContentIV,
+				ExpiresAt        = expiresAt
+			});
 
 			if (req.Attachments is not null)
 			{
 				foreach (var att in req.Attachments)
 				{
-					// If RecipientEncryptions is provided, create one attachment per recipient
-					// Otherwise, use the single-recipient format (backward compatibility)
 					if (att.RecipientEncryptions is not null && att.RecipientEncryptions.Count > 0)
 					{
 						foreach (var recipientEnc in att.RecipientEncryptions)
@@ -214,7 +216,6 @@ namespace SecureChat.Controllers
 					}
 					else
 					{
-						// Legacy single-recipient format
 						await messages.CreateAttachmentAsync(new MessageAttachment
 						{
 							AttachmentID = NewID(),
@@ -247,15 +248,11 @@ namespace SecureChat.Controllers
 
 			var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
 
-			// Lấy conversation để check loại (DM hay group)
 			var conversation = await conversations.GetByIdAsync(conversationID);
 			bool isDm = conversation?.Type == ConversationType.Direct;
 
 			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID))
 			{
-				// Telegram-style block: với DM, nếu 1 trong 2 chặn nhau
-				// thì KHÔNG tạo MessageStatus (không deliver) nhưng vẫn lưu DB
-				// → người gửi thấy 1 tick mãi, không biết bị chặn
 				if (isDm && await friends.IsBlockedEitherWayAsync(Me, m.UserID))
 					continue;
 
@@ -266,8 +263,16 @@ namespace SecureChat.Controllers
 				});
 			}
 
+			await tx.CommitAsync();
+
 			var loaded = await messages.GetByIdAsync(msg.MessageID);
 			return CreatedAtAction(nameof(GetMessage), new { conversationID, messageID = msg.MessageID }, MessageResponse.From(loaded!));
+		}
+		catch
+		{
+			await tx.RollbackAsync();
+			throw;
+		}
 		}
 
 		[HttpPatch("{messageID}")]
