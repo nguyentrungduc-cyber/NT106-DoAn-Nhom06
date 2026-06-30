@@ -6,6 +6,7 @@ using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Hubs;
+using Microsoft.EntityFrameworkCore;
 using System;
 
 namespace SecureChat.Controllers
@@ -170,9 +171,11 @@ namespace SecureChat.Controllers
 		}
 
 		// Wrap all DB writes in a transaction so LastMessage is never stale
-		await using var tx = await conversations.DbContext.Database.BeginTransactionAsync();
-		try
+		var strategy = conversations.DbContext.Database.CreateExecutionStrategy();
+		return await strategy.ExecuteAsync<IActionResult>(async () =>
 		{
+			using var tx = await conversations.DbContext.Database.BeginTransactionAsync();
+
 			var msg = await messages.CreateAsync(new Message {
 				MessageID        = NewID(),
 				ConversationID   = conversationID,
@@ -268,15 +271,7 @@ namespace SecureChat.Controllers
 
 			var loaded = await messages.GetByIdAsync(msg.MessageID);
 			return CreatedAtAction(nameof(GetMessage), new { conversationID, messageID = msg.MessageID }, MessageResponse.From(loaded!));
-		}
-		catch (Exception ex)
-		{
-			await tx.RollbackAsync();
-			Console.Error.WriteLine($"[SendMessage ERROR] {ex.GetType().Name}: {ex.Message}");
-			if (ex.InnerException != null)
-				Console.Error.WriteLine($"[SendMessage INNER] {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
-			throw;
-		}
+		});
 		}
 
 		[HttpPatch("{messageID}")]
