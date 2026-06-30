@@ -240,6 +240,23 @@ Directory.CreateDirectory(Path.Combine(webRoot, "uploads"));
 Directory.CreateDirectory(Path.Combine(webRoot, "voice"));
 Console.Error.WriteLine($"[StaticFiles] Serving from: {webRoot}");
 
+app.UseExceptionHandler(appBuilder =>
+{
+    appBuilder.Run(async context =>
+    {
+        var ex = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        if (ex != null)
+        {
+            Console.Error.WriteLine($"[500] {context.Request.Method} {context.Request.Path}: {ex}");
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            var msg = ex.InnerException?.Message ?? ex.Message;
+            await context.Response.WriteAsync(
+                System.Text.Json.JsonSerializer.Serialize(new { error = msg }));
+        }
+    });
+});
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();

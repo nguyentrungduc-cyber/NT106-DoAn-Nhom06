@@ -6,6 +6,7 @@ using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Hubs;
+using System;
 
 namespace SecureChat.Controllers
 {
@@ -268,9 +269,12 @@ namespace SecureChat.Controllers
 			var loaded = await messages.GetByIdAsync(msg.MessageID);
 			return CreatedAtAction(nameof(GetMessage), new { conversationID, messageID = msg.MessageID }, MessageResponse.From(loaded!));
 		}
-		catch
+		catch (Exception ex)
 		{
 			await tx.RollbackAsync();
+			Console.Error.WriteLine($"[SendMessage ERROR] {ex.GetType().Name}: {ex.Message}");
+			if (ex.InnerException != null)
+				Console.Error.WriteLine($"[SendMessage INNER] {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
 			throw;
 		}
 		}
