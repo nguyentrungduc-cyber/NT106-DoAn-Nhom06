@@ -337,6 +337,7 @@ namespace SecureChat.Client.Forms.Profile
                     _profile.AvatarUrl = avatarUrl;
                     var cached = await AvatarCacheService.DownloadAsync(avatarUrl);
                     _profile.AvatarPath = cached ?? avatarUrl;
+                    AvatarService.UpdateAvatar(avatarUrl);
                 }
 
                 _lblInitial.Text = GetInitials(name);

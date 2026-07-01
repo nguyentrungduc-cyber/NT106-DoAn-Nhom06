@@ -4116,11 +4116,15 @@ namespace SecureChat.Client
             _currentDisplayName = SecureChat.Client.Services.AvatarService.CurrentDisplayName;
             UpdateSettingsHeaderUI();
 
-            // Refresh chat header avatar if viewing Saved Messages or a DM
+            // Refresh chat header avatar if viewing Saved Messages or a DM (NOT group)
             if (!string.IsNullOrWhiteSpace(_activeConvId))
             {
-                _chatAvatar.SetName(_currentDisplayName);
-                _ = RefreshAvatarForConversationAsync(_activeConvId, _currentAvatarUrl);
+                var activeConv = _convs.Find(c => c.Id == _activeConvId);
+                if (activeConv != default && !activeConv.IsGroup)
+                {
+                    _chatAvatar.SetName(_currentDisplayName);
+                    _ = RefreshAvatarForConversationAsync(_activeConvId, _currentAvatarUrl);
+                }
             }
 
             // Refresh Saved Messages row in sidebar
@@ -7194,6 +7198,9 @@ namespace SecureChat.Client
                     if (_activeConvId == convId)
                         _lblChatName.Text = display;
                     UpdateConvRowName(convId, display);
+                    // Avatar may have changed alongside group settings
+                    if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
+                        _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
                 });
             };
             _signalRClient.MessagesCleared += async convId =>
