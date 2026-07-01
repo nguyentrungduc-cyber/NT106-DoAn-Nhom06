@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using SecureChat.Models;
+using SecureChat.Client;
 using SecureChat.Client.Services;
 using SecureChat.Client.Forms.Settings;
 
@@ -18,6 +19,21 @@ namespace SecureChat.Client.Forms.Call
         private readonly Panel _pnlAvatar;
         private readonly string _callerName;
         private readonly CallType _callType;
+        private string? _callerUserId;
+
+        public string? CallerUserId
+        {
+            get => _callerUserId;
+            set
+            {
+                _callerUserId = value;
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    frmMainChat.GlobalProfileUpdated -= OnCallerProfileUpdated;
+                    frmMainChat.GlobalProfileUpdated += OnCallerProfileUpdated;
+                }
+            }
+        }
 
         private static readonly Color TgBlue = Color.FromArgb(0x2C, 0xA5, 0xE0);
         private static readonly Color AcceptGreen = Color.FromArgb(0x21, 0xA1, 0x66);
@@ -48,7 +64,8 @@ namespace SecureChat.Client.Forms.Call
                 using var br = new SolidBrush(TgBlue);
                 e.Graphics.FillEllipse(br, 0, 0, _pnlAvatar.Width - 1, _pnlAvatar.Height - 1);
                 using var brush = new SolidBrush(Color.White);
-                var initial = callerName.Length > 0 ? callerName[0].ToString().ToUpperInvariant() : "?";
+                var currentName = _lblCaller?.Text ?? _callerName;
+                var initial = currentName.Length > 0 ? currentName[0].ToString().ToUpperInvariant() : "?";
                 using var font = new Font("Segoe UI", 28f, FontStyle.Bold);
                 var size = e.Graphics.MeasureString(initial, font);
                 e.Graphics.DrawString(initial, font, brush,
@@ -139,8 +156,24 @@ namespace SecureChat.Client.Forms.Call
         protected override void Dispose(bool disposing)
         {
             if (disposing)
+            {
                 LocalizationService.LanguageChanged -= OnLanguageChanged;
+                if (!string.IsNullOrWhiteSpace(_callerUserId))
+                    frmMainChat.GlobalProfileUpdated -= OnCallerProfileUpdated;
+            }
             base.Dispose(disposing);
+        }
+
+        private void OnCallerProfileUpdated(string userId, string displayName, string username, string avatarUrl)
+        {
+            if (userId != _callerUserId) return;
+            if (IsDisposed) return;
+            BeginInvoke(new Action(() =>
+            {
+                string newName = !string.IsNullOrWhiteSpace(displayName) ? displayName : (!string.IsNullOrWhiteSpace(username) ? username : _callerName);
+                _lblCaller.Text = newName;
+                _pnlAvatar.Invalidate();
+            }));
         }
     }
 }

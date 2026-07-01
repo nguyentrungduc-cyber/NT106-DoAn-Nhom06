@@ -143,6 +143,7 @@ namespace SecureChat.Client
         // Shared presence cache accessible from other forms (contacts, group info, etc.)
         public static readonly ConcurrentDictionary<string, (bool IsOnline, DateTime? LastSeenUtc)> GlobalPresence = new();
         public static event Action<string, string, DateTime?>? GlobalUserStatusChanged;
+        public static event Action<string, string, string, string>? GlobalProfileUpdated; // userId, displayName, username, avatarUrl
 
         // Key = convId, Value = danh sách tin nhắn của conversation đó
         // Thêm biến lưu trạng thái trả lời tin nhắn
@@ -197,6 +198,7 @@ namespace SecureChat.Client
         private readonly ConcurrentDictionary<string, string> _senderDisplayNameMap = new();
         private readonly ConcurrentDictionary<string, string> _senderAvatarMap = new();
         private readonly ConcurrentDictionary<string, string> _usernameToUserId = new();
+        private readonly ConcurrentDictionary<string, string> _userIdToLatestUsername = new();
         private readonly ConcurrentDictionary<string, string> _forwardMetadata = new();
         private readonly ConcurrentDictionary<string, string> _forwardOriginalSenderId = new();
         private readonly HashSet<string> _pinnedMessageIds = new();
@@ -1217,6 +1219,8 @@ namespace SecureChat.Client
 
                     bool isGroupCall = _convs.Find(c => c.Id == _activeConvId).IsGroup;
                     var callForm = new Forms.Call.frmVideoCall(_lblChatName.Text, callData.CallID, _activeConvId, _signalRClient, isGroupCall);
+                    if (!isGroupCall && _convOtherUserId.TryGetValue(_activeConvId, out var remoteId))
+                        callForm.RemoteUserId = remoteId;
                     callForm.FormClosed += (_, __) => this.Activate();
                     callForm.FormClosed += (_, __) => _isCallInitiating = false;
                     callForm.Show();
@@ -1745,7 +1749,8 @@ namespace SecureChat.Client
                     },
                     null,
                     TG.GetAvatarColor(m.User?.DisplayName ?? "?"),
-                    m.MemberID
+                    m.MemberID,
+                    m.UserID
                 )).ToList();
             }
             catch { }
@@ -2248,7 +2253,8 @@ namespace SecureChat.Client
                     other.User.BioText,
                     isOnline,
                     lastSeen,
-                    other.User.ShowOnlineStatus
+                    other.User.ShowOnlineStatus,
+                    otherUserId
                 );
                 dlg.ShowDialog(this);
             }
@@ -3162,9 +3168,16 @@ namespace SecureChat.Client
                                         catch (Exception ex)
                                         {
                                     SafeBeginInvoke(() => MessageBox.Show(this, ex.Message, LocalizationService.Translate("SignalR"), MessageBoxButtons.OK, MessageBoxIcon.Warning));
-                                        }
-                                    }
-                                }
+                }
+            }
+
+            // Update sender display name and avatar maps for own messages
+            if (!string.IsNullOrWhiteSpace(_currentUsername))
+            {
+                _senderDisplayNameMap[_currentUsername] = _currentDisplayName;
+                _senderAvatarMap[_currentUsername] = _currentAvatarUrl;
+            }
+        }
                             }
                             catch (Exception ex)
                             {
@@ -6994,6 +7007,31 @@ namespace SecureChat.Client
                 string capturedUserId = userId;
                 SafeBeginInvoke(() =>
                 {
+                    if (!string.IsNullOrWhiteSpace(capturedUserId) && !string.IsNullOrWhiteSpace(username))
+                    {
+                        // Detect username change and migrate all message sender entries
+                        if (_userIdToLatestUsername.TryGetValue(capturedUserId, out var oldUsername) && oldUsername != username)
+                        {
+                            // Migrate all messages in ALL conversations
+                            foreach (var kv in _allMsgs)
+                            {
+                                var list = kv.Value;
+                                for (int i = 0; i < list.Count; i++)
+                                {
+                                    var msg = list[i];
+                                    if (msg.Sender == oldUsername)
+                                        list[i] = (msg.Id, msg.Text, msg.Out, msg.Time, username);
+                                }
+                            }
+                            // Remove old username from lookup maps
+                            _senderDisplayNameMap.TryRemove(oldUsername, out _);
+                            _senderAvatarMap.TryRemove(oldUsername, out _);
+                            _usernameToUserId.TryRemove(oldUsername, out _);
+                        }
+                        _userIdToLatestUsername[capturedUserId] = username;
+                        _usernameToUserId[username] = capturedUserId;
+                    }
+
                     if (!string.IsNullOrWhiteSpace(displayName) && !string.IsNullOrWhiteSpace(username))
                     {
                         _senderDisplayNameMap[username] = displayName;
@@ -7084,7 +7122,7 @@ namespace SecureChat.Client
                     // Refresh sidebar previews in case display name changed
                     RefreshAllSidebarPreviews();
                     // Rebuild messages if sender display name changed in active conversation
-                    if (!string.IsNullOrWhiteSpace(_activeConvId) && !string.IsNullOrWhiteSpace(capturedUsername))
+                    if (!string.IsNullOrWhiteSpace(_activeConvId) && (!string.IsNullOrWhiteSpace(capturedUsername) || !string.IsNullOrWhiteSpace(capturedUserId)))
                     {
                         var activeConv = _convs.Find(c => c.Id == _activeConvId);
                         if (activeConv != default)
@@ -7092,7 +7130,15 @@ namespace SecureChat.Client
                             bool needsRebuild = false;
                             foreach (var msg in _currentMsgs)
                             {
-                                if (msg.Sender == capturedUsername)
+                                if (!string.IsNullOrWhiteSpace(capturedUsername) && msg.Sender == capturedUsername)
+                                {
+                                    needsRebuild = true;
+                                    break;
+                                }
+                                // Also match via userId in case username was migrated
+                                if (!needsRebuild && !string.IsNullOrWhiteSpace(capturedUserId)
+                                    && _userIdToLatestUsername.TryGetValue(capturedUserId, out var latest)
+                                    && msg.Sender == latest)
                                 {
                                     needsRebuild = true;
                                     break;
@@ -7102,6 +7148,8 @@ namespace SecureChat.Client
                                 BuildMessages();
                         }
                     }
+                    // Fire global event for other open forms (contacts, group info, etc.)
+                    GlobalProfileUpdated?.Invoke(capturedUserId, displayName ?? string.Empty, capturedUsername ?? string.Empty, capturedUrl ?? string.Empty);
                     // Refresh right sidebar if open
                     if (_isSidebarOpen)
                         _ = LoadRightSidebarContentAsync();
@@ -7165,10 +7213,7 @@ namespace SecureChat.Client
                     if (!old.IsGroup && !string.IsNullOrWhiteSpace(conv.OtherUserId))
                         _convOtherUserId[convId] = conv.OtherUserId;
 
-                    if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
-                    {
-                        _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
-                    }
+                    _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
 
                     if (_activeConvId == convId)
                     {
@@ -7199,8 +7244,7 @@ namespace SecureChat.Client
                         _lblChatName.Text = display;
                     UpdateConvRowName(convId, display);
                     // Avatar may have changed alongside group settings
-                    if (!string.IsNullOrWhiteSpace(conv.AvatarURL))
-                        _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
+                    _ = RefreshAvatarForConversationAsync(convId, conv.AvatarURL);
                 });
             };
             _signalRClient.MessagesCleared += async convId =>
@@ -7883,6 +7927,8 @@ namespace SecureChat.Client
                 try
                 {
                     var form = new Forms.Call.frmIncomingCall(callerName, callType);
+                    if (_convOtherUserId.TryGetValue(conversationId, out var callerId))
+                        form.CallerUserId = callerId;
                     _activeIncomingDialogs[callId] = form;
 
                     // Heartbeat: poll call status every 5s while dialog is visible.
@@ -7972,6 +8018,8 @@ namespace SecureChat.Client
                         var convInfo = _convs.Find(c => c.Id == conversationId);
                         bool isGroupCall = convInfo.IsGroup;
                         var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!, isGroupCall);
+                        if (!isGroupCall && _convOtherUserId.TryGetValue(conversationId, out var incomingRemoteId))
+                            callForm.RemoteUserId = incomingRemoteId;
                         callForm.FormClosed += (s, e) =>
                         {
                             _pendingCallSignals.TryRemove(callId, out _);

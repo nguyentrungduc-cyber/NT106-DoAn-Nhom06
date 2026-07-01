@@ -89,6 +89,15 @@ namespace SecureChat.Client.Forms.Call
         private bool _leaveInitiated;
         private bool _serverCleanupAttempted;
 
+        private string? _remoteUserId;
+        private Image? _remoteAvatar;
+
+        public string? RemoteUserId
+        {
+            get => _remoteUserId;
+            set => _remoteUserId = value;
+        }
+
         // drag state for local preview
         private bool isDragging;
         private bool localPreviewMovedByUser;
@@ -173,6 +182,7 @@ namespace SecureChat.Client.Forms.Call
             _signalRClient.VideoFrameReceived += OnVideoFrameReceived;
             _signalRClient.AudioDataReceived += OnAudioDataReceived;
             _signalRClient.Reconnected += OnSignalRReconnected;
+            _signalRClient.ProfileUpdated += OnProfileUpdated;
 
             Shown += (_, __) => _ = JoinCallGroupAsync();
             FormClosing += async (_, __) =>
@@ -553,7 +563,19 @@ namespace SecureChat.Client.Forms.Call
         private void PnlAvatar_Paint(object? s, PaintEventArgs e)
         {
             var rect = new Rectangle(0, 0, pnlAvatar.Width, pnlAvatar.Height);
-            TG.DrawCircleAvatar(e.Graphics, rect, null, "", TgBlue, drawInitials: false);
+            if (_remoteAvatar != null)
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var path = new GraphicsPath();
+                path.AddEllipse(rect);
+                e.Graphics.SetClip(path);
+                e.Graphics.DrawImage(_remoteAvatar, rect);
+                e.Graphics.ResetClip();
+            }
+            else
+            {
+                TG.DrawCircleAvatar(e.Graphics, rect, null, "", TgBlue, drawInitials: false);
+            }
         }
 
         private void PnlLocalWrap_Paint(object? s, PaintEventArgs e)
@@ -1148,6 +1170,55 @@ namespace SecureChat.Client.Forms.Call
             _ = JoinCallGroupAsync();
         }
 
+        private async Task OnProfileUpdated(string userId, string? displayName, string? username, string? avatarUrl)
+        {
+            if (_isGroupCall)
+            {
+                // Update group participant panel if visible
+                if (_participants.TryGetValue(userId, out var rp))
+                {
+                    string newName = !string.IsNullOrWhiteSpace(displayName) ? displayName : (username ?? rp.UserName.Text);
+                    BeginInvoke(new Action(() =>
+                    {
+                        rp.UserName.Text = newName;
+                    }));
+                }
+            }
+            else if (userId == _remoteUserId)
+            {
+                string newName = !string.IsNullOrWhiteSpace(displayName) ? displayName : (username ?? "Friend");
+                if (!string.IsNullOrWhiteSpace(avatarUrl))
+                {
+                    var img = await Task.Run(() => AvatarCacheService.LoadImage(avatarUrl));
+                    if (img != null)
+                    {
+                        BeginInvoke(new Action(() =>
+                        {
+                            var old = _remoteAvatar;
+                            _remoteAvatar = new Bitmap(img);
+                            old?.Dispose();
+                            pnlAvatar.Invalidate();
+                        }));
+                    }
+                }
+                else if (avatarUrl == string.Empty)
+                {
+                    // Avatar was removed
+                    BeginInvoke(new Action(() =>
+                    {
+                        var old = _remoteAvatar;
+                        _remoteAvatar = null;
+                        old?.Dispose();
+                        pnlAvatar.Invalidate();
+                    }));
+                }
+                BeginInvoke(new Action(() =>
+                {
+                    ApplyFriendInfo(newName);
+                }));
+            }
+        }
+
         private async Task CleanupCallOnServerAsync()
         {
             if (_serverCleanupAttempted)
@@ -1231,6 +1302,7 @@ namespace SecureChat.Client.Forms.Call
                 _signalRClient.VideoFrameReceived -= OnVideoFrameReceived;
                 _signalRClient.AudioDataReceived -= OnAudioDataReceived;
                 _signalRClient.Reconnected -= OnSignalRReconnected;
+                _signalRClient.ProfileUpdated -= OnProfileUpdated;
             }
 
             _cts.Cancel();
@@ -1269,6 +1341,8 @@ namespace SecureChat.Client.Forms.Call
                 latestLocalFrame = null;
             }
 
+            _remoteAvatar?.Dispose();
+            _remoteAvatar = null;
             picLocal.Image?.Dispose();
             picLocal.Image = null;
             picRemoteVideo.Image?.Dispose();

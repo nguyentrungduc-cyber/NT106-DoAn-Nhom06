@@ -151,6 +151,7 @@ namespace SecureChat.Client
             {
                 // Unsubscribe from global presence updates to avoid memory leak
                 frmMainChat.GlobalUserStatusChanged -= OnGlobalUserStatusChanged;
+                frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
             };
         }
 
@@ -305,6 +306,9 @@ namespace SecureChat.Client
             // Subscribe to real-time presence updates
             frmMainChat.GlobalUserStatusChanged -= OnGlobalUserStatusChanged; // guard against double-subscribe
             frmMainChat.GlobalUserStatusChanged += OnGlobalUserStatusChanged;
+            // Subscribe to real-time profile updates
+            frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated; // guard against double-subscribe
+            frmMainChat.GlobalProfileUpdated += OnGlobalProfileUpdated;
 
             // Refresh UI trên main thread, merge initial presence from GlobalPresence
             if (!IsDisposed) BeginInvoke(new Action(() =>
@@ -1712,6 +1716,66 @@ namespace SecureChat.Client
                 avatar.Photo = new Bitmap(photo);
                 avatar.Invalidate();
             }
+        }
+
+        private void OnGlobalProfileUpdated(string userId, string displayName, string username, string avatarUrl)
+        {
+            if (string.IsNullOrWhiteSpace(userId)) return;
+
+            // Update cached contact data
+            ContactItem? contact = null;
+            foreach (var list in new[] { _friends, _blockedUsers })
+            {
+                contact = list.Find(c => c.UserId == userId);
+                if (contact != null) break;
+            }
+            if (contact == null) return;
+
+            if (!string.IsNullOrWhiteSpace(displayName))
+                contact.DisplayName = displayName;
+            if (!string.IsNullOrWhiteSpace(username))
+                contact.Username = username;
+            contact.AvatarUrl = avatarUrl ?? string.Empty;
+
+            // Update UI row if visible
+            if (!IsDisposed) BeginInvoke(new Action(async () =>
+            {
+                foreach (var pnl in new[] { _pnlFriends, _pnlBlockedUsers })
+                {
+                    if (pnl == null) continue;
+                    foreach (Control row in pnl.Controls)
+                    {
+                        if (row.Tag is ContactItem ci && ci.UserId == userId)
+                        {
+                            // Update name label (first Label that is not the sub-label)
+                            var nameLabel = row.Controls.OfType<Label>().FirstOrDefault(l => l.Name != "lblSub");
+                            if (nameLabel != null)
+                                nameLabel.Text = !string.IsNullOrWhiteSpace(contact.DisplayName) ? contact.DisplayName : contact.Username;
+
+                            // Update avatar
+                            var avatar = row.Controls.OfType<AvatarControl>().FirstOrDefault();
+                            if (avatar != null)
+                            {
+                                var oldPhoto = avatar.Photo;
+                                if (oldPhoto != null)
+                                {
+                                    avatar.Photo = null;
+                                    oldPhoto.Dispose();
+                                }
+                                avatar.SetName(!string.IsNullOrWhiteSpace(contact.DisplayName) ? contact.DisplayName : contact.Username);
+                                if (!string.IsNullOrWhiteSpace(avatarUrl))
+                                {
+                                    var img = await Task.Run(() => AvatarCacheService.LoadImage(avatarUrl));
+                                    if (img != null)
+                                        avatar.Photo = new Bitmap(img);
+                                }
+                                avatar.Invalidate();
+                            }
+                            break;
+                        }
+                    }
+                }
+            }));
         }
 
         private void OnGlobalUserStatusChanged(string userId, string status, DateTime? lastSeenUtc)

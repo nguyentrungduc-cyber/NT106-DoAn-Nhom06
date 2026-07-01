@@ -40,6 +40,9 @@ namespace SecureChat.Client.Forms.Chat
         private string _conversationId = string.Empty;
         private string _currentUserDisplayName = string.Empty;
         private List<string> _memberIds = new();
+        private bool _isClosing;
+        private long _nextAvatarLoadId;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _memberAvatarLoadId = new();
 
         public frmGroupInfo()
         {
@@ -48,6 +51,8 @@ namespace SecureChat.Client.Forms.Chat
             ThemeRefreshHelper.Hook(this);
             // D? li?u nh�m s? du?c load t? b�n ngo�i qua LoadGroup(...)
             UiLocalization.ApplyToForm(this);
+            frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
+            frmMainChat.GlobalProfileUpdated += OnGlobalProfileUpdated;
         }
 
         private void BuildUI()
@@ -477,12 +482,88 @@ namespace SecureChat.Client.Forms.Chat
                 item.AvatarImage = m.Avatar;
                 item.AvatarColor = m.AvatarColor;
                 item.SetInitial(m.Name.Length > 0 ? m.Name.Substring(0, 1).ToUpperInvariant() : "?");
+                item.Tag = m.UserId;
                 _pnlList.Controls.Add(item);
                 y += item.Height;
             }
             _pnlList.AutoScrollMinSize = new Size(0, y);
             _pnlList.ResumeLayout();
             LayoutMemberItems();
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _isClosing = true;
+            frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
+            base.OnFormClosing(e);
+        }
+
+        private void OnGlobalProfileUpdated(string userId, string displayName, string username, string avatarUrl)
+        {
+            if (_isClosing || IsDisposed) return;
+
+            // Check which version of the avatar load we're on
+            long thisLoadId = Interlocked.Increment(ref _nextAvatarLoadId);
+            if (!string.IsNullOrWhiteSpace(userId))
+                _memberAvatarLoadId[userId] = thisLoadId;
+
+            BeginInvoke(new Action(() =>
+            {
+                if (_isClosing || IsDisposed) return;
+
+                // Find matching member on UI thread
+                ucGroupMemberItem? memberItem = null;
+                foreach (Control c in _pnlList.Controls)
+                {
+                    if (c is ucGroupMemberItem item && item.Tag is string uid && uid == userId)
+                    {
+                        memberItem = item;
+                        break;
+                    }
+                }
+                if (memberItem == null) return;
+
+                if (!string.IsNullOrWhiteSpace(displayName))
+                {
+                    memberItem.DisplayName = displayName;
+                    memberItem.SetInitial(displayName.Length > 0 ? displayName.Substring(0, 1).ToUpperInvariant() : "?");
+                    memberItem.AvatarColor = TG.GetAvatarColor(displayName);
+                }
+
+                if (!string.IsNullOrWhiteSpace(avatarUrl))
+                {
+                    _ = LoadMemberAvatarAsync(userId, memberItem, avatarUrl, thisLoadId);
+                }
+                else if (avatarUrl == string.Empty)
+                {
+                    memberItem.AvatarImage = null;
+                    if (!string.IsNullOrWhiteSpace(displayName))
+                        memberItem.SetInitial(displayName.Length > 0 ? displayName.Substring(0, 1).ToUpperInvariant() : "?");
+                }
+            }));
+        }
+
+        private async Task LoadMemberAvatarAsync(string userId, ucGroupMemberItem item, string url, long loadId)
+        {
+            try
+            {
+                var img = await Task.Run(() => AvatarCacheService.LoadImage(url));
+                if (img == null) return;
+
+                BeginInvoke(new Action(() =>
+                {
+                    if (_isClosing || IsDisposed) return;
+                    // Only apply if this is still the latest requested load for this member
+                    if (_memberAvatarLoadId.TryGetValue(userId, out var latest) && latest != loadId)
+                    {
+                        img.Dispose();
+                        return;
+                    }
+                    item.AvatarImage = new Bitmap(img);
+                    img.Dispose();
+                }));
+            }
+            catch { }
         }
 
         private void DisposeOldMemberItems()
@@ -540,5 +621,5 @@ namespace SecureChat.Client.Forms.Chat
 
     }
 
-    public record MemberModel(string Name, string Status, string Role, Image? Avatar, Color AvatarColor, string MemberId = "");
+    public record MemberModel(string Name, string Status, string Role, Image? Avatar, Color AvatarColor, string MemberId = "", string UserId = "");
 }
