@@ -7807,12 +7807,23 @@ namespace SecureChat.Client
 
         private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _pendingCallSignals = new();
         private readonly ConcurrentDictionary<string, byte> _activeCallIds = new();
+        private readonly ConcurrentDictionary<string, Form> _activeIncomingDialogs = new();
         private bool _isCallInitiating;
 
         private Task HandleSignalRCallSignalAsync(string callId, string signal)
         {
             if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(signal))
                 return Task.CompletedTask;
+
+            // CALL_ENDED / CALL_REJECTED while an incoming dialog is showing — close it
+            if ((signal == "CALL_ENDED" || signal == "CALL_REJECTED") && _activeIncomingDialogs.TryRemove(callId, out var dialog))
+            {
+                SafeBeginInvoke(() =>
+                {
+                    try { if (!dialog.IsDisposed) dialog.Close(); } catch { }
+                });
+                return Task.CompletedTask;
+            }
 
             // If a frmVideoCall is already open for this call, it handles signals directly
             if (_activeCallIds.ContainsKey(callId))
@@ -7828,7 +7839,7 @@ namespace SecureChat.Client
             if (IsDisposed) return Task.CompletedTask;
 
             // Prevent duplicate incoming dialogs for the same callId
-            if (!_activeCallIds.TryAdd(callId, 0))
+            if (_activeIncomingDialogs.ContainsKey(callId))
                 return Task.CompletedTask;
 
             // Check if caller already cancelled before we show the dialog
@@ -7865,13 +7876,19 @@ namespace SecureChat.Client
                 try
                 {
                     var form = new Forms.Call.frmIncomingCall(callerName, callType);
+                    _activeIncomingDialogs[callId] = form;
                     form.ShowDialog(this);
+                    _activeIncomingDialogs.TryRemove(callId, out _);
 
                     if (!form.Accepted)
                     {
+                        // Check if the dialog was closed because caller cancelled
+                        bool wasCancelled = _pendingCallSignals.TryRemove(callId, out var signals)
+                            && signals.Any(s => s == "CALL_ENDED");
                         _pendingCallSignals.TryRemove(callId, out _);
                         _activeCallIds.TryRemove(callId, out _);
-                        try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED"); } catch { }
+                        if (!wasCancelled)
+                            try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED"); } catch { }
                         return;
                     }
 
@@ -7902,6 +7919,8 @@ namespace SecureChat.Client
 
                     if (IsDisposed) return;
 
+                    _activeCallIds.TryAdd(callId, 0);
+
                     try
                     {
                         var convInfo = _convs.Find(c => c.Id == conversationId);
@@ -7915,7 +7934,6 @@ namespace SecureChat.Client
                         };
                         if (_pendingCallSignals.TryRemove(callId, out var pending))
                         {
-                            _activeCallIds.TryAdd(callId, 0);
                             callForm.ReplayPendingSignals(pending);
                         }
                         callForm.Show();
