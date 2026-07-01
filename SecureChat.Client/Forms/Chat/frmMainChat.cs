@@ -7877,8 +7877,47 @@ namespace SecureChat.Client
                 {
                     var form = new Forms.Call.frmIncomingCall(callerName, callType);
                     _activeIncomingDialogs[callId] = form;
+
+                    // Heartbeat: poll call status every 5s while dialog is visible.
+                    // Guards against orphaned dialogs when SignalR CALL_ENDED is missed
+                    // (e.g. connection drop during ringing, server restart).
+                    using var heartbeat = new System.Windows.Forms.Timer { Interval = 5000 };
+                    heartbeat.Tick += async (s, e) =>
+                    {
+                        if (form.IsDisposed) { heartbeat.Stop(); return; }
+                        try
+                        {
+                            var hc = ApiClient.Instance.GetHttpClient();
+                            var rsp = await hc.GetAsync($"api/conversations/{conversationId}/calls/{callId}");
+                            if (rsp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                            {
+                                heartbeat.Stop();
+                                if (!form.IsDisposed) form.Close();
+                                return;
+                            }
+                            if (rsp.IsSuccessStatusCode)
+                            {
+                                var json = await rsp.Content.ReadAsStringAsync();
+                                var cd = System.Text.Json.JsonSerializer.Deserialize<CallResponse>(json,
+                                    new System.Text.Json.JsonSerializerOptions
+                                    {
+                                        PropertyNameCaseInsensitive = true,
+                                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                                    });
+                                if (cd != null && (cd.Status == CallStatus.Ended || cd.Status == CallStatus.Missed))
+                                {
+                                    heartbeat.Stop();
+                                    if (!form.IsDisposed) form.Close();
+                                }
+                            }
+                        }
+                        catch { /* transient — retry on next tick */ }
+                    };
+                    heartbeat.Start();
+
                     form.ShowDialog(this);
                     _activeIncomingDialogs.TryRemove(callId, out _);
+                    heartbeat.Stop();
 
                     if (!form.Accepted)
                     {

@@ -74,8 +74,28 @@ namespace SecureChat.Server.Hubs
                     var activeCall = await calls.GetActiveCallAsync(conv.ConversationID);
                     if (activeCall != null && activeCall.Status != CallStatus.Ended)
                     {
+                        var ringing = activeCall.Status == CallStatus.Ringing;
                         await calls.EndCallAsync(activeCall.CallID);
-                        try { await Clients.Group(activeCall.CallID).SendAsync("CallSignalReceived", activeCall.CallID, "CALL_ENDED"); } catch { }
+
+                        if (ringing)
+                        {
+                            // Ringing: other participants are NOT in the SignalR call group.
+                            // Route CALL_ENDED directly to each user connection.
+                            var participants = await calls.GetParticipantsByCallAsync(activeCall.CallID);
+                            foreach (var p in participants)
+                            {
+                                var uid = p.Member?.UserID;
+                                if (uid != null && uid != Me)
+                                {
+                                    try { await Clients.User(uid).SendAsync("CallSignalReceived", activeCall.CallID, "CALL_ENDED"); } catch { }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Ongoing: all participants are in the group
+                            try { await Clients.Group(activeCall.CallID).SendAsync("CallSignalReceived", activeCall.CallID, "CALL_ENDED"); } catch { }
+                        }
                     }
                 }
             }
@@ -323,7 +343,26 @@ namespace SecureChat.Server.Hubs
             if (!IsCallParticipant(call))
                 throw new HubException("You are not a participant of this call.");
 
-            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, $"{Me}|{signal}");
+            // Route signals based on call state.
+            // Ringing: participants may NOT be in the SignalR call group yet.
+            // Ongoing: all participants are in the group.
+            if (call.Status == CallStatus.Ringing)
+            {
+                // Ringing state — route directly to each other participant's user connection.
+                foreach (var p in call.Participants ?? Enumerable.Empty<CallParticipant>())
+                {
+                    var uid = p.Member?.UserID;
+                    if (uid != null && uid != Me)
+                    {
+                        try { await Clients.User(uid).SendAsync("CallSignalReceived", callId, signal); } catch { }
+                    }
+                }
+            }
+            else
+            {
+                // Ongoing state — existing group routing with sender prefix
+                await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, $"{Me}|{signal}");
+            }
 
             // When a participant declines, update their server-side status so EndCall
             // history logic can detect the decline and show the correct message.

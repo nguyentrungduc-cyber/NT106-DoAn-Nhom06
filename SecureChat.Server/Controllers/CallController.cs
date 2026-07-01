@@ -177,10 +177,24 @@ namespace SecureChat.Controllers
 
 			await calls.EndCallAsync(callID);
 
-			// Broadcast CALL_ENDED to the SignalR group so the remote client
-			// immediately knows the call ended (e.g. if caller closed via system X
-			// without sending the SignalR signal).
-			try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+			if (preEndStatus == CallStatus.Ringing)
+			{
+				// Ringing: other participants are NOT in the SignalR call group.
+				// Route CALL_ENDED directly to each user connection.
+				foreach (var p in call.Participants ?? Enumerable.Empty<CallParticipant>())
+				{
+					var uid = p.Member?.UserID;
+					if (uid != null && uid != Me)
+					{
+						try { await hubContext.Clients.User(uid).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+					}
+				}
+			}
+			else
+			{
+				// Ongoing: all participants are in the group
+				try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+			}
 
 			if (preEndStatus == CallStatus.Ongoing)
 			{
@@ -225,7 +239,21 @@ namespace SecureChat.Controllers
 
 				await calls.EndCallAsync(callID);
 
-				try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+				if (preEndStatus == CallStatus.Ringing)
+				{
+					foreach (var p in call.Participants ?? Enumerable.Empty<CallParticipant>())
+					{
+						var uid = p.Member?.UserID;
+						if (uid != null && uid != Me)
+						{
+							try { await hubContext.Clients.User(uid).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+						}
+					}
+				}
+				else
+				{
+					try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+				}
 
 				if (preEndStatus == CallStatus.Ongoing)
 				{
@@ -249,7 +277,21 @@ namespace SecureChat.Controllers
 
 					await calls.EndCallAsync(callID);
 
-					try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+					if (preEndStatus == CallStatus.Ringing)
+					{
+						foreach (var p in call.Participants ?? Enumerable.Empty<CallParticipant>())
+						{
+							var uid = p.Member?.UserID;
+							if (uid != null && uid != Me)
+							{
+								try { await hubContext.Clients.User(uid).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+							}
+						}
+					}
+					else
+					{
+						try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+					}
 
 					if (preEndStatus == CallStatus.Ongoing)
 					{
