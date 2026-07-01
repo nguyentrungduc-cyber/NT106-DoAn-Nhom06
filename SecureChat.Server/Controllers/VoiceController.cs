@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using SecureChat.Models;
 
 namespace SecureChat.Controllers
 {
@@ -23,11 +25,13 @@ namespace SecureChat.Controllers
     {
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<VoiceController> _logger;
+        private readonly AppDbContext _db;
 
-        public VoiceController(IWebHostEnvironment env, ILogger<VoiceController> logger)
+        public VoiceController(IWebHostEnvironment env, ILogger<VoiceController> logger, AppDbContext db)
         {
             _env = env;
             _logger = logger;
+            _db = db;
         }
 
         [HttpPost("upload")]
@@ -83,6 +87,22 @@ namespace SecureChat.Controllers
 
                 var hash = hasher.GetHashAndReset();
                 var hex = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
+
+                // Also persist to database so files survive Railway deploys
+                try
+                {
+                    var fileBytes = await System.IO.File.ReadAllBytesAsync(storedPath);
+                    using var sqlCmd = _db.Database.GetDbConnection().CreateCommand();
+                    sqlCmd.CommandText = "INSERT IGNORE INTO StoredFiles (file_name, file_data, original_name, file_size, created_at) VALUES (@n, @d, @o, @s, NOW(6))";
+                    var pn = sqlCmd.CreateParameter(); pn.ParameterName = "n"; pn.Value = storedName; sqlCmd.Parameters.Add(pn);
+                    var pd = sqlCmd.CreateParameter(); pd.ParameterName = "d"; pd.Value = fileBytes; sqlCmd.Parameters.Add(pd);
+                    var po = sqlCmd.CreateParameter(); po.ParameterName = "o"; po.Value = Path.GetFileName(file.FileName ?? "voice.dat"); sqlCmd.Parameters.Add(po);
+                    var ps = sqlCmd.CreateParameter(); ps.ParameterName = "s"; ps.Value = total; sqlCmd.Parameters.Add(ps);
+                    await _db.Database.GetDbConnection().OpenAsync();
+                    await sqlCmd.ExecuteNonQueryAsync();
+                }
+                catch { /* best-effort DB persistence */ }
+                finally { _db.Database.GetDbConnection().Close(); }
 
                 var url = $"/voice/{storedName}";
                 return Ok(new

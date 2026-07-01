@@ -221,6 +221,20 @@ using (var scope = app.Services.CreateScope())
         ");
     }
     catch { /* column already exists — ignore */ }
+
+    try
+    {
+        db.Database.ExecuteSqlRaw(@"
+            CREATE TABLE IF NOT EXISTS StoredFiles (
+                file_name    VARCHAR(128)  NOT NULL PRIMARY KEY,
+                file_data    LONGBLOB      NOT NULL,
+                original_name VARCHAR(256) NOT NULL DEFAULT '',
+                file_size    BIGINT        NOT NULL DEFAULT 0,
+                created_at   DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+    }
+    catch { /* table already exists */ }
 }
 
 if (app.Environment.IsDevelopment()) {
