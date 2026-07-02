@@ -45,6 +45,9 @@ namespace SecureChat.Client.Forms.Settings
                 BeginInvoke(new Action(OnAvatarChanged));
                 return;
             }
+            _profile.FullName = AvatarService.CurrentDisplayName;
+            _profile.Username = AvatarService.CurrentUsername;
+            _profile.Email = AvatarService.CurrentEmail;
             RefreshHeader();
         }
 

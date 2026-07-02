@@ -11,6 +11,7 @@ namespace SecureChat.Client.Forms.Chat
         private readonly string _conversationId;
         private int _adminsCount;
         private bool _searchActive;
+        private readonly List<(string UserId, Panel Row)> _adminRows = new();
 
         public int AdministratorsCount => _adminsCount;
 
@@ -123,6 +124,9 @@ namespace SecureChat.Client.Forms.Chat
             _ = LoadAdminsAsync();
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
+            frmMainChat.GlobalProfileUpdated += OnGlobalProfileUpdated;
+            FormClosed += (_, __) => frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
             UiLocalization.ApplyToForm(this);
         }
 
@@ -140,14 +144,17 @@ namespace SecureChat.Client.Forms.Chat
                 if (!IsDisposed) BeginInvoke(new Action(() =>
                 {
                     _pnlAdmins.Controls.Clear();
+                    _adminRows.Clear();
                     int y = 0;
                     foreach (var m in admins)
                     {
-                        var row = BuildAdminRow(
-                            m.User?.DisplayName ?? m.Nickname ?? m.User?.Username ?? "Unknown",
-                            m.Role.ToString());
+                        var uid = m.User?.UserID ?? string.Empty;
+                        var displayName = m.User?.DisplayName ?? m.Nickname ?? m.User?.Username ?? "Unknown";
+                        var row = BuildAdminRow(displayName, m.Role.ToString());
                         row.Location = new Point(0, y);
+                        row.Tag = uid;
                         _pnlAdmins.Controls.Add(row);
+                        _adminRows.Add((uid, row));
                         y += 84;
                     }
                     _lblCount.Text = $"Administrators: {_adminsCount}";
@@ -269,6 +276,38 @@ namespace SecureChat.Client.Forms.Chat
                 }
             }
             FixControls(this);
+        }
+
+        private void OnGlobalProfileUpdated(string userId, string displayName, string username, string avatarUrl)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || IsDisposed) return;
+            BeginInvoke(new Action(() =>
+            {
+                foreach (var (uid, row) in _adminRows)
+                {
+                    if (uid != userId) continue;
+                    var lblName = row.Controls.OfType<Label>().FirstOrDefault(l => l.Font?.FontFamily?.Name?.Contains("Semibold") == true);
+                    if (lblName != null && !string.IsNullOrWhiteSpace(displayName))
+                        lblName.Text = displayName;
+                    var avatar = row.Controls.OfType<AvatarControl>().FirstOrDefault();
+                    if (avatar != null)
+                    {
+                        var old = avatar.Photo;
+                        avatar.SetName(!string.IsNullOrWhiteSpace(displayName) ? displayName : username);
+                        if (!string.IsNullOrWhiteSpace(avatarUrl))
+                        {
+                            var img = AvatarCacheService.LoadImage(avatarUrl);
+                            if (img != null)
+                                avatar.Photo = new Bitmap(img);
+                        }
+                        else if (avatarUrl == string.Empty)
+                            avatar.Photo = null;
+                        old?.Dispose();
+                        avatar.Invalidate();
+                    }
+                    break;
+                }
+            }));
         }
     }
 }

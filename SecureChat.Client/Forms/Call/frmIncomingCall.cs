@@ -20,6 +20,7 @@ namespace SecureChat.Client.Forms.Call
         private readonly string _callerName;
         private readonly CallType _callType;
         private string? _callerUserId;
+        private Image? _callerAvatarImage;
 
         public string? CallerUserId
         {
@@ -61,16 +62,32 @@ namespace SecureChat.Client.Forms.Call
             _pnlAvatar.Paint += (s, e) =>
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var br = new SolidBrush(TgBlue);
-                e.Graphics.FillEllipse(br, 0, 0, _pnlAvatar.Width - 1, _pnlAvatar.Height - 1);
-                using var brush = new SolidBrush(Color.White);
-                var currentName = _lblCaller?.Text ?? _callerName;
-                var initial = currentName.Length > 0 ? currentName[0].ToString().ToUpperInvariant() : "?";
-                using var font = new Font("Segoe UI", 28f, FontStyle.Bold);
-                var size = e.Graphics.MeasureString(initial, font);
-                e.Graphics.DrawString(initial, font, brush,
-                    (_pnlAvatar.Width - size.Width) / 2,
-                    (_pnlAvatar.Height - size.Height) / 2);
+                e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                var rect = new Rectangle(0, 0, _pnlAvatar.Width - 1, _pnlAvatar.Height - 1);
+                if (_callerAvatarImage != null)
+                {
+                    using var path = new GraphicsPath();
+                    path.AddEllipse(rect);
+                    e.Graphics.SetClip(path);
+                    e.Graphics.DrawImage(_callerAvatarImage, rect);
+                    e.Graphics.ResetClip();
+                }
+                else
+                {
+                    using var br = new SolidBrush(TgBlue);
+                    e.Graphics.FillEllipse(br, rect);
+                    var currentName = _lblCaller?.Text ?? _callerName;
+                    if (!string.IsNullOrWhiteSpace(currentName))
+                    {
+                        using var brush = new SolidBrush(Color.White);
+                        var initial = currentName.Length > 0 ? currentName[0].ToString().ToUpperInvariant() : "?";
+                        using var font = new Font("Segoe UI", 28f, FontStyle.Bold);
+                        var size = e.Graphics.MeasureString(initial, font);
+                        e.Graphics.DrawString(initial, font, brush,
+                            (_pnlAvatar.Width - size.Width) / 2,
+                            (_pnlAvatar.Height - size.Height) / 2);
+                    }
+                }
             };
             using var path = new GraphicsPath();
             path.AddEllipse(0, 0, _pnlAvatar.Width, _pnlAvatar.Height);
@@ -160,6 +177,7 @@ namespace SecureChat.Client.Forms.Call
                 LocalizationService.LanguageChanged -= OnLanguageChanged;
                 if (!string.IsNullOrWhiteSpace(_callerUserId))
                     frmMainChat.GlobalProfileUpdated -= OnCallerProfileUpdated;
+                _callerAvatarImage?.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -168,10 +186,28 @@ namespace SecureChat.Client.Forms.Call
         {
             if (userId != _callerUserId) return;
             if (IsDisposed) return;
-            BeginInvoke(new Action(() =>
+            BeginInvoke(new Action(async () =>
             {
                 string newName = !string.IsNullOrWhiteSpace(displayName) ? displayName : (!string.IsNullOrWhiteSpace(username) ? username : _callerName);
                 _lblCaller.Text = newName;
+                _lblCaller.Location = new Point((ClientSize.Width - _lblCaller.Width) / 2, 112);
+                if (!string.IsNullOrWhiteSpace(avatarUrl))
+                {
+                    var img = await Task.Run(() => AvatarCacheService.LoadImage(avatarUrl));
+                    if (img != null && !IsDisposed)
+                    {
+                        var old = _callerAvatarImage;
+                        _callerAvatarImage = new Bitmap(img);
+                        old?.Dispose();
+                        img.Dispose();
+                    }
+                }
+                else if (avatarUrl == string.Empty)
+                {
+                    var old = _callerAvatarImage;
+                    _callerAvatarImage = null;
+                    old?.Dispose();
+                }
                 _pnlAvatar.Invalidate();
             }));
         }

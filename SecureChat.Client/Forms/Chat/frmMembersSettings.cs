@@ -11,12 +11,13 @@ namespace SecureChat.Client.Forms.Chat
         private readonly string _conversationId;
         private HashSet<string> _existingUserIds = new();
         private bool _isAdding;
-        public sealed record MemberItemData(string Name, string Status, string Role, Color AvatarColor, string Initials);
+        public sealed record MemberItemData(string UserId, string Name, string Status, string Role, Color AvatarColor, string Initials);
 
         private System.Windows.Forms.Timer _fadeTimer;
         private TextBox _txtSearch;
         private Panel _pnlList;
         private List<MemberItemData> _allMembers = new();
+        private readonly List<(string UserId, Panel Row)> _memberRows = new();
         private bool _searchActive;
 
         public IReadOnlyList<MemberItemData> Members => _allMembers;
@@ -133,6 +134,9 @@ namespace SecureChat.Client.Forms.Chat
 
             NightModeService.ThemeChanged += OnThemeChanged;
             FormClosed += (_, __) => NightModeService.ThemeChanged -= OnThemeChanged;
+            frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
+            frmMainChat.GlobalProfileUpdated += OnGlobalProfileUpdated;
+            FormClosed += (_, __) => frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
             BuildMemberRows(string.Empty);
             UiLocalization.ApplyToForm(this);
         }
@@ -141,6 +145,7 @@ namespace SecureChat.Client.Forms.Chat
         {
             _pnlList.SuspendLayout();
             _pnlList.Controls.Clear();
+            _memberRows.Clear();
 
             var query = _allMembers.AsEnumerable();
             if (!string.IsNullOrWhiteSpace(keyword))
@@ -155,7 +160,9 @@ namespace SecureChat.Client.Forms.Chat
             {
                 var row = BuildMemberRow(m);
                 row.Location = new Point(0, top);
+                row.Tag = m.UserId;
                 _pnlList.Controls.Add(row);
+                _memberRows.Add((m.UserId, row));
                 top += row.Height;
             }
 
@@ -389,6 +396,7 @@ namespace SecureChat.Client.Forms.Chat
                         ? SecureChat.Client.Helpers.PresenceFormatter.GetPresenceText(isOnline, lastSeen)
                         : "offline";
                     return new MemberItemData(
+                        m.UserID ?? string.Empty,
                         m.User?.DisplayName ?? m.Nickname ?? "Unknown",
                         status,
                         m.Role.ToString(),
@@ -435,6 +443,38 @@ namespace SecureChat.Client.Forms.Chat
                 if (!_txtSearch.Focused)
                     _txtSearch.ForeColor = _searchActive ? TG.TextPrimary : TG.TextSecondary;
             }
+        }
+
+        private void OnGlobalProfileUpdated(string userId, string displayName, string username, string avatarUrl)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || IsDisposed) return;
+            BeginInvoke(new Action(() =>
+            {
+                foreach (var (uid, row) in _memberRows)
+                {
+                    if (uid != userId) continue;
+                    var lblName = row.Controls.OfType<Label>().FirstOrDefault();
+                    if (lblName != null && !string.IsNullOrWhiteSpace(displayName))
+                        lblName.Text = displayName;
+                    var avatar = row.Controls.OfType<AvatarControl>().FirstOrDefault();
+                    if (avatar != null)
+                    {
+                        var old = avatar.Photo;
+                        avatar.SetName(!string.IsNullOrWhiteSpace(displayName) ? displayName : username);
+                        if (!string.IsNullOrWhiteSpace(avatarUrl))
+                        {
+                            var img = AvatarCacheService.LoadImage(avatarUrl);
+                            if (img != null)
+                                avatar.Photo = new Bitmap(img);
+                        }
+                        else if (avatarUrl == string.Empty)
+                            avatar.Photo = null;
+                        old?.Dispose();
+                        avatar.Invalidate();
+                    }
+                    break;
+                }
+            }));
         }
     }
 }

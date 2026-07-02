@@ -50,7 +50,15 @@ namespace SecureChat.Client.Forms.Profile
                 BeginInvoke(new Action(OnExternalAvatarChanged));
                 return;
             }
+            _profile.FullName = AvatarService.CurrentDisplayName;
+            _profile.Username = AvatarService.CurrentUsername;
+            _profile.Email = AvatarService.CurrentEmail;
             _profile.AvatarUrl = AvatarService.CurrentAvatarUrl;
+            _lblName.Text = _profile.FullName;
+            _lblUsername.Text = FormatUsername(_profile.Username);
+            _lblEmail.Text = string.IsNullOrWhiteSpace(_profile.Email) ? "No email" : _profile.Email;
+            _lblInitial.Text = GetInitials(_profile.FullName);
+            _avatar.BackColor = TG.GetAvatarColor(_profile.FullName);
             ApplyAvatarImage();
         }
 

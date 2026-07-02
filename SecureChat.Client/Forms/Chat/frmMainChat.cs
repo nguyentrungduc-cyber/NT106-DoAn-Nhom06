@@ -4457,7 +4457,12 @@ namespace SecureChat.Client
             // Presence status (centered, fixed width)
             string presenceText;
             bool isOnline = false;
-            if (_userPresence.TryGetValue(otherId, out var pp))
+            if (otherId == _currentUserId)
+            {
+                isOnline = true;
+                presenceText = LocalizationService.Translate("Online");
+            }
+            else if (_userPresence.TryGetValue(otherId, out var pp))
             {
                 isOnline = pp.IsOnline;
                 presenceText = Helpers.PresenceFormatter.GetPresenceText(pp.IsOnline, pp.LastSeenUtc);
@@ -7048,7 +7053,7 @@ namespace SecureChat.Client
                         _decryptor.CurrentUsername = username ?? string.Empty;
                         SecureChat.Client.Services.AvatarService.UpdateAvatar(avatarUrl);
                         SecureChat.Client.Services.AvatarService.UpdateProfile(
-                            displayName ?? string.Empty, username ?? string.Empty, string.Empty);
+                            displayName ?? string.Empty, username ?? string.Empty, _currentEmail);
                         UpdateSettingsHeaderUI();
 
                         // Refresh Saved Messages row in sidebar
