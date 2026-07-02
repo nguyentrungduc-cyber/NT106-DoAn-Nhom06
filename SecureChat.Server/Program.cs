@@ -1,7 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
+
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SecureChat.Models;
@@ -289,14 +289,6 @@ app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/uploads") || ctx.Reques
             await next();
         });
     });
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(webRoot),
-    RequestPath = "",
-    ServeUnknownFileTypes = true,
-    DefaultContentType = "application/octet-stream"
-});
 
 // Health check endpoint for Railway
 app.MapGet("/", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
