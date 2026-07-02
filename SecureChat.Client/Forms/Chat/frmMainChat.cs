@@ -132,7 +132,7 @@ namespace SecureChat.Client
 
         private readonly Dictionary<string, Panel> _convRowCache = new();
 
-        private readonly Dictionary<string, Image> _convAvatarCache = new();
+        private readonly ConcurrentDictionary<string, Image> _convAvatarCache = new(StringComparer.Ordinal);
 
         private readonly ConcurrentDictionary<string, string> _convOtherUserId = new();
 
@@ -472,7 +472,8 @@ namespace SecureChat.Client
                     }
                     if (m.ExpiresAt.HasValue)
                     {
-                        _expirationService.TrackMessage(m.MessageID, m.ExpiresAt.Value);
+                        int dur = (int)(m.ExpiresAt.Value - m.SentAt).TotalSeconds;
+                        _expirationService.TrackMessage(m.MessageID, m.ExpiresAt.Value, dur);
                     }
                     _messageDates[m.MessageID] = m.SentAt.ToLocalTime();
                     _allMsgs[convId].Add((m.MessageID, text, isOut, time, sender));
@@ -1181,6 +1182,7 @@ namespace SecureChat.Client
                 if (_isCallInitiating)
                     return;
                 _isCallInitiating = true;
+                bool formShown = false;
                 try
                 {
                     if (string.IsNullOrWhiteSpace(_activeConvId))
@@ -1224,6 +1226,7 @@ namespace SecureChat.Client
                     callForm.FormClosed += (_, __) => this.Activate();
                     callForm.FormClosed += (_, __) => _isCallInitiating = false;
                     callForm.Show();
+                    formShown = true;
                 }
                 catch (Exception ex)
                 {
@@ -1231,7 +1234,7 @@ namespace SecureChat.Client
                 }
                 finally
                 {
-                    _isCallInitiating = false;
+                    if (!formShown) _isCallInitiating = false;
                 }
             };
             var btnMore = MakeChatHeaderBtn("⋮");
@@ -2044,7 +2047,7 @@ namespace SecureChat.Client
                         if (_convAvatarCache.TryGetValue(convId, out var oldCached))
                         {
                             oldCached?.Dispose();
-                            _convAvatarCache.Remove(convId);
+                            _convAvatarCache.TryRemove(convId, out _);
                         }
                         if (_activeConvId == convId)
                         {
@@ -2096,11 +2099,11 @@ namespace SecureChat.Client
                     _convAvatarCache[convId] = new Bitmap(img);
 
                     // Update UI elements on UI thread
-                    if (_activeConvId == convId || _convRowCache.ContainsKey(convId))
+                    Action updateUI = () =>
                     {
-                        SafeBeginInvoke(() =>
+                        if (IsDisposed) return;
+                        try
                         {
-                            if (IsDisposed) return;
                             if (_activeConvId == convId)
                             {
                                 var old = _chatAvatar.Photo;
@@ -2130,8 +2133,16 @@ namespace SecureChat.Client
                                     }
                                 }
                             }
-                        });
-                    }
+                        }
+                        finally
+                        {
+                            img.Dispose();
+                        }
+                    };
+                    if (_activeConvId == convId || _convRowCache.ContainsKey(convId))
+                        SafeBeginInvoke(updateUI);
+                    else
+                        img.Dispose();
                 }
             }
             catch { }
@@ -2156,7 +2167,7 @@ namespace SecureChat.Client
             if (_convAvatarCache.TryGetValue(conversationId, out var oldAvatar))
             {
                 oldAvatar?.Dispose();
-                _convAvatarCache.Remove(conversationId);
+                _convAvatarCache.TryRemove(conversationId, out _);
             }
 
             // Xóa conversation key khỏi decryptor cache
@@ -2897,7 +2908,10 @@ namespace SecureChat.Client
                                     SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, aesKey, aesIv);
                                     string payload = $"file::{att.FileURL}::{att.FileName}::{att.FileSize}::{att.FileHash}";
                                     if (msgRes.ExpiresAt.HasValue)
-                                        _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
+                                    {
+                                        int dur = _selfDestructSeconds ?? (int)(msgRes.ExpiresAt.Value - msgRes.SentAt).TotalSeconds;
+                                        _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value, dur);
+                                    }
                                     SafeBeginInvoke(() =>
                                     {
                                         _messageDates[msgRes.MessageID] = msgRes.SentAt.ToLocalTime();
@@ -3147,7 +3161,10 @@ namespace SecureChat.Client
                                             SecureChat.Shared.Security.KeyManager.CacheAesKey(msgRes.MessageID, key, iv);
                                             string payload = $"voice::{att.FileURL}::{att.FileName}::{duration}::{att.FileHash}";
                                             if (msgRes.ExpiresAt.HasValue)
-                                                _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value);
+                                            {
+                                                int dur = _selfDestructSeconds ?? (int)(msgRes.ExpiresAt.Value - msgRes.SentAt).TotalSeconds;
+                                                _expirationService.TrackMessage(msgRes.MessageID, msgRes.ExpiresAt.Value, dur);
+                                            }
                                             SafeBeginInvoke(() =>
                                             {
                                                 _messageDates[msgRes.MessageID] = msgRes.SentAt.ToLocalTime();
@@ -4952,6 +4969,22 @@ namespace SecureChat.Client
         }
 
         /// <summary>
+        /// Re-fetch the current user's membership for a conversation (e.g. after role change).
+        /// Updates <see cref="_myMemberIdByConv"/> cache.
+        /// </summary>
+        private async Task RefreshMyMembershipAsync(string convId)
+        {
+            if (string.IsNullOrWhiteSpace(convId)) return;
+            try
+            {
+                var (memOk, me, _) = await _messageService.GetMyMembershipAsync(convId);
+                if (memOk && me != null && !string.IsNullOrWhiteSpace(me.MemberID))
+                    _myMemberIdByConv[convId] = me.MemberID;
+            }
+            catch { }
+        }
+
+        /// <summary>
         /// Sync messages cho conversation đang active. Idempotent — chỉ pull
         /// 1 lần / conv (sau đó SignalR sẽ đẩy realtime). Gọi lại không gây
         /// duplicate nhờ <see cref="TryTrackMessageId"/>.
@@ -5000,7 +5033,8 @@ namespace SecureChat.Client
                 // Track message expiration nếu có ExpiresAt
                 if (msg.ExpiresAt.HasValue)
                 {
-                    _expirationService.TrackMessage(msg.MessageID, msg.ExpiresAt.Value);
+                    int dur = (int)(msg.ExpiresAt.Value - msg.SentAt).TotalSeconds;
+                    _expirationService.TrackMessage(msg.MessageID, msg.ExpiresAt.Value, dur);
                 }
             }
 
@@ -7172,10 +7206,10 @@ namespace SecureChat.Client
                         if (_convAvatarCache.TryGetValue(convId, out var oldImg))
                         {
                             oldImg?.Dispose();
-                            _convAvatarCache.Remove(convId);
+                            _convAvatarCache.TryRemove(convId, out _);
                         }
                         else
-                            _convAvatarCache.Remove(convId);
+                            _convAvatarCache.TryRemove(convId, out _);
 
                         if (_activeConvId == convId)
                         {
@@ -7308,12 +7342,40 @@ namespace SecureChat.Client
             };
             _signalRClient.MemberRemoved += async (convId, userId) =>
             {
-                SafeBeginInvoke(() =>
+                // Refresh conversation data so membership/role caches update
+                // (especially after owner transfer: new owner needs fresh role)
+                var (ok, conv, _) = await _messageService.GetConversationAsync(convId);
+                if (ok && conv != null)
                 {
-                    // Refresh right sidebar if open and showing this conversation
-                    if (_isSidebarOpen && _activeConvId == convId)
-                        _ = LoadRightSidebarContentAsync();
-                });
+                    SafeBeginInvoke(() =>
+                    {
+                        var idx = _convs.FindIndex(c => c.Id == convId);
+                        if (idx >= 0)
+                        {
+                            var old = _convs[idx];
+                            string display = !string.IsNullOrWhiteSpace(conv.Name) ? conv.Name! : old.Name;
+                            _convs[idx] = (convId, display, old.Preview, old.Time, old.Unread, old.IsGroup);
+                            if (_activeConvId == convId)
+                                _lblChatName.Text = display;
+                            UpdateConvRowName(convId, display);
+                        }
+
+                        // Refresh right sidebar if open and showing this conversation
+                        if (_isSidebarOpen && _activeConvId == convId)
+                            _ = LoadRightSidebarContentAsync();
+
+                        // Re-fetch membership to get updated role (e.g. Admin → Owner)
+                        _ = RefreshMyMembershipAsync(convId);
+                    });
+                }
+                else
+                {
+                    SafeBeginInvoke(() =>
+                    {
+                        if (_isSidebarOpen && _activeConvId == convId)
+                            _ = LoadRightSidebarContentAsync();
+                    });
+                }
             };
             _signalRClient.UserStatusChanged += async (userId, status, lastSeenUtc) =>
             {
@@ -7505,11 +7567,15 @@ namespace SecureChat.Client
         private void SafeBeginInvoke(Action action)
         {
             if (_isClosing || IsDisposed) return;
-            BeginInvoke(new Action(() =>
+            try
             {
-                if (_isClosing || IsDisposed) return;
-                action();
-            }));
+                BeginInvoke(new Action(() =>
+                {
+                    if (_isClosing || IsDisposed) return;
+                    action();
+                }));
+            }
+            catch (InvalidOperationException) { }
         }
 
         private static List<string> ParseMentions(string text, string currentUsername)
@@ -7601,7 +7667,8 @@ namespace SecureChat.Client
                 // Track message expiration nếu có ExpiresAt
                 if (message.ExpiresAt.HasValue)
                 {
-                    _expirationService.TrackMessage(message.MessageID, message.ExpiresAt.Value);
+                    int dur = (int)(message.ExpiresAt.Value - message.SentAt).TotalSeconds;
+                    _expirationService.TrackMessage(message.MessageID, message.ExpiresAt.Value, dur);
                 }
 
                 SafeBeginInvoke(() =>
@@ -8416,46 +8483,34 @@ namespace SecureChat.Client
         // ════════════════════════════════════════════
         private async void SendMessage()
         {
-            // ─────────────────────────────────────────────────────────────────
-            // DOUBLE-SEND GUARD: chặn Enter spam / click liên tục
-            // ─────────────────────────────────────────────────────────────────
             if (_isSending) return;
             _isSending = true;
-
-            // ─────────────────────────────────────────────────────────────────
-            // VALIDATION: Kiểm tra input và trạng thái
-            // ─────────────────────────────────────────────────────────────────
-            if (string.IsNullOrWhiteSpace(_tbMessage.Text))
+            try
             {
-                _isSending = false;
-                return;
-            }
+                if (string.IsNullOrWhiteSpace(_tbMessage.Text))
+                    return;
 
-            string text = _tbMessage.Text.Trim();
+                string text = _tbMessage.Text.Trim();
 
-            // Validate message length
-            if (text.Length > 4096)
-            {
-                _isSending = false;
-                MessageBox.Show(this,
-                    LocalizationService.Translate("Message is too long. Please limit to 4096 characters."),
-                    LocalizationService.Translate("Error"),
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
+                if (text.Length > 4096)
+                {
+                    MessageBox.Show(this,
+                        LocalizationService.Translate("Message is too long. Please limit to 4096 characters."),
+                        LocalizationService.Translate("Error"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
 
-            // Check for active conversation
-            if (string.IsNullOrWhiteSpace(_activeConvId))
-            {
-                _isSending = false;
-                MessageBox.Show(this,
-                    LocalizationService.Translate("Please select a conversation before sending a message."),
-                    LocalizationService.Translate("Error"),
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
+                if (string.IsNullOrWhiteSpace(_activeConvId))
+                {
+                    MessageBox.Show(this,
+                        LocalizationService.Translate("Please select a conversation before sending a message."),
+                        LocalizationService.Translate("Error"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
 
             // Clear input ngay lập tức để UX mượt mà
             _tbMessage.Text = "";
@@ -8612,16 +8667,17 @@ namespace SecureChat.Client
                     // hasExpiryTimer = true ngay từ lúc tính minBw lần đầu
                     // (tránh bubble hẹp rồi timer/timestamp tràn ra ngoài)
                     if (messageResponse.ExpiresAt.HasValue)
-                        _expirationService.TrackMessage(messageResponse.MessageID, messageResponse.ExpiresAt.Value);
+                    {
+                        int dur = _selfDestructSeconds ?? (int)(messageResponse.ExpiresAt.Value - messageResponse.SentAt).TotalSeconds;
+                        _expirationService.TrackMessage(messageResponse.MessageID, messageResponse.ExpiresAt.Value, dur);
+                    }
 
                     BuildMessages();
                     RefreshConversationItem(_activeConvId, finalMessageText, true, "", timeStr);
                 }
-                _isSending = false;
             }
             catch (InvalidOperationException ex)
             {
-                _isSending = false;
                 // ─────────────────────────────────────────────────────────────────
                 // ERROR HANDLING: Xử lý lỗi và thông báo cho user
                 // ─────────────────────────────────────────────────────────────────
@@ -8649,7 +8705,6 @@ namespace SecureChat.Client
             }
             catch (Exception ex)
             {
-                _isSending = false;
                 // ─────────────────────────────────────────────────────────────────
                 // UNEXPECTED ERROR: Xử lý lỗi không mong đợi
                 // ─────────────────────────────────────────────────────────────────
@@ -8678,7 +8733,16 @@ namespace SecureChat.Client
                 // Log lỗi để debug
                 System.Diagnostics.Debug.WriteLine($"SendMessage failed: {ex}");
             }
+            finally
+            {
+                _isSending = false;
+            }
         }
+        finally
+        {
+            _isSending = false;
+        }
+    }
 
         /// <summary>
         /// Event handler khi message hết hạn (self-destruct).
@@ -8736,6 +8800,16 @@ namespace SecureChat.Client
 
             // Dispose audio recorder
             _audioRecorder?.Dispose();
+
+            // Close any open call forms before disposing SignalR
+            try
+            {
+                foreach (var f in Application.OpenForms.OfType<Forms.Call.frmVideoCall>().ToArray())
+                {
+                    if (!f.IsDisposed) f.Close();
+                }
+            }
+            catch { }
 
             // Stop and dispose SignalR client
             if (_signalRClient is not null)

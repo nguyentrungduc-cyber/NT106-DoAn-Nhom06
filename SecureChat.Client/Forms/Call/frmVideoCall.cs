@@ -87,6 +87,7 @@ namespace SecureChat.Client.Forms.Call
         private bool _isGroupCall;
         private bool _cleanupDone;
         private bool _leaveInitiated;
+        private bool _callEndedOrLeftSent;
         private bool _serverCleanupAttempted;
 
         private string? _remoteUserId;
@@ -188,9 +189,12 @@ namespace SecureChat.Client.Forms.Call
             FormClosing += async (_, __) =>
             {
                 _leaveInitiated = true;
-                // Send CALL_ENDED via SignalR BEFORE HTTP cleanup, so the remote
-                // participant is notified even if the server /end is called later.
-                try { if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId)) await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED"); } catch { }
+                // Only send CALL_ENDED via SignalR if the button handler did not already send it.
+                // This avoids duplicate signals that can confuse the remote participant.
+                if (!_callEndedOrLeftSent)
+                {
+                    try { if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId)) await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED"); } catch { }
+                }
                 // Always notify the server on close, regardless of _leaveInitiated.
                 // This fixes the bug where the call stays Ongoing in the DB if
                 // EndCallAsync from the button handler failed silently (catch { }).
@@ -690,7 +694,7 @@ namespace SecureChat.Client.Forms.Call
         // ── Public API ────────────────────────────────────────────────────────────
         public void UpdateRemoteFrame(Bitmap bmp)
         {
-            if (bmp == null || IsDisposed) return;
+            if (bmp == null || IsDisposed) { bmp?.Dispose(); return; }
             void Apply()
             {
                 if (IsDisposed) { bmp.Dispose(); return; }
@@ -710,8 +714,9 @@ namespace SecureChat.Client.Forms.Call
                 lastRemoteFrameUtc = DateTime.UtcNow;
                 lblStatus.Text = LocalizationService.Translate("Video call");
             }
-            if (InvokeRequired) BeginInvoke((Action)Apply);
-            else Apply();
+            if (IsHandleCreated && InvokeRequired) BeginInvoke((Action)Apply);
+            else if (IsHandleCreated) Apply();
+            else bmp.Dispose();
         }
 
         public void UpdateRemoteFrame(byte[] data)
@@ -1048,7 +1053,11 @@ namespace SecureChat.Client.Forms.Call
                 _leaveInitiated = true;
                 BeginInvoke(new Action(() =>
                 {
-                    MessageBox.Show(LocalizationService.Translate("Call ended from the other side."), LocalizationService.Translate("Call ended"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    // Only show notification if WE didn't initiate the end
+                    if (!_callEndedOrLeftSent)
+                    {
+                        MessageBox.Show(LocalizationService.Translate("Call ended from the other side."), LocalizationService.Translate("Call ended"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                     Close();
                 }));
             }
@@ -1260,6 +1269,7 @@ namespace SecureChat.Client.Forms.Call
                 if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
                     await _signalRClient.SendCallSignalAsync(_callId, "CALL_LEFT");
+                    _callEndedOrLeftSent = true;
                 }
             }
             catch { }
@@ -1275,6 +1285,7 @@ namespace SecureChat.Client.Forms.Call
                 if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
                     await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED");
+                    _callEndedOrLeftSent = true;
                 }
             }
             catch { }

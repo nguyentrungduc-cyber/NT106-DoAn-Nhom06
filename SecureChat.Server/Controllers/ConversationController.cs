@@ -451,11 +451,13 @@ namespace SecureChat.Controllers
 			{
 				try
 				{
+					var conv = await conversations.GetByIdAsync(conversationID);
+					var version = conv?.Version ?? 0;
 					var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
 					foreach (var m in activeMembers)
 					{
 						if (m.UserID != Me)
-							await hubContext.Clients.User(m.UserID).SendAsync("ConversationUpdated", conversationID);
+							await hubContext.Clients.User(m.UserID).SendAsync("ConversationUpdated", conversationID, version);
 					}
 				}
 				catch { /* best-effort */ }
@@ -663,11 +665,18 @@ namespace SecureChat.Controllers
 				await hubContext.Clients.Group(conversationId).SendAsync("MessageReceived", msgResponse);
 
 				var remaining = await conversations.GetActiveMembersAsync(conversationId);
+
+				// Notify all remaining members that a member left
 				foreach (var m in remaining)
 				{
 					if (m.UserID != leavingUserId)
 						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationId, leavingUserId);
 				}
+
+				// Broadcast GroupSettingsUpdated so every client refreshes their membership/role
+				// (the new owner's role changed from Admin → Owner)
+				int version = (int)(DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+				await hubContext.Clients.Group(conversationId).SendAsync("GroupSettingsUpdated", conversationId, version);
 			}
 			catch { /* best-effort */ }
 		}

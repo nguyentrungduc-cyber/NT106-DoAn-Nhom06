@@ -65,7 +65,7 @@ namespace SecureChat.Client.Services
             {
                 var key = GetCacheKey(url);
                 if (MemoryCache.TryGetValue(key, out var cached))
-                    return cached;
+                    return new Bitmap(cached);
 
                 var path = GetCachedPath(url);
                 if (path == null) return null;

@@ -60,6 +60,9 @@ namespace SecureChat.Client.Services
             if (CurrentAvatarUrl == url) return;
             AvatarCacheService.Invalidate(CurrentAvatarUrl);
             CurrentAvatarUrl = url ?? string.Empty;
+            // Pre-cache the new avatar so subscribers get the image immediately
+            if (!string.IsNullOrWhiteSpace(url))
+                _ = AvatarCacheService.DownloadAsync(url);
             CurrentUserChanged?.Invoke();
         }
 
