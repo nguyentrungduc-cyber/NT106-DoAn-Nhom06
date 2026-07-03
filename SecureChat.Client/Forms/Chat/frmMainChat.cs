@@ -133,6 +133,7 @@ namespace SecureChat.Client
         private readonly Dictionary<string, Panel> _convRowCache = new();
 
         private readonly ConcurrentDictionary<string, Image> _convAvatarCache = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, int> _convAvatarDownloadSeq = new();
 
         private readonly ConcurrentDictionary<string, string> _convOtherUserId = new();
 
@@ -896,6 +897,7 @@ namespace SecureChat.Client
             if (target == null) return;
             int removedTop = target.Top;
             _pnlConvList.Controls.Remove(target);
+            _convRowCache.Remove(convId);
             target.Dispose();
             // Shift remaining rows up
             foreach (Control c in _pnlConvList.Controls)
@@ -2086,12 +2088,21 @@ namespace SecureChat.Client
                     return;
                 }
 
+                var seq = _convAvatarDownloadSeq.AddOrUpdate(convId, 1, (_, old) => old + 1);
+
                 var http = ApiClient.Instance.GetHttpClient();
                 var imgRes = await http.GetAsync(avatarUrl);
                 if (imgRes.IsSuccessStatusCode)
                 {
                     using var imgStream = await imgRes.Content.ReadAsStreamAsync();
                     var img = new Bitmap(imgStream);
+
+                    // If a newer download is in-flight for the same convId, discard this stale result
+                    if (_convAvatarDownloadSeq.TryGetValue(convId, out var latest) && latest != seq)
+                    {
+                        img.Dispose();
+                        return;
+                    }
 
                     // Update cache for sidebar (thread-safe ConcurrentDictionary)
                     if (_convAvatarCache.TryGetValue(convId, out var oldCached))
@@ -2139,10 +2150,7 @@ namespace SecureChat.Client
                             img.Dispose();
                         }
                     };
-                    if (_activeConvId == convId || _convRowCache.ContainsKey(convId))
-                        SafeBeginInvoke(updateUI);
-                    else
-                        img.Dispose();
+                    SafeBeginInvoke(updateUI);
                 }
             }
             catch { }
@@ -7196,6 +7204,10 @@ namespace SecureChat.Client
                                 BuildMessages();
                         }
                     }
+                    // Pre-cache avatar in AvatarCacheService so other forms (contacts, group info, etc.)
+                    // can load it via LoadImage when they receive GlobalProfileUpdated.
+                    if (!string.IsNullOrWhiteSpace(capturedUrl) && capturedUserId != _currentUserId)
+                        _ = SecureChat.Client.Services.AvatarCacheService.DownloadAsync(capturedUrl);
                     // Fire global event for other open forms (contacts, group info, etc.)
                     GlobalProfileUpdated?.Invoke(capturedUserId, displayName ?? string.Empty, capturedUsername ?? string.Empty, capturedUrl ?? string.Empty);
                     // Refresh right sidebar if open
@@ -7506,6 +7518,7 @@ namespace SecureChat.Client
                 {
                     _processedMessageIds.Clear();
                 }
+                _senderDisplayNameMap.Clear();
 
                 // Full message sync for active conversation only
                 if (!string.IsNullOrWhiteSpace(_activeConvId))
@@ -8003,131 +8016,140 @@ namespace SecureChat.Client
             if (s.AllowSound)
                 NotificationManager.PlayNotificationSound(s.Volume);
 
-            SafeBeginInvoke(async () =>
+            SafeBeginInvoke(() =>
             {
-                try
+                Func<Task> handleCallAsync = async () =>
                 {
-                    var form = new Forms.Call.frmIncomingCall(callerName, callType);
-                    if (_convOtherUserId.TryGetValue(conversationId, out var callerId))
-                        form.CallerUserId = callerId;
-                    _activeIncomingDialogs[callId] = form;
-
-                    // Heartbeat: poll call status every 5s while dialog is visible.
-                    // Guards against orphaned dialogs when SignalR CALL_ENDED is missed
-                    // (e.g. connection drop during ringing, server restart).
-                    using var heartbeat = new System.Windows.Forms.Timer { Interval = 5000 };
-                    heartbeat.Tick += async (s, e) =>
+                    try
                     {
-                        if (form.IsDisposed) { heartbeat.Stop(); return; }
-                        try
+                        var form = new Forms.Call.frmIncomingCall(callerName, callType);
+                        if (_convOtherUserId.TryGetValue(conversationId, out var callerId))
                         {
-                            var hc = ApiClient.Instance.GetHttpClient();
-                            var rsp = await hc.GetAsync($"api/conversations/{conversationId}/calls/{callId}");
-                            if (rsp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                            form.CallerUserId = callerId;
+                            if (_senderAvatarMap.TryGetValue(callerId, out var avatarUrl) && !string.IsNullOrWhiteSpace(avatarUrl))
+                                form.AvatarUrl = avatarUrl;
+                        }
+                        _activeIncomingDialogs[callId] = form;
+
+                        // Heartbeat: poll call status every 5s while dialog is visible.
+                        // Guards against orphaned dialogs when SignalR CALL_ENDED is missed
+                        // (e.g. connection drop during ringing, server restart).
+                        using var heartbeat = new System.Windows.Forms.Timer { Interval = 5000 };
+                        heartbeat.Tick += async (s, e) =>
+                        {
+                            if (form.IsDisposed) { heartbeat.Stop(); return; }
+                            try
                             {
-                                heartbeat.Stop();
-                                if (!form.IsDisposed) form.Close();
-                                return;
-                            }
-                            if (rsp.IsSuccessStatusCode)
-                            {
-                                var json = await rsp.Content.ReadAsStringAsync();
-                                var cd = System.Text.Json.JsonSerializer.Deserialize<CallResponse>(json,
-                                    new System.Text.Json.JsonSerializerOptions
-                                    {
-                                        PropertyNameCaseInsensitive = true,
-                                        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
-                                    });
-                                if (cd != null && (cd.Status == CallStatus.Ended || cd.Status == CallStatus.Missed))
+                                var hc = ApiClient.Instance.GetHttpClient();
+                                var rsp = await hc.GetAsync($"api/conversations/{conversationId}/calls/{callId}");
+                                if (rsp.StatusCode == System.Net.HttpStatusCode.NotFound)
                                 {
                                     heartbeat.Stop();
                                     if (!form.IsDisposed) form.Close();
+                                    return;
+                                }
+                                if (rsp.IsSuccessStatusCode)
+                                {
+                                    var json = await rsp.Content.ReadAsStringAsync();
+                                    var cd = System.Text.Json.JsonSerializer.Deserialize<CallResponse>(json,
+                                        new System.Text.Json.JsonSerializerOptions
+                                        {
+                                            PropertyNameCaseInsensitive = true,
+                                            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                                        });
+                                    if (cd != null && (cd.Status == CallStatus.Ended || cd.Status == CallStatus.Missed))
+                                    {
+                                        heartbeat.Stop();
+                                        if (!form.IsDisposed) form.Close();
+                                    }
                                 }
                             }
-                        }
-                        catch { /* transient — retry on next tick */ }
-                    };
-                    heartbeat.Start();
+                            catch { /* transient — retry on next tick */ }
+                        };
+                        heartbeat.Start();
 
-                    form.ShowDialog(this);
-                    _activeIncomingDialogs.TryRemove(callId, out _);
-                    heartbeat.Stop();
+                        form.ShowDialog(this);
+                        _activeIncomingDialogs.TryRemove(callId, out _);
+                        heartbeat.Stop();
 
-                    if (!form.Accepted)
-                    {
-                        // Check if the dialog was closed because caller cancelled
-                        bool wasCancelled = _pendingCallSignals.TryRemove(callId, out var signals)
-                            && signals.Any(s => s == "CALL_ENDED");
-                        _pendingCallSignals.TryRemove(callId, out _);
-                        _activeCallIds.TryRemove(callId, out _);
-                        if (!wasCancelled)
-                            try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED"); } catch { }
-                        return;
-                    }
-
-                    try
-                    {
-                        var http = ApiClient.Instance.GetHttpClient();
-                        var joinResponse = await http.PostAsync($"api/conversations/{conversationId}/calls/{callId}/join", null);
-                        if (!joinResponse.IsSuccessStatusCode)
+                        if (!form.Accepted)
                         {
-                            var body = await joinResponse.Content.ReadAsStringAsync();
-                            MessageBox.Show(string.Format(LocalizationService.Translate("Could not join call: {0}"), body),
+                            // Check if the dialog was closed because caller cancelled
+                            bool wasCancelled = _pendingCallSignals.TryRemove(callId, out var signals)
+                                && signals.Any(s => s == "CALL_ENDED");
+                            _pendingCallSignals.TryRemove(callId, out _);
+                            _activeCallIds.TryRemove(callId, out _);
+                            if (!wasCancelled)
+                                try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_REJECTED"); } catch { }
+                            return;
+                        }
+
+                        try
+                        {
+                            var http = ApiClient.Instance.GetHttpClient();
+                            var joinResponse = await http.PostAsync($"api/conversations/{conversationId}/calls/{callId}/join", null);
+                            if (!joinResponse.IsSuccessStatusCode)
+                            {
+                                var body = await joinResponse.Content.ReadAsStringAsync();
+                                MessageBox.Show(string.Format(LocalizationService.Translate("Could not join call: {0}"), body),
+                                    LocalizationService.Translate("Call Failed"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                _pendingCallSignals.TryRemove(callId, out _);
+                                _activeCallIds.TryRemove(callId, out _);
+                                return;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(string.Format(LocalizationService.Translate("Could not join call: {0}"), ex.Message),
                                 LocalizationService.Translate("Call Failed"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                             _pendingCallSignals.TryRemove(callId, out _);
                             _activeCallIds.TryRemove(callId, out _);
                             return;
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show(string.Format(LocalizationService.Translate("Could not join call: {0}"), ex.Message),
-                            LocalizationService.Translate("Call Failed"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        _pendingCallSignals.TryRemove(callId, out _);
-                        _activeCallIds.TryRemove(callId, out _);
-                        return;
-                    }
 
-                    try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_JOINED"); } catch { }
+                        try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_JOINED"); } catch { }
 
-                    if (IsDisposed) return;
+                        if (IsDisposed) return;
 
-                    _activeCallIds.TryAdd(callId, 0);
+                        _activeCallIds.TryAdd(callId, 0);
 
-                    try
-                    {
-                        var convInfo = _convs.Find(c => c.Id == conversationId);
-                        bool isGroupCall = convInfo.IsGroup;
-                        var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!, isGroupCall);
-                        if (!isGroupCall && _convOtherUserId.TryGetValue(conversationId, out var incomingRemoteId))
-                            callForm.RemoteUserId = incomingRemoteId;
-                        callForm.FormClosed += (s, e) =>
+                        try
                         {
+                            var convInfo = _convs.Find(c => c.Id == conversationId);
+                            bool isGroupCall = convInfo.IsGroup;
+                            var callForm = new Forms.Call.frmVideoCall(callerName, callId, conversationId, _signalRClient!, isGroupCall);
+                            if (!isGroupCall && _convOtherUserId.TryGetValue(conversationId, out var incomingRemoteId))
+                                callForm.RemoteUserId = incomingRemoteId;
+                            callForm.FormClosed += (s, e) =>
+                            {
+                                _pendingCallSignals.TryRemove(callId, out _);
+                                _activeCallIds.TryRemove(callId, out _);
+                                this.Activate();
+                            };
+                            if (_pendingCallSignals.TryRemove(callId, out var pending))
+                            {
+                                callForm.ReplayPendingSignals(pending);
+                            }
+                            callForm.Show();
+                        }
+                        catch (Exception ex)
+                        {
+                            // Join succeeded but form failed — send CALL_ENDED to avoid orphan call
+                            try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_ENDED"); } catch { }
                             _pendingCallSignals.TryRemove(callId, out _);
                             _activeCallIds.TryRemove(callId, out _);
-                            this.Activate();
-                        };
-                        if (_pendingCallSignals.TryRemove(callId, out var pending))
-                        {
-                            callForm.ReplayPendingSignals(pending);
+                            System.Diagnostics.Debug.WriteLine($"[Call] Failed to open call form: {ex.Message}");
                         }
-                        callForm.Show();
                     }
                     catch (Exception ex)
                     {
-                        // Join succeeded but form failed — send CALL_ENDED to avoid orphan call
-                        try { if (_signalRClient != null) await _signalRClient.SendCallSignalAsync(callId, "CALL_ENDED"); } catch { }
                         _pendingCallSignals.TryRemove(callId, out _);
                         _activeCallIds.TryRemove(callId, out _);
-                        System.Diagnostics.Debug.WriteLine($"[Call] Failed to open call form: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"[Call] HandleCallIncomingAsync failed: {ex.Message}");
                     }
-                }
-                catch (Exception ex)
-                {
-                    _pendingCallSignals.TryRemove(callId, out _);
-                    _activeCallIds.TryRemove(callId, out _);
-                    System.Diagnostics.Debug.WriteLine($"[Call] HandleCallIncomingAsync failed: {ex.Message}");
-                }
+                };
+
+                _ = handleCallAsync();
             });
 
             return Task.CompletedTask;

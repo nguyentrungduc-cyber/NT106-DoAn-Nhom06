@@ -21,6 +21,7 @@ namespace SecureChat.Client.Forms.Call
         private readonly CallType _callType;
         private string? _callerUserId;
         private Image? _callerAvatarImage;
+        private string? _callerAvatarUrl;
 
         public string? CallerUserId
         {
@@ -33,6 +34,33 @@ namespace SecureChat.Client.Forms.Call
                     frmMainChat.GlobalProfileUpdated -= OnCallerProfileUpdated;
                     frmMainChat.GlobalProfileUpdated += OnCallerProfileUpdated;
                 }
+            }
+        }
+
+        public string? AvatarUrl
+        {
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value)) return;
+                _callerAvatarUrl = value;
+                _ = LoadInitialAvatarAsync();
+            }
+        }
+
+        private async Task LoadInitialAvatarAsync()
+        {
+            var img = await Task.Run(() => AvatarCacheService.LoadImage(_callerAvatarUrl));
+            if (img != null && !IsDisposed)
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (IsDisposed) { img.Dispose(); return; }
+                    var old = _callerAvatarImage;
+                    _callerAvatarImage = new Bitmap(img);
+                    old?.Dispose();
+                    img.Dispose();
+                    _pnlAvatar.Invalidate();
+                }));
             }
         }
 

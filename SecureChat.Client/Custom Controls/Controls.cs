@@ -248,6 +248,15 @@ namespace SecureChat.Client
             }
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                Photo?.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
         private string GetInitials(string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return "?";
