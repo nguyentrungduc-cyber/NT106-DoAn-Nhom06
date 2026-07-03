@@ -79,6 +79,8 @@ namespace SecureChat.Client.Forms.Call
         private DateTime lastRemoteFrameUtc = DateTime.MinValue;
         private bool isFormActive = true;
         private bool allowCapture = true;
+        private bool _remoteFramePending;
+        private Bitmap? _pendingRemoteFrame;
 
         private string _callId = string.Empty;
         private string _conversationId = string.Empty;
@@ -453,20 +455,19 @@ namespace SecureChat.Client.Forms.Call
             {
                 isFormActive = true;
                 allowCapture = isCameraOn && WindowState != FormWindowState.Minimized;
-                if (allowCapture && _videoHandler?.IsRunning == true)
+                if (isFormActive && _videoHandler?.IsRunning == true)
                     frameTimer.Start();
             };
             Deactivate += (_, __) =>
             {
                 isFormActive = false;
-                allowCapture = false;
                 frameTimer.Stop();
             };
             SizeChanged += (_, __) =>
             {
-                allowCapture = isCameraOn && isFormActive && WindowState != FormWindowState.Minimized;
+                allowCapture = isCameraOn && WindowState != FormWindowState.Minimized;
                 if (!allowCapture) frameTimer.Stop();
-                else if (_videoHandler?.IsRunning == true) frameTimer.Start();
+                else if (_videoHandler?.IsRunning == true && isFormActive) frameTimer.Start();
             };
 
             MouseMove += (_, __) => NotifyUserInteraction();
@@ -693,7 +694,8 @@ namespace SecureChat.Client.Forms.Call
             if (bmp == null || IsDisposed) { bmp?.Dispose(); return; }
             void Apply()
             {
-                if (IsDisposed || !IsHandleCreated) { bmp.Dispose(); return; }
+                _remoteFramePending = false;
+                if (IsDisposed || !IsHandleCreated) { _pendingRemoteFrame?.Dispose(); _pendingRemoteFrame = null; bmp.Dispose(); return; }
                 lock (remoteLock)
                 {
                     var old = picRemoteVideo.Image;
@@ -710,7 +712,19 @@ namespace SecureChat.Client.Forms.Call
                 lastRemoteFrameUtc = DateTime.UtcNow;
                 lblStatus.Text = LocalizationService.Translate("Video call");
             }
-            if (IsHandleCreated && InvokeRequired) { try { BeginInvoke((Action)Apply); } catch (InvalidOperationException) { bmp.Dispose(); } }
+            if (IsHandleCreated && InvokeRequired)
+            {
+                if (_remoteFramePending)
+                {
+                    var stale = _pendingRemoteFrame;
+                    _pendingRemoteFrame = bmp;
+                    stale?.Dispose();
+                    return;
+                }
+                _remoteFramePending = true;
+                _pendingRemoteFrame = null;
+                try { BeginInvoke((Action)Apply); } catch (InvalidOperationException) { _remoteFramePending = false; bmp.Dispose(); }
+            }
             else if (IsHandleCreated) Apply();
             else bmp.Dispose();
         }
@@ -751,7 +765,7 @@ namespace SecureChat.Client.Forms.Call
             isCameraOn = !isCameraOn;
             btnCamera.IsActive = !isCameraOn;
             btnCamera.Invalidate();
-            allowCapture = isCameraOn && isFormActive && WindowState != FormWindowState.Minimized;
+            allowCapture = isCameraOn && WindowState != FormWindowState.Minimized;
 
             _ = _signalRClient?.SendCallSignalAsync(_callId, isCameraOn ? "CAM_ON" : "CAM_OFF");
 
@@ -1361,6 +1375,8 @@ namespace SecureChat.Client.Forms.Call
             picLocal.Image = null;
             picRemoteVideo.Image?.Dispose();
             picRemoteVideo.Image = null;
+            _pendingRemoteFrame?.Dispose();
+            _pendingRemoteFrame = null;
 
             // Dispose participant panels
             foreach (var rp in _participants.Values)
