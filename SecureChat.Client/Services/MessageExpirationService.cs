@@ -11,8 +11,8 @@ namespace SecureChat.Client.Services
     /// </summary>
     public sealed class MessageExpirationService : IDisposable
     {
-        // Dictionary lưu trữ messages cần track: MessageID -> (ExpiresAt, OriginalDurationSeconds)
-        private readonly ConcurrentDictionary<string, (DateTime ExpiresAt, int DurationSeconds)> _trackedMessages = new();
+        // Dictionary lưu trữ messages cần track: MessageID -> (ExpiresAt, DurationSeconds, ReceivedAt)
+        private readonly ConcurrentDictionary<string, (DateTime ExpiresAt, int DurationSeconds, DateTime ReceivedAt)> _trackedMessages = new();
 
         // Timer để check expired messages định kỳ
         private System.Threading.Timer? _checkTimer;
@@ -82,10 +82,10 @@ namespace SecureChat.Client.Services
             if (expiresAt == DateTime.MinValue)
                 throw new ArgumentException("ExpiresAt cannot be MinValue.", nameof(expiresAt));
 
-            // Chỉ track nếu message chưa hết hạn
-            if (expiresAt > DateTime.UtcNow)
+            var now = DateTime.UtcNow;
+            if (expiresAt > now)
             {
-                _trackedMessages[messageId] = (expiresAt, durationSeconds > 0 ? durationSeconds : (int)(expiresAt - DateTime.UtcNow).TotalSeconds);
+                _trackedMessages[messageId] = (expiresAt, durationSeconds > 0 ? durationSeconds : (int)(expiresAt - now).TotalSeconds, now);
             }
         }
 
@@ -158,13 +158,24 @@ namespace SecureChat.Client.Services
             if (!_trackedMessages.TryGetValue(messageId, out var entry))
                 return null;
 
-            var remaining = (entry.ExpiresAt - DateTime.UtcNow).TotalSeconds;
+            var now = DateTime.UtcNow;
+            var remaining = (entry.ExpiresAt - now).TotalSeconds;
             if (remaining <= 0) return 0;
-            // Cap display at the original selected duration so user sees
-            // e.g. "10" not "7" when 3s were lost to network round-trip
+
+            // Countdown starts from the user's original DurationSeconds,
+            // computed from client-side elapsed time since reception,
+            // so the UI shows "10" not "7" for a 10s timer despite network latency.
             int displaySec = (int)Math.Ceiling(remaining);
-            if (entry.DurationSeconds > 0 && displaySec > entry.DurationSeconds)
-                displaySec = entry.DurationSeconds;
+            if (entry.DurationSeconds > 0)
+            {
+                int elapsedOnClient = (int)(now - entry.ReceivedAt).TotalSeconds;
+                int expectedFromDuration = entry.DurationSeconds - elapsedOnClient;
+                if (expectedFromDuration > displaySec)
+                    displaySec = expectedFromDuration;
+                // Also cap at duration so clock-skew doesn't inflate the value
+                if (displaySec > entry.DurationSeconds)
+                    displaySec = entry.DurationSeconds;
+            }
             return displaySec;
         }
 

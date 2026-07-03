@@ -423,7 +423,7 @@ namespace SecureChat.Client.Forms.Settings
         private void RefreshAvatarPhoto()
         {
             _avatarControl.SetName(_profile.FullName);
-            var img = AvatarCacheService.LoadImage(
+            using var img = AvatarCacheService.LoadImage(
                 !string.IsNullOrWhiteSpace(_profile.AvatarUrl) ? _profile.AvatarUrl :
                 !string.IsNullOrWhiteSpace(AvatarService.CurrentAvatarUrl) ? AvatarService.CurrentAvatarUrl :
                 null);

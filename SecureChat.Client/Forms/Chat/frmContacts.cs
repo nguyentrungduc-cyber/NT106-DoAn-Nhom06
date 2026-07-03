@@ -1704,7 +1704,7 @@ namespace SecureChat.Client
         private static void TryLoadAvatar(AvatarControl avatar, string url)
         {
             if (string.IsNullOrWhiteSpace(url)) return;
-            var photo = AvatarCacheService.LoadImage(url);
+            using var photo = AvatarCacheService.LoadImage(url);
             if (photo != null)
             {
                 var old = avatar.Photo;
@@ -1767,7 +1767,10 @@ namespace SecureChat.Client
                                 {
                                     var img = await Task.Run(() => AvatarCacheService.LoadImage(avatarUrl));
                                     if (img != null)
+                                    {
                                         avatar.Photo = new Bitmap(img);
+                                        img.Dispose();
+                                    }
                                 }
                                 avatar.Invalidate();
                             }

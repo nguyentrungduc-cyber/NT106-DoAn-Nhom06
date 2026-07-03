@@ -186,19 +186,14 @@ namespace SecureChat.Client.Forms.Call
             _signalRClient.ProfileUpdated += OnProfileUpdated;
 
             Shown += (_, __) => _ = JoinCallGroupAsync();
-            FormClosing += async (_, __) =>
+            FormClosing += (_, __) =>
             {
                 _leaveInitiated = true;
-                // Only send CALL_ENDED via SignalR if the button handler did not already send it.
-                // This avoids duplicate signals that can confuse the remote participant.
                 if (!_callEndedOrLeftSent)
                 {
-                    try { if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId)) await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED"); } catch { }
+                    try { _signalRClient?.SendCallSignalAsync(_callId, "CALL_ENDED").GetAwaiter().GetResult(); } catch { }
                 }
-                // Always notify the server on close, regardless of _leaveInitiated.
-                // This fixes the bug where the call stays Ongoing in the DB if
-                // EndCallAsync from the button handler failed silently (catch { }).
-                await CleanupCallOnServerAsync();
+                Task.Run(() => CleanupCallOnServerAsync()).GetAwaiter().GetResult();
             };
         }
 
@@ -602,6 +597,7 @@ namespace SecureChat.Client.Forms.Call
         private void OnVideoHandlerFrame(object? sender, Bitmap frame)
         {
             if (IsDisposed || _cleanupDone || !isCameraOn || !allowCapture) return;
+            if (isScreenSharing) { frame.Dispose(); return; }
 
             lock (latestLocalFrameLock)
             {
@@ -697,7 +693,7 @@ namespace SecureChat.Client.Forms.Call
             if (bmp == null || IsDisposed) { bmp?.Dispose(); return; }
             void Apply()
             {
-                if (IsDisposed) { bmp.Dispose(); return; }
+                if (IsDisposed || !IsHandleCreated) { bmp.Dispose(); return; }
                 lock (remoteLock)
                 {
                     var old = picRemoteVideo.Image;
@@ -714,7 +710,7 @@ namespace SecureChat.Client.Forms.Call
                 lastRemoteFrameUtc = DateTime.UtcNow;
                 lblStatus.Text = LocalizationService.Translate("Video call");
             }
-            if (IsHandleCreated && InvokeRequired) BeginInvoke((Action)Apply);
+            if (IsHandleCreated && InvokeRequired) { try { BeginInvoke((Action)Apply); } catch (InvalidOperationException) { bmp.Dispose(); } }
             else if (IsHandleCreated) Apply();
             else bmp.Dispose();
         }
@@ -994,14 +990,15 @@ namespace SecureChat.Client.Forms.Call
         private void OnScreenCaptureFrame(Bitmap frame)
         {
             if (!isScreenSharing || IsDisposed || _cleanupDone) { frame.Dispose(); return; }
-            CompressAndSendFrame(frame);
+            try { CompressAndSendFrame(frame); }
+            finally { frame.Dispose(); }
         }
 
         private void OnScreenCaptureError(object? sender, Exception ex)
         {
             if (IsDisposed || _cleanupDone) return;
             isScreenSharing = false;
-            BeginInvoke(new Action(() => lblStatus.Text = LocalizationService.Translate("Screen share stopped")));
+            if (IsHandleCreated) BeginInvoke(new Action(() => lblStatus.Text = LocalizationService.Translate("Screen share stopped")));
         }
 
         private void ToggleScreenShare()
@@ -1023,20 +1020,25 @@ namespace SecureChat.Client.Forms.Call
         {
             if (IsDisposed) { frame.Dispose(); return; }
 
-            // Show on primary display first — UpdateRemoteFrame takes ownership
-            UpdateRemoteFrame(frame);
-
-            // Also route to participant panel if exists — clone to avoid shared ownership
+            // Create participant copy BEFORE UpdateRemoteFrame takes ownership of frame
+            // (UpdateRemoteFrame may dispose the frame if the handle is not created)
             if (_participants.TryGetValue(senderUserId, out var rp))
             {
                 var copy = new Bitmap(frame);
-                BeginInvoke(new Action(() => rp.UpdateFrame(copy)));
+                UpdateRemoteFrame(frame);
+                if (IsHandleCreated) BeginInvoke(new Action(() => rp.UpdateFrame(copy)));
+                else copy.Dispose();
+            }
+            else
+            {
+                UpdateRemoteFrame(frame);
             }
         }
 
         private Task OnRemoteCallSignal(string callId, string signal)
         {
             if (callId != _callId || IsDisposed || _cleanupDone) return Task.CompletedTask;
+            if (!IsHandleCreated) return Task.CompletedTask;
 
             // Signals are prefixed with senderUserId (e.g. "user123|CALL_JOINED")
             string senderId = string.Empty;
@@ -1206,6 +1208,7 @@ namespace SecureChat.Client.Forms.Call
                             var old = _remoteAvatar;
                             _remoteAvatar = new Bitmap(img);
                             old?.Dispose();
+                            img.Dispose();
                             pnlAvatar.Invalidate();
                         }));
                     }

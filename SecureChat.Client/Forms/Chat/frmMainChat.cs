@@ -4196,7 +4196,7 @@ namespace SecureChat.Client
         {
             try
             {
-                var img = SecureChat.Client.Services.AvatarCacheService.LoadImage(url);
+                using var img = SecureChat.Client.Services.AvatarCacheService.LoadImage(url);
                 if (img != null)
                 {
                     var old = ctrl.Photo;
@@ -6234,6 +6234,15 @@ namespace SecureChat.Client
             {
                 var av = new AvatarControl { Size = new Size(32, 32), Location = new Point(6, 4) };
                 av.SetName(sender);
+                if (_senderAvatarMap.TryGetValue(sender, out var bubbleAvatarUrl) && !string.IsNullOrWhiteSpace(bubbleAvatarUrl))
+                {
+                    var img = SecureChat.Client.Services.AvatarCacheService.LoadImage(bubbleAvatarUrl);
+                    if (img != null)
+                    {
+                        av.Photo = new Bitmap(img);
+                        img.Dispose();
+                    }
+                }
                 pnl.Controls.Add(av);
             }
 

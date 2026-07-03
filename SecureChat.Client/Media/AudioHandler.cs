@@ -121,6 +121,20 @@ namespace SecureChat.Client.Media
                 _lastReceivedSeq++;
                 PlayRawAudio(nextChunk);
             }
+
+            if (_jitterBuffer.Count > 0)
+            {
+                uint minSeq = _jitterBuffer.Keys.Min();
+                if (minSeq > _lastReceivedSeq + 1)
+                {
+                    _lastReceivedSeq = minSeq - 1;
+                    while (_jitterBuffer.TryRemove(_lastReceivedSeq + 1, out var nextChunk))
+                    {
+                        _lastReceivedSeq++;
+                        PlayRawAudio(nextChunk);
+                    }
+                }
+            }
         }
 
         private void PlayRawAudio(byte[] audioData)

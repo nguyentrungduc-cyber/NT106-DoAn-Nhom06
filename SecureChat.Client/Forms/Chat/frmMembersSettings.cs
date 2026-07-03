@@ -463,7 +463,7 @@ namespace SecureChat.Client.Forms.Chat
                         avatar.SetName(!string.IsNullOrWhiteSpace(displayName) ? displayName : username);
                         if (!string.IsNullOrWhiteSpace(avatarUrl))
                         {
-                            var img = AvatarCacheService.LoadImage(avatarUrl);
+                            using var img = AvatarCacheService.LoadImage(avatarUrl);
                             if (img != null)
                                 avatar.Photo = new Bitmap(img);
                         }
