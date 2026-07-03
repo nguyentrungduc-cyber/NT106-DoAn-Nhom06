@@ -48,6 +48,7 @@ namespace SecureChat.Client.Forms.Settings
             _profile.FullName = AvatarService.CurrentDisplayName;
             _profile.Username = AvatarService.CurrentUsername;
             _profile.Email = AvatarService.CurrentEmail;
+            _profile.AvatarUrl = AvatarService.CurrentAvatarUrl;
             RefreshHeader();
         }
 
@@ -423,28 +424,58 @@ namespace SecureChat.Client.Forms.Settings
         private void RefreshAvatarPhoto()
         {
             _avatarControl.SetName(_profile.FullName);
-            using var img = AvatarCacheService.LoadImage(
-                !string.IsNullOrWhiteSpace(_profile.AvatarUrl) ? _profile.AvatarUrl :
-                !string.IsNullOrWhiteSpace(AvatarService.CurrentAvatarUrl) ? AvatarService.CurrentAvatarUrl :
-                null);
-            if (img != null)
+
+            var url = _profile.AvatarUrl;
+            if (string.IsNullOrWhiteSpace(url))
+                url = AvatarService.CurrentAvatarUrl;
+
+            if (!string.IsNullOrWhiteSpace(url))
             {
-                var old = _avatarControl.Photo;
-                if (old != null)
-                {
-                    _avatarControl.Photo = null;
-                    old.Dispose();
-                }
-                _avatarControl.Photo = new Bitmap(img);
-            }
-            else
-            {
-                if (_avatarControl.Photo != null)
+                var img = AvatarCacheService.LoadImage(url);
+                if (img != null)
                 {
                     var old = _avatarControl.Photo;
-                    _avatarControl.Photo = null;
-                    old.Dispose();
+                    if (old != null)
+                    {
+                        _avatarControl.Photo = null;
+                        old.Dispose();
+                    }
+                    _avatarControl.Photo = new Bitmap(img);
+                    _avatarControl.Invalidate();
+                    return;
                 }
+
+                // Cache miss — try downloading async, refresh when done
+                var capturedUrl = url;
+                _ = AvatarCacheService.DownloadAsync(capturedUrl).ContinueWith(t =>
+                {
+                    if (t.Result == null || IsDisposed || !IsHandleCreated) return;
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (IsDisposed || !IsHandleCreated) return;
+                        var curUrl = !string.IsNullOrWhiteSpace(_profile.AvatarUrl) ? _profile.AvatarUrl : AvatarService.CurrentAvatarUrl;
+                        if (curUrl != capturedUrl) return;
+                        var reloaded = AvatarCacheService.LoadImage(capturedUrl);
+                        if (reloaded != null)
+                        {
+                            var old = _avatarControl.Photo;
+                            if (old != null)
+                            {
+                                _avatarControl.Photo = null;
+                                old.Dispose();
+                            }
+                            _avatarControl.Photo = new Bitmap(reloaded);
+                            _avatarControl.Invalidate();
+                        }
+                    }));
+                });
+            }
+
+            if (_avatarControl.Photo != null)
+            {
+                var old = _avatarControl.Photo;
+                _avatarControl.Photo = null;
+                old.Dispose();
             }
             _avatarControl.Invalidate();
         }

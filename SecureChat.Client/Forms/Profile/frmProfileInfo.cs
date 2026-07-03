@@ -337,6 +337,7 @@ namespace SecureChat.Client.Forms.Profile
                     throw new InvalidOperationException($"Lỗi lưu hồ sơ: {err}");
                 }
 
+                string oldAvatarUrl = _profile.AvatarUrl;
                 _profile.FullName = name;
                 _profile.Email = email;
                 _profile.Username = username;
@@ -348,6 +349,15 @@ namespace SecureChat.Client.Forms.Profile
                     _profile.AvatarPath = cached ?? avatarUrl;
                     AvatarService.UpdateAvatar(avatarUrl);
                 }
+
+                // Immediately propagate all profile changes locally so every open form
+                // gets updated without waiting for the SignalR round-trip.
+                AvatarService.UpdateProfile(name, username, email);
+                frmMainChat.GlobalProfileUpdated?.Invoke(
+                    AvatarService.CurrentUserId,
+                    name,
+                    username,
+                    avatarUrl ?? AvatarService.CurrentAvatarUrl);
 
                 _lblInitial.Text = GetInitials(name);
                 _avatar.BackColor = TG.GetAvatarColor(name);

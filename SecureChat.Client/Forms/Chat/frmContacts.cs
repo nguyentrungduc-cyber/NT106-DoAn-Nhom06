@@ -1752,6 +1752,11 @@ namespace SecureChat.Client
                             if (nameLabel != null)
                                 nameLabel.Text = !string.IsNullOrWhiteSpace(contact.DisplayName) ? contact.DisplayName : contact.Username;
 
+                            // Update username label (the one starting with @)
+                            var usernameLabel = row.Controls.OfType<Label>().FirstOrDefault(l => l.Text.StartsWith("@"));
+                            if (usernameLabel != null)
+                                usernameLabel.Text = $"@{contact.Username}";
+
                             // Update avatar
                             var avatar = row.Controls.OfType<AvatarControl>().FirstOrDefault();
                             if (avatar != null)

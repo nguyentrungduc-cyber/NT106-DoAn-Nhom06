@@ -144,7 +144,7 @@ namespace SecureChat.Client
         // Shared presence cache accessible from other forms (contacts, group info, etc.)
         public static readonly ConcurrentDictionary<string, (bool IsOnline, DateTime? LastSeenUtc)> GlobalPresence = new();
         public static event Action<string, string, DateTime?>? GlobalUserStatusChanged;
-        public static event Action<string, string, string, string>? GlobalProfileUpdated; // userId, displayName, username, avatarUrl
+        public static Action<string, string, string, string>? GlobalProfileUpdated; // userId, displayName, username, avatarUrl
 
         // Key = convId, Value = danh sách tin nhắn của conversation đó
         // Thêm biến lưu trạng thái trả lời tin nhắn
@@ -3574,13 +3574,13 @@ namespace SecureChat.Client
                     {
                         try
                         {
-                            var localAvatarPath = DownloadAndCacheAvatar(_currentAvatarUrl);
                             var profile = new SecureChat.Client.Models.ProfileModel
                             {
                                 FullName = _currentDisplayName,
                                 Email = _currentEmail,
                                 Username = _currentUsername,
-                                AvatarPath = localAvatarPath ?? string.Empty,
+                                AvatarUrl = _currentAvatarUrl,
+                                AvatarPath = SecureChat.Client.Services.AvatarCacheService.GetCachedPath(_currentAvatarUrl) ?? string.Empty,
                                 StatusText = "online"
                             };
                             using var myprofile = new SecureChat.Client.Forms.Profile.frmMyProfile(profile);
@@ -3819,13 +3819,13 @@ namespace SecureChat.Client
                     {
                         try
                         {
-                            var localAvatarPath = DownloadAndCacheAvatar(_currentAvatarUrl);
                             var profile = new SecureChat.Client.Models.ProfileModel
                             {
                                 FullName = _currentDisplayName,
                                 Email = _currentEmail,
                                 Username = _currentUsername,
-                                AvatarPath = localAvatarPath ?? string.Empty,
+                                AvatarUrl = _currentAvatarUrl,
+                                AvatarPath = SecureChat.Client.Services.AvatarCacheService.GetCachedPath(_currentAvatarUrl) ?? string.Empty,
                                 StatusText = "online"
                             };
                             using var settings = new SecureChat.Client.Forms.Settings.frmSettings(profile);

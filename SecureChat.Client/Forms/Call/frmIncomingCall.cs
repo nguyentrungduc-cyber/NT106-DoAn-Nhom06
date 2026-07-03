@@ -214,6 +214,7 @@ namespace SecureChat.Client.Forms.Call
         {
             if (userId != _callerUserId) return;
             if (IsDisposed) return;
+            if (!IsHandleCreated) return;
             BeginInvoke(new Action(async () =>
             {
                 string newName = !string.IsNullOrWhiteSpace(displayName) ? displayName : (!string.IsNullOrWhiteSpace(username) ? username : _callerName);

@@ -448,7 +448,7 @@ namespace SecureChat.Client.Forms.Chat
         private void OnGlobalProfileUpdated(string userId, string displayName, string username, string avatarUrl)
         {
             if (string.IsNullOrWhiteSpace(userId) || IsDisposed) return;
-            BeginInvoke(new Action(() =>
+            BeginInvoke(new Action(async () =>
             {
                 foreach (var (uid, row) in _memberRows)
                 {
@@ -463,9 +463,12 @@ namespace SecureChat.Client.Forms.Chat
                         avatar.SetName(!string.IsNullOrWhiteSpace(displayName) ? displayName : username);
                         if (!string.IsNullOrWhiteSpace(avatarUrl))
                         {
-                            using var img = AvatarCacheService.LoadImage(avatarUrl);
+                            var img = await Task.Run(() => AvatarCacheService.LoadImage(avatarUrl));
                             if (img != null)
+                            {
                                 avatar.Photo = new Bitmap(img);
+                                img.Dispose();
+                            }
                         }
                         else if (avatarUrl == string.Empty)
                             avatar.Photo = null;
