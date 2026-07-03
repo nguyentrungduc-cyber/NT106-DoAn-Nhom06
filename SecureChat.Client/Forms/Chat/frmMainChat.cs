@@ -4152,6 +4152,8 @@ namespace SecureChat.Client
             }
             _currentAvatarUrl = SecureChat.Client.Services.AvatarService.CurrentAvatarUrl;
             _currentDisplayName = SecureChat.Client.Services.AvatarService.CurrentDisplayName;
+            _currentUsername = SecureChat.Client.Services.AvatarService.CurrentUsername;
+            _currentEmail = SecureChat.Client.Services.AvatarService.CurrentEmail;
             UpdateSettingsHeaderUI();
 
             // Refresh chat header avatar if viewing Saved Messages or a DM (NOT group)
