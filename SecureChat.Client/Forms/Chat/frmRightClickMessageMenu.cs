@@ -19,9 +19,26 @@ namespace SecureChat.Client.Forms.Chat
         public Action<string>? Pin { get; init; }
     }
 
+    /// <summary>
+    /// Factory class tạo ContextMenuStrip khi người dùng right-click vào tin nhắn.
+    /// Không phải Form thực sự — là static factory tạo menu theo ngữ cảnh.
+    /// 
+    /// Menu gồm các tùy chọn tùy thuộc vào quyền của người dùng:
+    ///   Reply, Forward, Copy, Edit (chỉ tin mình gửi), Recall, Pin/Unpin, Delete
+    /// 
+    /// Màu sắc tự động theo theme hiện tại (TG.*) — được tạo mới mỗi lần gọi
+    /// nên không cần subscribe NightModeService.ThemeChanged.
+    /// </summary>
     public class frmRightClickMessageMenu
     {
-        public static ContextMenuStrip Create(string messageId, MessageActions actions, Func<string, Image?>? iconFor = null, bool isPinned = false)
+        /// <summary>
+    /// Tạo context menu cho một tin nhắn cụ thể.
+    /// </summary>
+    /// <param name="messageId">ID của tin nhắn</param>
+    /// <param name="actions">Tập hợp callback cho từng hành động (null = ẩn mục đó)</param>
+    /// <param name="iconFor">Hàm lấy icon cho từng label menu (tùy chọn)</param>
+    /// <param name="isPinned">true = tin nhắn đang được ghim → hiện "Unpin" thay "Pin"</param>
+    public static ContextMenuStrip Create(string messageId, MessageActions actions, Func<string, Image?>? iconFor = null, bool isPinned = false)
         {
             var pinLabel = isPinned ? "Unpin" : "Pin";
 

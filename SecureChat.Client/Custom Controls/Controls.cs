@@ -149,6 +149,22 @@ namespace SecureChat.Client
     // ─────────────────────────────────────────────
     // AVATAR CONTROL
     // ─────────────────────────────────────────────
+    /// <summary>
+    /// Control hiển thị avatar hình tròn — thay thế chuẩn cho PictureBox.
+    /// Hỗ trợ 2 chế độ: hiển thị ảnh hoặc hiển thị chữ viết tắt với màu nền ngẫu nhiên.
+    /// 
+    /// Tính năng:
+    ///   - Vẽ tròn với AntiAlias — không răng cưa
+    ///   - Chấm xanh (online indicator) ở góc phải dưới khi ShowOnline = true
+    ///   - Border của chấm dùng màu parent background — nhìn đẹp cả light và dark mode
+    ///   - DoubleBuffered qua ControlStyles để không nhấp nháy khi repaint
+    /// 
+    /// Cách dùng:
+    ///   var avatar = new AvatarControl { Size = new Size(40, 40) };
+    ///   avatar.SetName("Nguyen Trung Duc");   // dùng chữ viết tắt + màu auto
+    ///   avatar.SetImage(bitmap);               // dùng ảnh
+    ///   avatar.ShowOnline = true;              // hiện chấm online
+    /// </summary>
     public class AvatarControl : Control
     {
         public string DisplayName { get; set; } = "";

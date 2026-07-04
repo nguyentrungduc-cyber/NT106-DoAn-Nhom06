@@ -1,11 +1,41 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 
 namespace SecureChat.Client
 {
+    /// <summary>
+    /// Hệ thống token màu sắc (Color Design Token) của SecureChat.
+    /// Lấy cảm hứng từ Telegram Desktop — hỗ trợ 2 bảng màu: Light và Dark.
+    /// 
+    /// Cách hoạt động:
+    ///   - Tất cả màu sắc trong ứng dụng đều dùng token TG.* thay vì màu trực tiếp
+    ///   - Khi chuyển Night Mode: gọi TG.ApplyDark() hoặc TG.ApplyLight()
+    ///   - Toàn bộ token được cập nhật cùng lúc — control chỉ cần Invalidate() để vẽ lại
+    /// 
+    /// Ví dụ sử dụng:
+    ///   label.ForeColor = TG.TextPrimary;   // đen (light) hoặc trắng (dark)
+    ///   panel.BackColor = TG.SidebarBg;     // trắng (light) hoặc #17212B (dark)
+    ///   e.Graphics.FillEllipse(new SolidBrush(TG.Blue), rect);
+    /// 
+    /// Danh sách token (33 token):
+    ///   - Blue*, BlueHover, BlueActive, BlueDark: màu xanh chính và biến thể
+    ///   - WindowBg, SidebarBg, SidebarHover, SidebarActive: nền sidebar
+    ///   - TitleBarBg, TitleBarFg, TitleBarSub: thanh tiêu đề chat
+    ///   - TextPrimary, TextSecondary, TextHint, TextBlue, TextName, TextTime: màu chữ
+    ///   - ChatBg, MsgInBg, MsgOutBg, MsgOutBgBlue: nền khu vực chat và bong bóng tin nhắn
+    ///   - InputBg, InputBorder, InputFocused: ô nhập liệu
+    ///   - Divider, DividerLight: đường phân cách
+    ///   - BadgeBg, BadgeFg, BadgeMuted: huy hiệu thông báo chưa đọc
+    ///   - CAccent, AccentGreen, SeekBg, FileSizeColor: màu nhấn bổ sung
+    /// </summary>
     public static class TG
     {
-        // ── Light palette ──────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════
+        // BẢNG MÀU SÁNG (Light Mode) — giá trị màu mặc định khi khởi động
+        // Tham khảo: Telegram Desktop Light Theme
+        // ══════════════════════════════════════════════════════════════
         private static readonly Color
             Blue_L         = Color.FromArgb(0x2A, 0xAB, 0xEE),
             BlueHover_L    = Color.FromArgb(0x22, 0x9A, 0xD9),
@@ -113,6 +143,11 @@ namespace SecureChat.Client
         public static Color FileSizeColor { get; internal set; } = FileSizeColor_L;
 
         // ── Palette switch ────────────────────────────────────────────
+        /// <summary>
+        /// Áp dụng bảng màu sáng (Light Mode) cho toàn bộ token TG.*.
+        /// Gọi bởi NightModeService khi người dùng tắt Night Mode.
+        /// Sau khi gọi, tất cả control cần Invalidate() để vẽ lại với màu mới.
+        /// </summary>
         internal static void ApplyLight()
         {
             Blue          = Blue_L;
@@ -150,6 +185,11 @@ namespace SecureChat.Client
             FileSizeColor = FileSizeColor_L;
         }
 
+        /// <summary>
+        /// Áp dụng bảng màu tối (Dark Mode / Night Mode) cho toàn bộ token TG.*.
+        /// Gọi bởi NightModeService khi người dùng bật Night Mode.
+        /// Màu sắc lấy theo chuẩn Telegram Desktop Dark Theme.
+        /// </summary>
         internal static void ApplyDark()
         {
             Blue          = Blue_D;
@@ -210,6 +250,13 @@ namespace SecureChat.Client
         public const int RadiusLarge  = 18;
         public const int RadiusBubble = 16;
 
+        /// <summary>
+        /// Tính màu nền avatar dựa trên tên người dùng.
+        /// Dùng thuật toán hash để đảm bảo cùng tên luôn cho cùng màu.
+        /// Màu được chọn từ bộ 8 màu đa dạng, không trùng với màu UI.
+        /// </summary>
+        /// <param name="name">Tên hiển thị của người dùng hoặc nhóm</param>
+        /// <returns>Màu sắc nhất quán cho người dùng này</returns>
         public static Color GetAvatarColor(string name)
         {
             if (string.IsNullOrEmpty(name)) return AvatarColors[0];
