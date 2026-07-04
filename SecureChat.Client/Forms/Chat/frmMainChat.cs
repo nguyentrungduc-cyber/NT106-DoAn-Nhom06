@@ -204,6 +204,17 @@ namespace SecureChat.Client
         private readonly ConcurrentDictionary<string, string> _forwardOriginalSenderId = new();
         private readonly HashSet<string> _pinnedMessageIds = new();
         private readonly Dictionary<string, DateTime?> _convMuteUntil = new(); // conversationId → muted until (null = not muted)
+
+        // ── In-conversation search ─────────────────────────────────────
+        private Panel _pnlSearchBar;
+        private TextBox _tbConvSearch;
+        private Button _btnSearchClose;
+        private Button _btnSearchPrev;
+        private Button _btnSearchNext;
+        private Label _lblSearchCounter;
+        private string _searchQuery = string.Empty;
+        private List<int> _searchResults = new();
+        private int _searchCurrentResultIndex = -1;
         private Icon? _originalIcon;
         private Icon? _monochromeIcon;
         private Panel _pnlPinnedBar = null!;
@@ -1177,6 +1188,7 @@ namespace SecureChat.Client
 
             // Right buttons: search, video call, more
             var btnSearch = MakeChatHeaderBtn("🔍");
+            btnSearch.Click += (_, __) => OpenSearch();
             var btnVideo = MakeChatHeaderBtn("📹");
             _btnVideoCall = btnVideo;
             btnVideo.Click += async (s, e) =>
@@ -1443,9 +1455,11 @@ namespace SecureChat.Client
 
             // ── Input bar ─────────────────────────────
             BuildInputBar();
+            BuildSearchBar();
 
             _pnlChat.Controls.Add(_pnlPinnedPopup);
             _pnlChat.Controls.Add(_pnlPinnedBar);
+            _pnlChat.Controls.Add(_pnlSearchBar);
             _pnlChat.Controls.Add(_pnlMessages);
             _pnlChat.Controls.Add(_pnlChatEmpty);
             _pnlChat.Controls.Add(_pnlPinnedBottomBar);
@@ -3296,6 +3310,252 @@ namespace SecureChat.Client
             _pnlInputBar.Controls.Add(pnlInputControls);
         }
 
+        private void BuildSearchBar()
+        {
+            _pnlSearchBar = new Panel
+            {
+                Height = 40,
+                Dock = DockStyle.Top,
+                BackColor = TG.SidebarBg,
+                Visible = false,
+            };
+            _pnlSearchBar.Paint += (s, e) =>
+            {
+                using var pen = new Pen(TG.Divider);
+                e.Graphics.DrawLine(pen, 0, _pnlSearchBar.Height - 1, _pnlSearchBar.Width, _pnlSearchBar.Height - 1);
+            };
+
+            _btnSearchClose = new Button
+            {
+                Text = "\u00D7",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(30, 30),
+                Location = new Point(4, 5),
+                ForeColor = TG.TextSecondary,
+                Cursor = Cursors.Hand,
+                TabStop = false,
+            };
+            _btnSearchClose.FlatAppearance.BorderSize = 0;
+            _btnSearchClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 0, 0, 0);
+            _btnSearchClose.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 0, 0, 0);
+            _btnSearchClose.Click += (_, __) => CloseSearch();
+
+            _tbConvSearch = new TextBox
+            {
+                Location = new Point(38, 6),
+                Size = new Size(180, 28),
+                Font = new Font("Segoe UI", 10f),
+                ForeColor = TG.TextPrimary,
+                BackColor = TG.WindowBg,
+                BorderStyle = BorderStyle.FixedSingle,
+                TabStop = true,
+            };
+            _tbConvSearch.TextChanged += (_, __) => PerformSearch(_tbConvSearch.Text);
+            _tbConvSearch.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Return)
+                {
+                    e.SuppressKeyPress = true;
+                    NavigateSearch(true);
+                }
+                else if (e.KeyCode == Keys.Escape)
+                {
+                    e.SuppressKeyPress = true;
+                    CloseSearch();
+                }
+            };
+
+            _btnSearchPrev = new Button
+            {
+                Text = "\u25B2",
+                Font = new Font("Segoe UI", 9f),
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(26, 24),
+                Location = new Point(224, 8),
+                ForeColor = TG.TextPrimary,
+                Cursor = Cursors.Hand,
+                TabStop = false,
+                Enabled = false,
+            };
+            _btnSearchPrev.FlatAppearance.BorderSize = 0;
+            _btnSearchPrev.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 0, 0, 0);
+            _btnSearchPrev.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 0, 0, 0);
+            _btnSearchPrev.Click += (_, __) => NavigateSearch(false);
+
+            _btnSearchNext = new Button
+            {
+                Text = "\u25BC",
+                Font = new Font("Segoe UI", 9f),
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(26, 24),
+                Location = new Point(252, 8),
+                ForeColor = TG.TextPrimary,
+                Cursor = Cursors.Hand,
+                TabStop = false,
+                Enabled = false,
+            };
+            _btnSearchNext.FlatAppearance.BorderSize = 0;
+            _btnSearchNext.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 0, 0, 0);
+            _btnSearchNext.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 0, 0, 0);
+            _btnSearchNext.Click += (_, __) => NavigateSearch(true);
+
+            _lblSearchCounter = new Label
+            {
+                Text = "0 / 0",
+                Font = new Font("Segoe UI", 9f),
+                ForeColor = TG.TextSecondary,
+                AutoSize = true,
+                Location = new Point(284, 12),
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+
+            _pnlSearchBar.Controls.Add(_btnSearchClose);
+            _pnlSearchBar.Controls.Add(_tbConvSearch);
+            _pnlSearchBar.Controls.Add(_btnSearchPrev);
+            _pnlSearchBar.Controls.Add(_btnSearchNext);
+            _pnlSearchBar.Controls.Add(_lblSearchCounter);
+        }
+
+        private void OpenSearch()
+        {
+            if (string.IsNullOrWhiteSpace(_activeConvId)) return;
+            _pnlSearchBar.Visible = true;
+            _tbConvSearch.Focus();
+            _tbConvSearch.SelectAll();
+            if (!string.IsNullOrEmpty(_searchQuery))
+                PerformSearch(_searchQuery);
+        }
+
+        private void CloseSearch()
+        {
+            _pnlSearchBar.Visible = false;
+            _searchQuery = string.Empty;
+            _searchResults.Clear();
+            _searchCurrentResultIndex = -1;
+            _tbConvSearch.Text = string.Empty;
+            if (!string.IsNullOrWhiteSpace(_activeConvId))
+                _pnlMessages.Invalidate();
+        }
+
+        private void PerformSearch(string query)
+        {
+            query = query ?? string.Empty;
+            _searchQuery = query;
+            _searchResults.Clear();
+            _searchCurrentResultIndex = -1;
+
+            if (string.IsNullOrWhiteSpace(query) || string.IsNullOrWhiteSpace(_activeConvId))
+            {
+                _btnSearchPrev.Enabled = false;
+                _btnSearchNext.Enabled = false;
+                _lblSearchCounter.Text = "0 / 0";
+                _pnlMessages.Invalidate();
+                return;
+            }
+
+            var msgs = _currentMsgs;
+            for (int i = 0; i < msgs.Count; i++)
+            {
+                if (_hiddenMessageIds.Contains(msgs[i].Id)) continue;
+                if (msgs[i].Text.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                    _searchResults.Add(i);
+            }
+
+            if (_searchResults.Count > 0)
+                _searchCurrentResultIndex = 0;
+
+            UpdateSearchUI();
+            BuildMessages();
+        }
+
+        private void UpdateSearchUI()
+        {
+            bool hasResults = _searchResults.Count > 0;
+            _btnSearchPrev.Enabled = hasResults;
+            _btnSearchNext.Enabled = hasResults;
+
+            int current = _searchCurrentResultIndex >= 0 ? _searchCurrentResultIndex + 1 : 0;
+            _lblSearchCounter.Text = $"{current} / {_searchResults.Count}";
+        }
+
+        private void NavigateSearch(bool next)
+        {
+            if (_searchResults.Count == 0) return;
+
+            if (next)
+                _searchCurrentResultIndex = (_searchCurrentResultIndex + 1) % _searchResults.Count;
+            else
+                _searchCurrentResultIndex = (_searchCurrentResultIndex - 1 + _searchResults.Count) % _searchResults.Count;
+
+            UpdateSearchUI();
+            BuildMessages();
+        }
+
+        private void ScrollToSearchResult()
+        {
+            if (_searchCurrentResultIndex < 0 || _searchCurrentResultIndex >= _searchResults.Count) return;
+            int msgIndex = _searchResults[_searchCurrentResultIndex];
+            if (msgIndex < 0 || msgIndex >= _currentMsgs.Count) return;
+            string msgId = _currentMsgs[msgIndex].Id;
+            foreach (Control c in _pnlMessages.Controls)
+            {
+                if (c.Tag is string tag && tag == msgId)
+                {
+                    _pnlMessages.ScrollControlIntoView(c);
+                    return;
+                }
+            }
+        }
+
+        protected override bool ProcessCmdKey(ref System.Windows.Forms.Message msg, Keys keyData)
+        {
+            if (_pnlSearchBar.Visible)
+            {
+                if (keyData == Keys.Escape)
+                {
+                    CloseSearch();
+                    return true;
+                }
+                if (keyData == Keys.Enter)
+                {
+                    NavigateSearch(true);
+                    return true;
+                }
+                if (keyData == Keys.F3 && !_tbConvSearch.Focused)
+                {
+                    NavigateSearch(true);
+                    return true;
+                }
+                if (keyData == (Keys.F3 | Keys.Shift))
+                {
+                    NavigateSearch(false);
+                    return true;
+                }
+            }
+            else
+            {
+                if (keyData == (Keys.Control | Keys.F))
+                {
+                    OpenSearch();
+                    return true;
+                }
+                if (keyData == Keys.F3)
+                {
+                    OpenSearch();
+                    return true;
+                }
+                if (keyData == (Keys.F3 | Keys.Shift))
+                {
+                    OpenSearch();
+                    NavigateSearch(false);
+                    return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         private Button MakeInputBtn(string icon)
         {
             var btn = new Button
@@ -4282,6 +4542,8 @@ namespace SecureChat.Client
                 CloseRightSidebar();
 
             _activeConvId = convId;
+            if (_pnlSearchBar != null && _pnlSearchBar.Visible)
+                CloseSearch();
             UpdateChatEmptyStateUI();
 
             bool isSavedConv = !string.IsNullOrWhiteSpace(_savedMessagesConvId) && convId == _savedMessagesConvId;
@@ -5442,7 +5704,12 @@ namespace SecureChat.Client
             _pnlMessages.ResumeLayout(true);
 
             if (bubbles.Count > 0)
-                _pnlMessages.ScrollControlIntoView(bubbles[^1]);
+            {
+                if (!string.IsNullOrWhiteSpace(_searchQuery) && _searchResults.Count > 0)
+                    ScrollToSearchResult();
+                else
+                    _pnlMessages.ScrollControlIntoView(bubbles[^1]);
+            }
         }
 
         private static string FormatDateHeader(DateTime date)
@@ -6143,10 +6410,60 @@ namespace SecureChat.Client
                     }
                 }
 
-                // 3. Text tin nhắn chính - dùng TextRenderer để render emoji đúng
-                var textRect = new Rectangle(x + pad, (int)currentY, bw - pad * 2, sz.Height);
-                TextRenderer.DrawText(e.Graphics, actualText, TG.FontRegular(9.5f), textRect,
-                    TG.TextPrimary, TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                // 3. Text tin nhắn chính - vẽ với highlight nếu đang search
+                {
+                    var textRect = new Rectangle(x + pad, (int)currentY, bw - pad * 2, sz.Height);
+                    var textFont = TG.FontRegular(9.5f);
+
+                    bool isSearchActive = !string.IsNullOrWhiteSpace(_searchQuery)
+                        && actualText.IndexOf(_searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
+
+                    if (isSearchActive)
+                    {
+                        var sq = _searchQuery;
+                        var matches = new List<(int Index, int Length)>();
+                        int si = 0;
+                        while ((si = actualText.IndexOf(sq, si, StringComparison.OrdinalIgnoreCase)) >= 0)
+                        {
+                            matches.Add((si, sq.Length));
+                            si += sq.Length;
+                        }
+
+                        bool isCurrent = false;
+                        if (_searchCurrentResultIndex >= 0 && _searchCurrentResultIndex < _searchResults.Count)
+                        {
+                            int mi = _searchResults[_searchCurrentResultIndex];
+                            if (mi >= 0 && mi < _currentMsgs.Count)
+                                isCurrent = _currentMsgs[mi].Id == messageId;
+                        }
+
+                        using var sf = new StringFormat(StringFormatFlags.NoClip);
+                        sf.Alignment = StringAlignment.Near;
+                        sf.LineAlignment = StringAlignment.Near;
+                        sf.Trimming = StringTrimming.None;
+
+                        var ranges = matches.Select(m => new CharacterRange(m.Index, m.Length)).ToArray();
+                        sf.SetMeasurableCharacterRanges(ranges);
+                        var textRectF = new RectangleF(textRect.X, textRect.Y, textRect.Width, textRect.Height);
+                        var regions = e.Graphics.MeasureCharacterRanges(actualText, textFont, textRectF, sf);
+
+                        e.Graphics.DrawString(actualText, textFont, new SolidBrush(TG.TextPrimary), textRectF, sf);
+
+                        for (int ri = 0; ri < regions.Length; ri++)
+                        {
+                            var bounds = regions[ri].GetBounds(e.Graphics);
+                            using var hlBrush = new SolidBrush(isCurrent
+                                ? Color.FromArgb(130, 255, 255, 100)
+                                : Color.FromArgb(80, 255, 255, 0));
+                            e.Graphics.FillRectangle(hlBrush, bounds);
+                        }
+                    }
+                    else
+                    {
+                        TextRenderer.DrawText(e.Graphics, actualText, textFont, textRect,
+                            TG.TextPrimary, TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                    }
+                }
 
                 // 4. Thời gian và dấu tick ✓✓
                 var timeSz = TextRenderer.MeasureText(time, TG.FontRegular(7.5f));
