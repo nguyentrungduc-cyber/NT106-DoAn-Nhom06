@@ -57,6 +57,7 @@ namespace SecureChat.Controllers
         [HttpPost("requests")]
         public async Task<IActionResult> SendRequest([FromBody] SendFriendRequestRequest req)
         {
+            if (req is null) return BadRequest(new { error = "Invalid request body." });
             if (await friends.AreFriendsAsync(Me, req.RecipientID))
                 return Conflict(new { error = "Đã là bạn bè." });
 
@@ -150,6 +151,7 @@ namespace SecureChat.Controllers
 		[HttpPost("blocked")]
 		public async Task<IActionResult> BlockUser([FromBody] BlockUserRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (req.BlockedID == Me)
 				return BadRequest(new { error = "Không thể tự chặn mình." });
 			if (!await users.ExistsByIdAsync(req.BlockedID))

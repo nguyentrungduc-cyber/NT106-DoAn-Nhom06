@@ -22,7 +22,7 @@ namespace SecureChat.Server.Hubs
         private string Me => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
         // Track connectionId → userId để dùng GroupExcept khi block
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _connToUser = new();
+        internal static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> ConnectionUserMap = new();
 
         public override async Task OnConnectedAsync()
         {
@@ -34,7 +34,7 @@ namespace SecureChat.Server.Hubs
                 return;
             }
 
-            _connToUser[Context.ConnectionId] = Me;
+            ConnectionUserMap[Context.ConnectionId] = Me;
 
             // Track presence via UserPresenceService (DB + broadcast)
             await presence.UserConnectedAsync(Me, Context.ConnectionId);
@@ -60,10 +60,46 @@ namespace SecureChat.Server.Hubs
                 return;
             }
 
-            _connToUser.TryRemove(Context.ConnectionId, out _);
+            ConnectionUserMap.TryRemove(Context.ConnectionId, out _);
 
             // Track presence via UserPresenceService (DB + broadcast)
             await presence.UserDisconnectedAsync(Me, Context.ConnectionId);
+
+            // Orphaned call cleanup: end any active calls for this user
+            try
+            {
+                var myConvs = await conversations.GetConversationsByMemberAsync(Me);
+                foreach (var conv in myConvs)
+                {
+                    var activeCall = await calls.GetActiveCallAsync(conv.ConversationID);
+                    if (activeCall != null && activeCall.Status != CallStatus.Ended)
+                    {
+                        var ringing = activeCall.Status == CallStatus.Ringing;
+                        await calls.EndCallAsync(activeCall.CallID);
+
+                        if (ringing)
+                        {
+                            // Ringing: other participants are NOT in the SignalR call group.
+                            // Route CALL_ENDED directly to each user connection.
+                            var participants = await calls.GetParticipantsByCallAsync(activeCall.CallID);
+                            foreach (var p in participants)
+                            {
+                                var uid = p.Member?.UserID;
+                                if (uid != null && uid != Me)
+                                {
+                                    try { await Clients.User(uid).SendAsync("CallSignalReceived", activeCall.CallID, "CALL_ENDED"); } catch { }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Ongoing: all participants are in the group
+                            try { await Clients.Group(activeCall.CallID).SendAsync("CallSignalReceived", activeCall.CallID, "CALL_ENDED"); } catch { }
+                        }
+                    }
+                }
+            }
+            catch { /* best-effort cleanup */ }
 
             await base.OnDisconnectedAsync(exception);
         }
@@ -147,7 +183,7 @@ namespace SecureChat.Server.Hubs
                     if (isBlocked)
                     {
                         // Lấy tất cả connectionId của user bị chặn
-                        var blockedConns = _connToUser
+                        var blockedConns = ConnectionUserMap
                             .Where(kv => kv.Value == m.UserID)
                             .Select(kv => kv.Key)
                             .ToList();
@@ -307,7 +343,39 @@ namespace SecureChat.Server.Hubs
             if (!IsCallParticipant(call))
                 throw new HubException("You are not a participant of this call.");
 
-            await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, $"{Me}|{signal}");
+            // Route signals based on call state.
+            // Ringing: participants may NOT be in the SignalR call group yet.
+            // Ongoing: all participants are in the group.
+            if (call.Status == CallStatus.Ringing)
+            {
+                // Ringing state — route directly to each other participant's user connection.
+                foreach (var p in call.Participants ?? Enumerable.Empty<CallParticipant>())
+                {
+                    var uid = p.Member?.UserID;
+                    if (uid != null && uid != Me)
+                    {
+                        try { await Clients.User(uid).SendAsync("CallSignalReceived", callId, signal); } catch { }
+                    }
+                }
+            }
+            else
+            {
+                // Ongoing state — existing group routing with sender prefix
+                await Clients.GroupExcept(callId, Context.ConnectionId).SendAsync("CallSignalReceived", callId, $"{Me}|{signal}");
+            }
+
+            // When a participant declines, update their server-side status so EndCall
+            // history logic can detect the decline and show the correct message.
+            if (signal == "CALL_REJECTED")
+            {
+                var rejectedParticipant = call.Participants?
+                    .FirstOrDefault(p => p.Member?.UserID == Me && p.Status == CallParticipantStatus.Ringing);
+                if (rejectedParticipant != null)
+                {
+                    await calls.UpdateParticipantStatusAsync(
+                        rejectedParticipant.ParticipantID, callId, CallParticipantStatus.Declined);
+                }
+            }
         }
 
         /// <summary>

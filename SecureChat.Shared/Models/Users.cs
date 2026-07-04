@@ -55,25 +55,25 @@ namespace SecureChat.Models
 		public DateTime UpdatedAt { get; set; }
 
 		[InverseProperty(nameof(BlockedUser.Blocker))]
-		public ICollection<BlockedUser> BlockedUsers { get; set; } = [];
+		public ICollection<BlockedUser> BlockedUsers { get; set; } = new List<BlockedUser>();
 
 		[InverseProperty(nameof(ConversationMember.User))]
-		public ICollection<ConversationMember> ConversationMemberships { get; set; } = [];
+		public ICollection<ConversationMember> ConversationMemberships { get; set; } = new List<ConversationMember>();
 
 		[InverseProperty(nameof(Friend.UserA))]
-		public ICollection<Friend> FriendshipsA { get; set; } = [];
+		public ICollection<Friend> FriendshipsA { get; set; } = new List<Friend>();
 
 		[InverseProperty(nameof(Friend.UserB))]
-		public ICollection<Friend> FriendshipsB { get; set; } = [];
+		public ICollection<Friend> FriendshipsB { get; set; } = new List<Friend>();
 
 		[InverseProperty(nameof(FriendRequest.Recipient))]
-		public ICollection<FriendRequest> FriendRequestsReceived { get; set; } = [];
+		public ICollection<FriendRequest> FriendRequestsReceived { get; set; } = new List<FriendRequest>();
 
 		[InverseProperty(nameof(FriendRequest.Sender))]
-		public ICollection<FriendRequest> FriendRequestsSent { get; set; } = [];
+		public ICollection<FriendRequest> FriendRequestsSent { get; set; } = new List<FriendRequest>();
 
 		[InverseProperty(nameof(UserSession.User))]
-		public ICollection<UserSession> Sessions { get; set; } = [];
+		public ICollection<UserSession> Sessions { get; set; } = new List<UserSession>();
 	}
 
 	[Table("UserSessions")]

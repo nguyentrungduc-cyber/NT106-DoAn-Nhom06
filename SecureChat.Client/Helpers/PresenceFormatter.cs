@@ -15,12 +15,7 @@ public static class PresenceFormatter
         if (lastSeenUtc is null)
             return LocalizationService.Translate("offline");
 
-        var now = DateTime.UtcNow;
-
-        if (lastSeenUtc.Value > now)
-            return LocalizationService.Translate("last seen just now");
-
-        var diff = now - lastSeenUtc.Value;
+        var diff = DateTime.UtcNow - lastSeenUtc.Value;
 
         if (diff.TotalSeconds < 60)
             return LocalizationService.Translate("last seen just now");
@@ -32,27 +27,29 @@ public static class PresenceFormatter
             return string.Format(fmt, mins);
         }
 
-        if (diff.TotalHours < 24 && lastSeenUtc.Value.Date == now.Date)
+        // Use local dates for "today" / "yesterday" boundary to avoid UTC date mismatch
+        var localNow = DateTime.Now;
+        var localLastSeen = lastSeenUtc.Value.ToLocalTime();
+        if (localLastSeen.Date == localNow.Date)
         {
             var fmt = LocalizationService.Translate("last seen today at {0}");
-            return string.Format(fmt, lastSeenUtc.Value.ToLocalTime().ToString("HH:mm"));
+            return string.Format(fmt, localLastSeen.ToString("HH:mm"));
         }
 
-        if (diff.TotalHours < 48 && lastSeenUtc.Value.Date == now.Date.AddDays(-1))
+        if (localLastSeen.Date == localNow.Date.AddDays(-1))
         {
             var fmt = LocalizationService.Translate("last seen yesterday at {0}");
-            return string.Format(fmt, lastSeenUtc.Value.ToLocalTime().ToString("HH:mm"));
+            return string.Format(fmt, localLastSeen.ToString("HH:mm"));
         }
 
-        var localDate = lastSeenUtc.Value.ToLocalTime();
         bool isVietnamese = LocalizationService.CurrentLanguage == LanguageType.Vietnamese;
         string formattedDate = isVietnamese
-            ? $"{localDate.Day} {LocalizationService.Translate(localDate.ToString("MMMM", System.Globalization.CultureInfo.InvariantCulture))}"
-            : localDate.ToString("MMM dd", System.Globalization.CultureInfo.InvariantCulture);
+            ? $"{localLastSeen.Day} {LocalizationService.Translate(localLastSeen.ToString("MMMM", System.Globalization.CultureInfo.InvariantCulture))}"
+            : localLastSeen.ToString("MMM dd", System.Globalization.CultureInfo.InvariantCulture);
         var fmt2 = LocalizationService.Translate("last seen on {0} at {1}");
         return string.Format(fmt2,
             formattedDate,
-            localDate.ToString("HH:mm"));
+            localLastSeen.ToString("HH:mm"));
     }
 
     public static string GetPresenceText(bool isOnline, DateTime? lastSeenUtc)

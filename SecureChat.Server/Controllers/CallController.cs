@@ -58,6 +58,7 @@ namespace SecureChat.Controllers
 		[HttpPost]
 		public async Task<IActionResult> StartCall(string conversationID, [FromBody] StartCallRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
@@ -109,6 +110,7 @@ namespace SecureChat.Controllers
 		[HttpPut("{callID}/status")]
 		public async Task<IActionResult> UpdateCallStatus(string conversationID, string callID, [FromBody] UpdateCallStatusRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
@@ -175,6 +177,25 @@ namespace SecureChat.Controllers
 
 			await calls.EndCallAsync(callID);
 
+			if (preEndStatus == CallStatus.Ringing)
+			{
+				// Ringing: other participants are NOT in the SignalR call group.
+				// Route CALL_ENDED directly to each user connection.
+				foreach (var p in call.Participants ?? Enumerable.Empty<CallParticipant>())
+				{
+					var uid = p.Member?.UserID;
+					if (uid != null && uid != Me)
+					{
+						try { await hubContext.Clients.User(uid).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+					}
+				}
+			}
+			else
+			{
+				// Ongoing: all participants are in the group
+				try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+			}
+
 			if (preEndStatus == CallStatus.Ongoing)
 			{
 				var ended = await calls.GetByIdAsync(callID) ?? call;
@@ -183,7 +204,7 @@ namespace SecureChat.Controllers
 			else if (preEndStatus == CallStatus.Ringing && hasDeclined)
 			{
 				var ended = await calls.GetByIdAsync(callID) ?? call;
-				await CreateCallSystemMessageAsync(ended, missed: true);
+				await CreateCallSystemMessageAsync(ended, missed: false, declined: true);
 			}
 			// Ringing without decline → caller cancelled before answer → no message
 
@@ -213,9 +234,26 @@ namespace SecureChat.Controllers
 			if (call.Conversation?.Type == ConversationType.Direct)
 			{
 				var preEndStatus = call.Status;
-				var hasDeclined = call.Participants?.Any(p => p.Status == CallParticipantStatus.Declined) ?? false;
+				var hasDeclined = (call.Participants?.Any(p => p.Status == CallParticipantStatus.Declined) ?? false)
+					|| (req?.Status == CallParticipantStatus.Declined);
 
 				await calls.EndCallAsync(callID);
+
+				if (preEndStatus == CallStatus.Ringing)
+				{
+					foreach (var p in call.Participants ?? Enumerable.Empty<CallParticipant>())
+					{
+						var uid = p.Member?.UserID;
+						if (uid != null && uid != Me)
+						{
+							try { await hubContext.Clients.User(uid).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+						}
+					}
+				}
+				else
+				{
+					try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+				}
 
 				if (preEndStatus == CallStatus.Ongoing)
 				{
@@ -225,7 +263,7 @@ namespace SecureChat.Controllers
 				else if (preEndStatus == CallStatus.Ringing && hasDeclined)
 				{
 					var ended = await calls.GetByIdAsync(callID) ?? call;
-					await CreateCallSystemMessageAsync(ended, missed: true);
+					await CreateCallSystemMessageAsync(ended, missed: false, declined: true);
 				}
 				// Ringing without decline → caller left without answer → no message
 			}
@@ -239,6 +277,22 @@ namespace SecureChat.Controllers
 
 					await calls.EndCallAsync(callID);
 
+					if (preEndStatus == CallStatus.Ringing)
+					{
+						foreach (var p in call.Participants ?? Enumerable.Empty<CallParticipant>())
+						{
+							var uid = p.Member?.UserID;
+							if (uid != null && uid != Me)
+							{
+								try { await hubContext.Clients.User(uid).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+							}
+						}
+					}
+					else
+					{
+						try { await hubContext.Clients.Group(callID).SendAsync("CallSignalReceived", callID, "CALL_ENDED"); } catch { }
+					}
+
 					if (preEndStatus == CallStatus.Ongoing)
 					{
 						var ended = await calls.GetByIdAsync(callID) ?? call;
@@ -251,20 +305,24 @@ namespace SecureChat.Controllers
 			return NoContent();
 		}
 
-		private async Task CreateCallSystemMessageAsync(CallLog call, bool missed, bool isGroup = false)
-		{
-			var callTypeName = call.Type == CallType.Video ? "video" : "voice";
-			string content;
+        private async Task CreateCallSystemMessageAsync(CallLog call, bool missed, bool isGroup = false, bool declined = false)
+        {
+            var callTypeName = call.Type == CallType.Video ? "video" : "voice";
+            string content;
 
-			if (isGroup)
-			{
-				content = "Group call ended";
-			}
-			else if (missed)
-			{
-				content = $"Missed {callTypeName} call";
-			}
-			else
+            if (isGroup)
+            {
+                content = "Group call ended";
+            }
+            else if (declined)
+            {
+                content = $"Declined {callTypeName} call";
+            }
+            else if (missed)
+            {
+                content = $"Missed {callTypeName} call";
+            }
+            else
 			{
 				var duration = call.EndedAt.HasValue && call.StartedAt != default
 					? (int)(call.EndedAt.Value - call.StartedAt).TotalSeconds
@@ -297,6 +355,7 @@ namespace SecureChat.Controllers
 		[HttpPut("{callID}/participants/{participantID}")]
 		public async Task<IActionResult> UpdateParticipant(string conversationID, string callID, string participantID, [FromBody] UpdateParticipantStatusRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();

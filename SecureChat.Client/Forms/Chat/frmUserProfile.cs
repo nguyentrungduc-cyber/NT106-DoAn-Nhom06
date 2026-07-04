@@ -9,9 +9,32 @@ namespace SecureChat.Client.Forms.Chat
 {
     public sealed class frmUserProfile : Form
     {
+        private readonly AvatarControl _avatar;
+        private readonly Label _lblName;
+        private readonly Label _lblUsername;
+        private readonly Label _lblStatus;
+        private Label? _lblEmailValue;
+        private Label? _lblBioValue;
+        private readonly string _userId;
+        private readonly string _origDisplayName;
+        private readonly string _origUsername;
+        private readonly string? _origEmail;
+        private readonly string? _origBio;
+        private readonly bool _showOnlineStatus;
+        private bool _isClosing;
+        private long _avatarLoadVersion;
+
         public frmUserProfile(string displayName, string username, string? email, string? bio,
-            bool isOnline = false, DateTime? lastSeenUtc = null, bool showOnlineStatus = true)
+            bool isOnline = false, DateTime? lastSeenUtc = null, bool showOnlineStatus = true,
+            string userId = "")
         {
+            _userId = userId;
+            _origDisplayName = displayName;
+            _origUsername = username;
+            _origEmail = email;
+            _origBio = bio;
+            _showOnlineStatus = showOnlineStatus;
+
             Text = "Profile";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
@@ -46,13 +69,13 @@ namespace SecureChat.Client.Forms.Chat
             Controls.Add(btnClose);
 
             // Avatar (centered)
-            var avatar = new AvatarControl
+            _avatar = new AvatarControl
             {
                 Size = new Size(100, 100),
                 Location = new Point((ClientSize.Width - 100) / 2, y)
             };
-            avatar.SetName(displayName);
-            Controls.Add(avatar);
+            _avatar.SetName(displayName);
+            Controls.Add(_avatar);
             y += 114;
 
             // Helper: label full-width (trừ margin 2 bên), dùng TextAlign để căn giữa thật -
@@ -78,12 +101,12 @@ namespace SecureChat.Client.Forms.Chat
             }
 
             // Display Name (centered, tự xuống dòng nếu tên dài)
-            var lblName = AddCenteredLabel(displayName, TG.FontSemiBold(18f), TG.TextPrimary, y);
-            y += lblName.Height + 4;
+            _lblName = AddCenteredLabel(displayName, TG.FontSemiBold(18f), TG.TextPrimary, y);
+            y += _lblName.Height + 4;
 
             // Username (centered)
-            var lblUsername = AddCenteredLabel($"@{username}", TG.FontRegular(13f), TG.TextSecondary, y);
-            y += lblUsername.Height + 6;
+            _lblUsername = AddCenteredLabel($"@{username}", TG.FontRegular(13f), TG.TextSecondary, y);
+            y += _lblUsername.Height + 6;
 
             // Presence status (centered)
             string presenceText;
@@ -92,9 +115,9 @@ namespace SecureChat.Client.Forms.Chat
             else
                 presenceText = "offline";
 
-            var lblStatus = AddCenteredLabel(presenceText, TG.FontRegular(11f),
+            _lblStatus = AddCenteredLabel(presenceText, TG.FontRegular(11f),
                 presenceText == "Online" ? Color.FromArgb(0x21, 0xA1, 0x66) : TG.TextSecondary, y);
-            y += lblStatus.Height + 18;
+            y += _lblStatus.Height + 18;
 
             // Divider
             Controls.Add(new Panel
@@ -107,21 +130,27 @@ namespace SecureChat.Client.Forms.Chat
             y += 22;
 
             // Email
-            AppendInfoField("Email", string.IsNullOrWhiteSpace(email) ? "No email available" : email, ref y);
+            _lblEmailValue = AppendInfoField("Email", string.IsNullOrWhiteSpace(email) ? "No email available" : email, ref y);
 
             // Bio (optional)
             if (!string.IsNullOrWhiteSpace(bio))
             {
                 y += 4;
-                AppendInfoField("Bio", bio, ref y);
+                _lblBioValue = AppendInfoField("Bio", bio, ref y);
             }
             UiLocalization.ApplyToForm(this);
 
             // Co lại đúng theo nội dung thật (tránh bị clip khi tên/email/bio dài), nhưng vẫn giữ tối thiểu cho thoáng
             ClientSize = new Size(ClientSize.Width, Math.Max(380, y + 12));
+
+            if (!string.IsNullOrWhiteSpace(_userId))
+            {
+                frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
+                frmMainChat.GlobalProfileUpdated += OnGlobalProfileUpdated;
+            }
         }
 
-        private void AppendInfoField(string label, string value, ref int y)
+        private Label AppendInfoField(string label, string value, ref int y)
         {
             int left = 40;
 
@@ -149,6 +178,77 @@ namespace SecureChat.Client.Forms.Chat
             };
             Controls.Add(lblValue);
             y += lblValue.Height + 20;
+            return lblValue;
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _isClosing = true;
+            if (!string.IsNullOrWhiteSpace(_userId))
+                frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
+            base.OnFormClosing(e);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && !string.IsNullOrWhiteSpace(_userId))
+                frmMainChat.GlobalProfileUpdated -= OnGlobalProfileUpdated;
+            base.Dispose(disposing);
+        }
+
+        private void OnGlobalProfileUpdated(string userId, string displayName, string username, string avatarUrl)
+        {
+            if (_isClosing || IsDisposed || userId != _userId) return;
+
+            long thisVersion = Interlocked.Increment(ref _avatarLoadVersion);
+
+            // Load avatar off UI thread
+            bool avatarRemoved = avatarUrl == string.Empty;
+            Task<Image?>? loadTask = null;
+            if (!string.IsNullOrWhiteSpace(avatarUrl))
+                loadTask = Task.Run(() => AvatarCacheService.LoadImage(avatarUrl));
+
+            BeginInvoke(new Action(async () =>
+            {
+                try
+                {
+                    if (_isClosing || IsDisposed) return;
+
+                    string newName = !string.IsNullOrWhiteSpace(displayName) ? displayName : _origDisplayName;
+                    string newUsername = !string.IsNullOrWhiteSpace(username) ? username : _origUsername;
+
+                    _lblName.Text = newName;
+                    _lblUsername.Text = $"@{newUsername}";
+
+                    _avatar.SetName(newName);
+                    if (loadTask != null)
+                    {
+                        var img = await loadTask;
+                        if (_isClosing || IsDisposed) return;
+                        // Only apply if no newer update arrived
+                        if (_avatarLoadVersion != thisVersion)
+                        {
+                            img?.Dispose();
+                            return;
+                        }
+                        if (img != null)
+                        {
+                            var old = _avatar.Photo;
+                            _avatar.Photo = new Bitmap(img);
+                            old?.Dispose();
+                            img.Dispose();
+                        }
+                    }
+                    else if (avatarRemoved)
+                    {
+                        var old = _avatar.Photo;
+                        _avatar.Photo = null;
+                        old?.Dispose();
+                    }
+                    _avatar.Invalidate();
+                }
+                catch { }
+            }));
         }
     }
 }

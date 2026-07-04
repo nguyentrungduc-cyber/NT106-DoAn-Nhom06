@@ -23,6 +23,7 @@ namespace SecureChat.Controllers
 		[HttpPut("settings")]
 		public async Task<IActionResult> UpdateSettings([FromBody] UpdatePrivacySettingsRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var settings = await privacy.UpdateSettingsAsync(Me, req);
 			return Ok(settings);
 		}

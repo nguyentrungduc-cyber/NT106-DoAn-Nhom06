@@ -106,6 +106,7 @@ namespace SecureChat.Controllers
 		[HttpPost]
 		public async Task<IActionResult> CreateConversation([FromBody] CreateConversationRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (req.Type == ConversationType.SavedMessages)
 				return BadRequest(new { error = "Cannot create Saved Messages through this endpoint." });
 
@@ -187,12 +188,15 @@ namespace SecureChat.Controllers
 		[HttpPatch("{conversationID}")]
 		public async Task<IActionResult> UpdateConversation(string conversationID, [FromBody] UpdateConversationRequest req)
 		{
+			using var lockHandle = await groupLock.AcquireAsync(conversationID);
+
 			var conv = await conversations.GetByIdAsync(conversationID);
 			if (conv is null)
 				return NotFound();
 			if (conv.Type == ConversationType.SavedMessages)
 				return Forbid();
 
+			// Re-fetch membership inside lock
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return Forbid();
@@ -239,12 +243,15 @@ namespace SecureChat.Controllers
 		[HttpDelete("{conversationID}")]
 		public async Task<IActionResult> DeleteConversation(string conversationID)
 		{
+			using var lockHandle = await groupLock.AcquireAsync(conversationID);
+
 			var conv = await conversations.GetByIdAsync(conversationID);
 			if (conv is null)
 				return NotFound();
 			if (conv.Type == ConversationType.SavedMessages)
 				return Forbid();
 
+			// Re-fetch membership inside lock
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return Forbid();
@@ -284,10 +291,13 @@ namespace SecureChat.Controllers
 		[HttpPost("{conversationID}/clear")]
 		public async Task<IActionResult> ClearConversationMessages(string conversationID)
 		{
+			using var lockHandle = await groupLock.AcquireAsync(conversationID);
+
 			var conv = await conversations.GetByIdAsync(conversationID);
 			if (conv is null)
 				return NotFound();
 
+			// Re-fetch membership inside lock
 			var member = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (member is null || member.LeftAt is not null)
 				return Forbid();
@@ -315,6 +325,10 @@ namespace SecureChat.Controllers
 		[HttpPost("{conversationID}/members")]
 		public async Task<IActionResult> AddMember(string conversationID, [FromBody] AddMemberRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
+
+			using var lockHandle = await groupLock.AcquireAsync(conversationID);
+
 			var myMember = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (myMember is null || myMember.LeftAt is not null)
 				return Forbid();
@@ -323,6 +337,7 @@ namespace SecureChat.Controllers
 			if (!await users.ExistsByIdAsync(req.UserID))
 				return NotFound(new { error = "Người dùng không tồn tại." });
 
+			// Re-check membership inside the lock — prevents race with concurrent AddMember
 			var existing = await conversations.GetMemberByConversationAndUserAsync(conversationID, req.UserID);
 			if (existing is not null && existing.LeftAt is null)
 				return Conflict(new { error = "Người dùng đã là thành viên." });
@@ -341,6 +356,18 @@ namespace SecureChat.Controllers
 			});
 
 			var loaded = await conversations.GetMemberByIdAsync(newMember.MemberID);
+
+			// Add the new member to the SignalR group so they receive real-time messages
+			try
+			{
+				var targetConnIds = ChatHub.ConnectionUserMap
+					.Where(kv => kv.Value == req.UserID)
+					.Select(kv => kv.Key)
+					.ToList();
+				foreach (var connId in targetConnIds)
+					await hubContext.Groups.AddToGroupAsync(connId, conversationID);
+			}
+			catch { /* best-effort */ }
 
 			// Notify the new member so their sidebar shows this conversation
 			try
@@ -367,6 +394,9 @@ namespace SecureChat.Controllers
 		[HttpPatch("{conversationID}/members/{memberID}")]
 		public async Task<IActionResult> UpdateMember(string conversationID, string memberID, [FromBody] UpdateMemberRequest req)
 		{
+			using var lockHandle = await groupLock.AcquireAsync(conversationID);
+
+			// Re-fetch inside lock for consistency
 			var myMember = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (myMember is null || myMember.LeftAt is not null)
 				return Forbid();
@@ -381,12 +411,20 @@ namespace SecureChat.Controllers
 				if (myMember.Role != MemberRole.Owner)
 					return Forbid();
 
-				// Prevent self-demotion if this is the last Owner
+				// Prevent self-demotion if this is the last Owner (re-checked inside lock)
 				if (target.Role == MemberRole.Owner && target.UserID == Me)
 				{
-					var ownerCount = await conversations.GetActiveMembersAsync(conversationID);
-					if (ownerCount.Count(m => m.Role == MemberRole.Owner) <= 1)
+					var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+					if (activeMembers.Count(m => m.Role == MemberRole.Owner) <= 1)
 						return BadRequest(new { error = "Cannot demote yourself as the last owner. Use the leave flow to transfer ownership." });
+				}
+
+				// Also prevent removing the last Owner by promoting them to Member
+				if (target.Role == MemberRole.Owner)
+				{
+					var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
+					if (activeMembers.Count(m => m.Role == MemberRole.Owner) <= 1)
+						return BadRequest(new { error = "Cannot demote the last owner." });
 				}
 
 				// Prevent promoting anyone to Owner through this endpoint
@@ -413,11 +451,13 @@ namespace SecureChat.Controllers
 			{
 				try
 				{
+					var conv = await conversations.GetByIdAsync(conversationID);
+					var version = conv?.Version ?? 0;
 					var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
 					foreach (var m in activeMembers)
 					{
 						if (m.UserID != Me)
-							await hubContext.Clients.User(m.UserID).SendAsync("ConversationUpdated", conversationID);
+							await hubContext.Clients.User(m.UserID).SendAsync("ConversationUpdated", conversationID, version);
 					}
 				}
 				catch { /* best-effort */ }
@@ -429,6 +469,9 @@ namespace SecureChat.Controllers
 		[HttpDelete("{conversationID}/members/{memberID}")]
 		public async Task<IActionResult> RemoveMember(string conversationID, string memberID)
 		{
+			using var lockHandle = await groupLock.AcquireAsync(conversationID);
+
+			// Re-fetch inside lock for consistency with concurrent operations
 			var myMember = await conversations.GetMemberByConversationAndUserAsync(conversationID, Me);
 			if (myMember is null || myMember.LeftAt is not null)
 				return Forbid();
@@ -441,7 +484,7 @@ namespace SecureChat.Controllers
 			if (target.Role >= myMember.Role)
 				return Forbid();
 
-			// Prevent removing the last Owner
+			// Prevent removing the last Owner (re-checked inside lock)
 			if (target.Role == MemberRole.Owner)
 			{
 				var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
@@ -450,6 +493,18 @@ namespace SecureChat.Controllers
 			}
 
 			await conversations.RemoveMemberAsync(memberID);
+
+			// Remove the user from the SignalR group so they stop receiving realtime messages
+			try
+			{
+				var targetConnIds = ChatHub.ConnectionUserMap
+					.Where(kv => kv.Value == target.UserID)
+					.Select(kv => kv.Key)
+					.ToList();
+				foreach (var connId in targetConnIds)
+					await hubContext.Groups.RemoveFromGroupAsync(connId, conversationID);
+			}
+			catch { /* best-effort */ }
 
 			// Notify the removed member (so their UI removes the conversation)
 			try
@@ -515,6 +570,7 @@ namespace SecureChat.Controllers
 
 							tx.Commit();
 
+							await RemoveFromSignalRGroupAsync(conversationID, Me);
 							await NotifyGroupDeletedAsync(Me, conversationID);
 							return NoContent();
 						}
@@ -536,6 +592,7 @@ namespace SecureChat.Controllers
 
 							tx.Commit();
 
+							await RemoveFromSignalRGroupAsync(conversationID, Me);
 							await NotifyOwnerLeftAsync(conversationID, Me, target.UserID, member.User?.DisplayName ?? "A member");
 							return NoContent();
 						}
@@ -545,6 +602,7 @@ namespace SecureChat.Controllers
 
 						tx.Commit();
 
+						await RemoveFromSignalRGroupAsync(conversationID, Me);
 						await NotifyMemberLeftAsync(conversationID, Me, member.User?.DisplayName ?? "A member");
 						return NoContent();
 					}
@@ -563,7 +621,22 @@ namespace SecureChat.Controllers
 			});
 		}
 
-		// ─── SignalR notification helpers (called after commit) ─────────
+		// ─── SignalR helpers (called after commit) ─────────
+
+		/// <summary>Remove a user from the SignalR group so they stop receiving real-time messages.</summary>
+		private async Task RemoveFromSignalRGroupAsync(string conversationId, string userId)
+		{
+			try
+			{
+				var connIds = ChatHub.ConnectionUserMap
+					.Where(kv => kv.Value == userId)
+					.Select(kv => kv.Key)
+					.ToList();
+				foreach (var connId in connIds)
+					await hubContext.Groups.RemoveFromGroupAsync(connId, conversationId);
+			}
+			catch { /* best-effort */ }
+		}
 
 		private async Task NotifyGroupDeletedAsync(string leavingUserId, string conversationId)
 		{
@@ -592,11 +665,18 @@ namespace SecureChat.Controllers
 				await hubContext.Clients.Group(conversationId).SendAsync("MessageReceived", msgResponse);
 
 				var remaining = await conversations.GetActiveMembersAsync(conversationId);
+
+				// Notify all remaining members that a member left
 				foreach (var m in remaining)
 				{
 					if (m.UserID != leavingUserId)
 						await hubContext.Clients.User(m.UserID).SendAsync("MemberRemoved", conversationId, leavingUserId);
 				}
+
+				// Broadcast GroupSettingsUpdated so every client refreshes their membership/role
+				// (the new owner's role changed from Admin → Owner)
+				int version = (int)(DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+				await hubContext.Clients.Group(conversationId).SendAsync("GroupSettingsUpdated", conversationId, version);
 			}
 			catch { /* best-effort */ }
 		}

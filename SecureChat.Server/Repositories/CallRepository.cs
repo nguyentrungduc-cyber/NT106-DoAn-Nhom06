@@ -140,9 +140,11 @@ namespace SecureChat.Repositories
 
 		public async Task<bool> TryCreateCallHistoryMessageAsync(string callID, Message sysMsg, CancellationToken ct = default)
 		{
-			using var tx = await db.Database.BeginTransactionAsync(ct);
-			try
+			var strategy = db.Database.CreateExecutionStrategy();
+			return await strategy.ExecuteAsync<bool>(async () =>
 			{
+				using var tx = await db.Database.BeginTransactionAsync(ct);
+
 				var rows = await db.Database.ExecuteSqlInterpolatedAsync(
 					$"UPDATE CallLogs SET has_history_message = 1 WHERE call_id = {callID} AND has_history_message = 0", ct);
 
@@ -157,12 +159,7 @@ namespace SecureChat.Repositories
 				await db.SaveChangesAsync(ct);
 				await tx.CommitAsync(ct);
 				return true;
-			}
-			catch
-			{
-				await tx.RollbackAsync(ct);
-				throw;
-			}
+			});
 		}
 
 		public async Task DeleteCallAsync(string callID)

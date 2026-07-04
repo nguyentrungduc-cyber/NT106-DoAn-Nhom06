@@ -38,7 +38,7 @@ namespace SecureChat.Models
 		public ConversationMember StartedByMember { get; set; } = null!;
 
 		[InverseProperty(nameof(CallParticipant.Call))]
-		public ICollection<CallParticipant> Participants { get; set; } = [];
+		public ICollection<CallParticipant> Participants { get; set; } = new List<CallParticipant>();
 	}
 
 	[Table("CallParticipants")]

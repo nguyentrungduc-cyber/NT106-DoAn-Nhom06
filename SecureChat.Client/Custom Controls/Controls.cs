@@ -156,6 +156,7 @@ namespace SecureChat.Client
         public Image Photo { get; set; } = null;
         public bool ShowOnline { get; set; } = false;
         private Color _avatarColor;
+        private string _userId = string.Empty;
 
         public AvatarControl()
         {
@@ -176,6 +177,11 @@ namespace SecureChat.Client
             DisplayName = name;
             _avatarColor = TG.GetAvatarColor(name);
             Invalidate();
+        }
+
+        public void SetUser(string userId)
+        {
+            _userId = userId;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -240,6 +246,15 @@ namespace SecureChat.Client
                 using var greenBrush = new SolidBrush(Color.FromArgb(0x4D, 0xD9, 0x64));
                 e.Graphics.FillEllipse(greenBrush, dotX, dotY, dotSize, dotSize);
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                Photo?.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         private string GetInitials(string name)

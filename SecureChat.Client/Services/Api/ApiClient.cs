@@ -9,7 +9,7 @@ namespace SecureChat.Client.Services
 {
     public class ApiClient
     {
-        private const string DefaultBaseUrl = "http://localhost:5097/";
+        private const string DefaultBaseUrl = "https://nt106-doan-nhom06-production.up.railway.app/";
         private readonly HttpClient _httpClient;
         private static ApiClient _instance;
         private string? _accessToken;

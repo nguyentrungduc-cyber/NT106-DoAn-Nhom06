@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SecureChat.Models;
@@ -8,12 +9,64 @@ using SecureChat.Repositories;
 using SecureChat.Server.Services;
 using SecureChat.Services;
 
+try
+{
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 256 * 1024);
 
-var connStr = builder.Configuration.GetConnectionString("Default")
-	?? throw new InvalidOperationException("Connection string 'Default' not found.");
+var connStr = builder.Configuration.GetConnectionString("Default");
+
+// Parse mysql://user:pass@host:port/db (Railway MySQL URL format) into ADO.NET format
+static string? ParseMySqlUrl(string url)
+{
+    if (string.IsNullOrWhiteSpace(url) || !url.StartsWith("mysql://"))
+        return null;
+    var rest = url["mysql://".Length..];
+    var atIdx = rest.IndexOf('@');
+    if (atIdx <= 0) return null;
+    var userPass = rest[..atIdx].Split(':');
+    if (userPass.Length < 2) return null;
+    var hostPortDb = rest[(atIdx + 1)..];
+    var slashIdx = hostPortDb.IndexOf('/');
+    var hostPort = slashIdx > 0 ? hostPortDb[..slashIdx] : hostPortDb;
+    var db = slashIdx > 0 ? hostPortDb[(slashIdx + 1)..] : "railway";
+    var colonIdx = hostPort.IndexOf(':');
+    var srvHost = colonIdx > 0 ? hostPort[..colonIdx] : hostPort;
+    var srvPort = colonIdx > 0 ? hostPort[(colonIdx + 1)..] : "3306";
+    return $"server={srvHost};port={srvPort};database={db};user={userPass[0]};password={userPass[1]}";
+}
+
+// ConnectionStrings:Default from config might already be mysql:// (Railway sets it)
+if (connStr != null && connStr.StartsWith("mysql://"))
+    connStr = ParseMySqlUrl(connStr);
+
+// MYSQL_URL env var overrides config (also mysql:// format)
+var mySqlUrl = Environment.GetEnvironmentVariable("MYSQL_URL");
+var parsedUrl = ParseMySqlUrl(mySqlUrl);
+if (parsedUrl != null)
+    connStr = parsedUrl;
+
+// MYSQL_HOST + individual env vars (overrides)
+var mySqlHost = Environment.GetEnvironmentVariable("MYSQL_HOST");
+if (!string.IsNullOrWhiteSpace(mySqlHost))
+{
+    var mySqlPort  = (Environment.GetEnvironmentVariable("MYSQL_PORT") ?? "3306").Trim();
+    var mySqlDb    = (Environment.GetEnvironmentVariable("MYSQL_DATABASE") ?? "railway").Trim();
+    var mySqlUser  = (Environment.GetEnvironmentVariable("MYSQL_USER") ?? "railway").Trim();
+    var mySqlPass  = Environment.GetEnvironmentVariable("MYSQL_PASSWORD") ?? "";
+    connStr = $"server={mySqlHost.Trim()};port={mySqlPort};database={mySqlDb};user={mySqlUser};password={mySqlPass}";
+}
+if (connStr != null)
+    connStr = connStr.Trim();
+if (string.IsNullOrEmpty(connStr))
+{
+    Console.Error.WriteLine("MYSQL_URL=" + (Environment.GetEnvironmentVariable("MYSQL_URL") ?? "(null)"));
+    Console.Error.WriteLine("MYSQL_HOST=" + (Environment.GetEnvironmentVariable("MYSQL_HOST") ?? "(null)"));
+    Console.Error.WriteLine("ConnectionStrings:Default=" + (builder.Configuration.GetConnectionString("Default") ?? "(null)"));
+    throw new InvalidOperationException("Connection string not found. Set ConnectionStrings:Default or MYSQL_HOST env vars.");
+}
+Console.Error.WriteLine($"DB conn str prefix: {connStr[..Math.Min(connStr.Length, 60)]}");
 
 if (connStr.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
 	|| connStr.Contains(".db", StringComparison.OrdinalIgnoreCase)
@@ -22,9 +75,11 @@ if (connStr.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
 	throw new InvalidOperationException("SQLite connection string detected. SecureChat.Server only supports MariaDB/MySQL.");
 }
 
+var mySqlVersion = Environment.GetEnvironmentVariable("MYSQL_VERSION") ?? "8.0.0";
+
 builder.Services.AddDbContext<AppDbContext>(o => o.UseMySql(
     connStr,
-	ServerVersion.AutoDetect(connStr),
+	ServerVersion.Parse(mySqlVersion),
 	my => {
 		my.MigrationsAssembly("SecureChat.Server");
 		my.EnableRetryOnFailure(maxRetryCount: 3);
@@ -119,9 +174,68 @@ c.AddSecurityRequirement(new OpenApiSecurityRequirement {
 	});
 });
 
-builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+// Railway: bind to dynamic $PORT, fallback to 5000
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+// Production CORS: allow SignalR with credentials from configured origins
+var corsOrigins = (builder.Configuration["CorsOrigins"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+if (corsOrigins.Length > 0)
+{
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
+        p.WithOrigins(corsOrigins).AllowCredentials().AllowAnyMethod().AllowAnyHeader()));
+}
+else
+{
+    // Development fallback (no credentials needed without SignalR cookies)
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
+        p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+}
 
 var app = builder.Build();
+
+// Auto-apply EF Core migrations on startup (idempotent, safe for Railway)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+
+    try
+    {
+        // Reset stale UserPresence rows — server restart means all sessions are gone
+        db.Database.ExecuteSqlRaw(@"
+            UPDATE UserPresences SET Status = 0, ActiveSessionCount = 0, LastSeenUtc = NOW(6)
+            WHERE ActiveSessionCount > 0;
+        ");
+
+        db.Database.ExecuteSqlRaw(@"
+            SET @_ce = (SELECT COUNT(*) FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Messages' AND COLUMN_NAME = 'expires_at');
+            SET @_cs = IF(@_ce = 0, 'ALTER TABLE Messages ADD COLUMN expires_at datetime(6) NULL', 'SELECT 1');
+            PREPARE _st FROM @_cs; EXECUTE _st; DEALLOCATE PREPARE _st;
+
+            SET @_ie = (SELECT COUNT(*) FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Messages' AND INDEX_NAME = 'idx_messages_expires_at');
+            SET @_is = IF(@_ie = 0, 'CREATE INDEX idx_messages_expires_at ON Messages (expires_at)', 'SELECT 1');
+            PREPARE _st2 FROM @_is; EXECUTE _st2; DEALLOCATE PREPARE _st2;
+        ");
+    }
+    catch { /* column already exists — ignore */ }
+
+    try
+    {
+        db.Database.ExecuteSqlRaw(@"
+            CREATE TABLE IF NOT EXISTS StoredFiles (
+                file_name    VARCHAR(128)  NOT NULL PRIMARY KEY,
+                file_data    LONGBLOB      NOT NULL,
+                original_name VARCHAR(256) NOT NULL DEFAULT '',
+                file_size    BIGINT        NOT NULL DEFAULT 0,
+                created_at   DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+    }
+    catch { /* table already exists */ }
+}
 
 if (app.Environment.IsDevelopment()) {
     app.UseSwagger();
@@ -132,18 +246,53 @@ if (app.Environment.IsDevelopment()) {
 	});
 }
 
-// Serve static files from wwwroot (uploads will be available under /uploads)
+// Ensure wwwroot directories exist BEFORE static file middleware
+// On Railway/Linux, PhysicalFileProvider needs the root directory to exist at startup
+var webRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "wwwroot"));
+Directory.CreateDirectory(webRoot);
+Directory.CreateDirectory(Path.Combine(webRoot, "uploads"));
+Directory.CreateDirectory(Path.Combine(webRoot, "voice"));
+Console.Error.WriteLine($"[StaticFiles] Serving from: {webRoot}");
 
-// With this:
-app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+app.UseExceptionHandler(appBuilder =>
 {
-    ServeUnknownFileTypes = true,
-    DefaultContentType = "application/octet-stream"
+    appBuilder.Run(async context =>
+    {
+        var ex = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        if (ex != null)
+        {
+            Console.Error.WriteLine($"[500] {context.Request.Method} {context.Request.Path}: {ex}");
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            var msg = ex.InnerException?.Message ?? ex.Message;
+            await context.Response.WriteAsync(
+                System.Text.Json.JsonSerializer.Serialize(new { error = msg }));
+        }
+    });
 });
 
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Protect uploaded files and voice recordings — require valid JWT
+app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/uploads") || ctx.Request.Path.StartsWithSegments("/voice"),
+    pb =>
+    {
+        pb.Use(async (context, next) =>
+        {
+            if (context.User?.Identity?.IsAuthenticated != true)
+            {
+                context.Response.StatusCode = 401;
+                return;
+            }
+            await next();
+        });
+    });
+
+// Health check endpoint for Railway
+app.MapGet("/", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+
 app.MapControllers();
 app.MapHub<SecureChat.Server.Hubs.ChatHub>("/hubs/chat");
 
@@ -182,3 +331,20 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine("=== STARTUP EXCEPTION (FATAL) ===");
+    var current = ex;
+    int depth = 0;
+    while (current != null)
+    {
+        Console.Error.WriteLine($"--- Depth {depth}: {current.GetType().FullName} ---");
+        Console.Error.WriteLine($"Message: {current.Message}");
+        Console.Error.WriteLine($"StackTrace: {current.StackTrace}");
+        current = current.InnerException;
+        depth++;
+    }
+    Console.Error.WriteLine("===================================");
+    throw;
+}

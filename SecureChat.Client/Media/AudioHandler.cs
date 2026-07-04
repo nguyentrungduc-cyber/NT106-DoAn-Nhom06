@@ -43,7 +43,7 @@ namespace SecureChat.Client.Media
                 if (_disposed || _capturing) return Task.CompletedTask;
 
                 _sendSequenceNumber = 0;
-                _lastReceivedSeq = 0;
+                _lastReceivedSeq = uint.MaxValue;
                 _jitterBuffer.Clear();
 
                 _waveIn = new WaveInEvent
@@ -121,6 +121,20 @@ namespace SecureChat.Client.Media
                 _lastReceivedSeq++;
                 PlayRawAudio(nextChunk);
             }
+
+            if (_jitterBuffer.Count > 0)
+            {
+                uint minSeq = _jitterBuffer.Keys.Min();
+                if (minSeq > _lastReceivedSeq + 1)
+                {
+                    _lastReceivedSeq = minSeq - 1;
+                    while (_jitterBuffer.TryRemove(_lastReceivedSeq + 1, out var nextChunk))
+                    {
+                        _lastReceivedSeq++;
+                        PlayRawAudio(nextChunk);
+                    }
+                }
+            }
         }
 
         private void PlayRawAudio(byte[] audioData)
@@ -130,7 +144,7 @@ namespace SecureChat.Client.Media
             if (_waveOut == null)
             {
                 _waveOut = new WaveOutEvent { DesiredLatency = 150, DeviceNumber = _outputDeviceNumber };
-                _waveProvider = new BufferedWaveProvider(new WaveFormat(AudioSampleRate, 8, 1))
+                _waveProvider = new BufferedWaveProvider(new WaveFormat(AudioSampleRate, 16, 1))
                 {
                     BufferDuration = TimeSpan.FromMilliseconds(800),
                     DiscardOnBufferOverflow = true
@@ -139,7 +153,22 @@ namespace SecureChat.Client.Media
                 _waveOut.Play();
             }
 
-            _waveProvider?.AddSamples(audioData, 0, audioData.Length);
+            // Decode G.711 mu-law (8-bit) back to 16-bit PCM before feeding to WaveProvider
+            int sampleCount = audioData.Length;
+            byte[] pcm16 = new byte[sampleCount * 2];
+            unsafe
+            {
+                fixed (byte* srcPtr = audioData)
+                fixed (byte* dstPtr = pcm16)
+                {
+                    short* samples = (short*)dstPtr;
+                    for (int i = 0; i < sampleCount; i++)
+                    {
+                        samples[i] = MuLawToLinear(srcPtr[i]);
+                    }
+                }
+            }
+            _waveProvider?.AddSamples(pcm16, 0, pcm16.Length);
         }
 
         private void OnDataAvailable(object? sender, WaveInEventArgs e)
@@ -195,6 +224,21 @@ namespace SecureChat.Client.Media
             int mantissa = (sample >> (exponent + 3)) & 0x0F;
             int muLaw = (sign | (exponent << 4) | mantissa);
             return (byte)(~muLaw);
+        }
+
+        /// <summary>
+        /// G.711 mu-law decoding: 8-bit mu-law → 16-bit PCM
+        /// </summary>
+        private static short MuLawToLinear(byte muLaw)
+        {
+            muLaw = (byte)~muLaw;
+            int sign = (muLaw & 0x80) != 0 ? -1 : 1;
+            int exponent = (muLaw >> 4) & 0x07;
+            int mantissa = muLaw & 0x0F;
+            int sample = ((mantissa << 3) + 0x84) << (exponent + 2);
+            if (sign == -1)
+                sample = -sample;
+            return (short)Math.Clamp(sample, short.MinValue, short.MaxValue);
         }
 
         private void OnRecordingStopped(object? sender, StoppedEventArgs e)

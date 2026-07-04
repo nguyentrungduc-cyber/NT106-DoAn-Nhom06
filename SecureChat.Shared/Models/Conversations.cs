@@ -50,13 +50,13 @@ namespace SecureChat.Models
 		public Message? LastMessage { get; set; }
 
 		[InverseProperty(nameof(ConversationMember.Conversation))]
-		public ICollection<ConversationMember> Members { get; set; } = [];
+		public ICollection<ConversationMember> Members { get; set; } = new List<ConversationMember>();
 
 		[InverseProperty(nameof(Message.Conversation))]
-		public ICollection<Message> Messages { get; set; } = [];
+		public ICollection<Message> Messages { get; set; } = new List<Message>();
 
 		[InverseProperty(nameof(MessagePin.Conversation))]
-		public ICollection<MessagePin> PinnedMessages { get; set; } = [];
+		public ICollection<MessagePin> PinnedMessages { get; set; } = new List<MessagePin>();
 	}
 
 	[Table("ConversationMembers")]
@@ -105,9 +105,9 @@ namespace SecureChat.Models
 		public Message? LastReadMessage { get; set; }
 
 		[InverseProperty(nameof(Message.Sender))]
-		public ICollection<Message> SentMessages { get; set; } = [];
+		public ICollection<Message> SentMessages { get; set; } = new List<Message>();
 		
 		[InverseProperty(nameof(CallParticipant.Member))]
-		public ICollection<CallParticipant> CallsJoined { get; set; } = [];
+		public ICollection<CallParticipant> CallsJoined { get; set; } = new List<CallParticipant>();
 	}
 }

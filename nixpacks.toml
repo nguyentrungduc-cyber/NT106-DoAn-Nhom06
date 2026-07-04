@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["curl"]
+
+[phases.install]
+commands = [
+    "curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh",
+    "bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet",
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_ROOT=/usr/share/dotnet /usr/share/dotnet/dotnet restore SecureChat.Server/SecureChat.Server.csproj"
+]
+
+[phases.build]
+commands = [
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_ROOT=/usr/share/dotnet /usr/share/dotnet/dotnet build SecureChat.Server/SecureChat.Server.csproj -c Release --self-contained false"
+]

@@ -22,6 +22,7 @@ namespace SecureChat.Controllers
 		[HttpPost("register")]
 		public async Task<IActionResult> Register([FromBody] RegisterRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (await users.ExistsByUsernameAsync(req.Username))
 				return Conflict(new { error = "Tên người dùng đã được sử dụng." });
 			if (await users.ExistsByEmailAsync(req.Email))
@@ -53,6 +54,7 @@ namespace SecureChat.Controllers
 		[HttpPost("resend-login-otp")]
 		public async Task<IActionResult> ResendLoginOtp([FromBody] ResendLoginOtpRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (string.IsNullOrWhiteSpace(req.Identifier))
 				return BadRequest(new { message = "Invalid identifier.", errorCode = "INVALID_IDENTIFIER" });
 
@@ -65,14 +67,13 @@ namespace SecureChat.Controllers
 				return NotFound(new { message = "User not found.", errorCode = "USER_NOT_FOUND" });
 
 			var otp = await otpService.GenerateOtpAsync(user.Email, "login-2fa");
-			try
-			{
-				await emailService.SendOtpEmailAsync(user.Email, otp);
-			}
-			catch (Exception ex)
-			{
-				logger.LogError(ex, "Failed to resend login OTP to {Email}", user.Email);
-			}
+			_ = emailService.SendOtpEmailAsync(user.Email, otp)
+				.ContinueWith(t =>
+				{
+					if (t.IsFaulted)
+						logger.LogError(t.Exception?.InnerException ?? t.Exception,
+							"Failed to resend login OTP to {Email}", user.Email);
+				}, TaskContinuationOptions.OnlyOnFaulted);
 
 			return Ok(new { message = "OTP resent" });
 		}
@@ -83,6 +84,7 @@ namespace SecureChat.Controllers
 		[HttpPost("verify-login-otp")]
 		public async Task<IActionResult> VerifyLoginOtp([FromBody] VerifyLoginOtpRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			if (string.IsNullOrWhiteSpace(req.Identifier))
 				return BadRequest(new { message = "Invalid identifier.", errorCode = "INVALID_IDENTIFIER" });
 
@@ -126,6 +128,7 @@ namespace SecureChat.Controllers
 		[HttpPost("login")]
 		public async Task<IActionResult> Login([FromBody] LoginRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var user = req.UsernameOrEmail.Contains('@')
 				? await users.GetByEmailAsync(req.UsernameOrEmail)
 				: await users.GetByUsernameAsync(req.UsernameOrEmail);
@@ -133,16 +136,15 @@ namespace SecureChat.Controllers
             if (user is null || !PasswordHasher.Verify(req.HashedPassword, user.HashedPassword, user.KeySalt))
                 return Unauthorized(new { error = "Thông tin đăng nhập không hợp lệ." });
 
-			// Generate OTP for login 2FA using OtpService and send via EmailService
+			// Generate OTP for login 2FA and fire-and-forget email (don't block response)
             var otp = await otpService.GenerateOtpAsync(user.Email, "login-2fa");
-			try
-			{
-				await emailService.SendOtpEmailAsync(user.Email, otp);
-			}
-			catch (Exception ex)
-			{
-				logger.LogError(ex, "Failed to send login OTP to {Email}", user.Email);
-			}
+            _ = emailService.SendOtpEmailAsync(user.Email, otp)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                        logger.LogError(t.Exception?.InnerException ?? t.Exception,
+                            "Failed to send login OTP to {Email}", user.Email);
+                }, TaskContinuationOptions.OnlyOnFaulted); 
 
 			// Return response indicating 2FA required. Mask email for display.
 			string MaskEmail(string e)
@@ -158,6 +160,7 @@ namespace SecureChat.Controllers
 		[HttpPost("refresh")]
 		public async Task<IActionResult> RefreshAccessToken([FromBody] RefreshRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var session = await users.GetSessionByRefreshTokenAsync(req.RefreshToken);
 			if (session is null)
 				return Unauthorized(new { error = "Refresh token không hợp lệ." });
@@ -177,6 +180,7 @@ namespace SecureChat.Controllers
 		[HttpPost("forgot-password/request-otp")]
 		public async Task<IActionResult> RequestForgotPasswordOtp([FromBody] ForgotPasswordRequestOtpRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
           if (string.IsNullOrWhiteSpace(req.Email))
 			{
 				return BadRequest(new { message = "Invalid email format.", errorCode = "INVALID_EMAIL" });
@@ -195,6 +199,7 @@ namespace SecureChat.Controllers
 		[HttpPost("forgot-password/verify-otp")]
 		public async Task<IActionResult> VerifyForgotPasswordOtp([FromBody] ForgotPasswordVerifyOtpRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
           if (string.IsNullOrWhiteSpace(req.Email))
 			{
 				return BadRequest(new { message = "Invalid email format.", errorCode = "INVALID_EMAIL" });
@@ -231,6 +236,7 @@ namespace SecureChat.Controllers
 		[HttpPost("forgot-password/reset")]
 		public async Task<IActionResult> ResetForgotPassword([FromBody] ForgotPasswordResetRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
           if (string.IsNullOrWhiteSpace(req.ResetToken))
 			{
 				return BadRequest(new { message = "Invalid reset token.", errorCode = "INVALID_TOKEN" });

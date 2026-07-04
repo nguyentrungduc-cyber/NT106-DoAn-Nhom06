@@ -22,7 +22,7 @@ namespace SecureChat.Services
                 new Claim(JwtRegisteredClaimNames.Jti, sessionID),
 			};
 
-			var expiry = DateTime.UtcNow.AddMinutes(double.Parse(config["Jwt:AccessTokenMinutes"] ?? "15"));
+			var expiry = DateTime.UtcNow.AddMinutes(double.Parse(config["Jwt:AccessTokenMinutes"] ?? "1440"));
 
 			var token = new JwtSecurityToken(
 				issuer: config["Jwt:Issuer"],

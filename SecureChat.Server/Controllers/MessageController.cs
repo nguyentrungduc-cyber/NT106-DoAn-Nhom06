@@ -6,6 +6,8 @@ using SecureChat.DTOs;
 using SecureChat.Models;
 using SecureChat.Repositories;
 using SecureChat.Server.Hubs;
+using Microsoft.EntityFrameworkCore;
+using System;
 
 namespace SecureChat.Controllers
 {
@@ -140,11 +142,12 @@ namespace SecureChat.Controllers
 		[HttpPost]
 		public async Task<IActionResult> SendMessage(string conversationID, [FromBody] SendMessageRequest req)
 		{
+			if (req is null) return BadRequest(new { error = "Invalid request body." });
 			var member = await GetActiveMember(conversationID);
 			if (member is null)
 				return Forbid();
 
-		// For direct conversations, check if recipient allows messages from this sender
+			// For direct conversations, check if recipient allows messages from this sender
 		var conv = await conversations.GetByIdWithMembersAsync(conversationID);
 		if (conv?.Type == ConversationType.Direct)
 		{
@@ -167,24 +170,28 @@ namespace SecureChat.Controllers
 			expiresAt = DateTime.UtcNow.AddSeconds(req.ExpiresAfterSeconds.Value);
 		}
 
-		var msg = await messages.CreateAsync(new Message {
-			MessageID        = NewID(),
-			ConversationID   = conversationID,
-			SenderID         = member.MemberID,
-			OriginalSenderID = req.OriginalSenderID,
-			ReplyToID        = req.ReplyToID,
-			Type             = req.Type,
-			Content          = req.Content,
-			ContentIV        = req.ContentIV,
-			ExpiresAt        = expiresAt
-		});
+		// Wrap all DB writes in a transaction so LastMessage is never stale
+		var strategy = conversations.DbContext.Database.CreateExecutionStrategy();
+		return await strategy.ExecuteAsync<IActionResult>(async () =>
+		{
+			using var tx = await conversations.DbContext.Database.BeginTransactionAsync();
+
+			var msg = await messages.CreateAsync(new Message {
+				MessageID        = NewID(),
+				ConversationID   = conversationID,
+				SenderID         = member.MemberID,
+				OriginalSenderID = req.OriginalSenderID,
+				ReplyToID        = req.ReplyToID,
+				Type             = req.Type,
+				Content          = req.Content,
+				ContentIV        = req.ContentIV,
+				ExpiresAt        = expiresAt
+			});
 
 			if (req.Attachments is not null)
 			{
 				foreach (var att in req.Attachments)
 				{
-					// If RecipientEncryptions is provided, create one attachment per recipient
-					// Otherwise, use the single-recipient format (backward compatibility)
 					if (att.RecipientEncryptions is not null && att.RecipientEncryptions.Count > 0)
 					{
 						foreach (var recipientEnc in att.RecipientEncryptions)
@@ -213,7 +220,6 @@ namespace SecureChat.Controllers
 					}
 					else
 					{
-						// Legacy single-recipient format
 						await messages.CreateAttachmentAsync(new MessageAttachment
 						{
 							AttachmentID = NewID(),
@@ -246,15 +252,11 @@ namespace SecureChat.Controllers
 
 			var activeMembers = await conversations.GetActiveMembersAsync(conversationID);
 
-			// Lấy conversation để check loại (DM hay group)
 			var conversation = await conversations.GetByIdAsync(conversationID);
 			bool isDm = conversation?.Type == ConversationType.Direct;
 
 			foreach (var m in activeMembers.Where(m => m.MemberID != member.MemberID))
 			{
-				// Telegram-style block: với DM, nếu 1 trong 2 chặn nhau
-				// thì KHÔNG tạo MessageStatus (không deliver) nhưng vẫn lưu DB
-				// → người gửi thấy 1 tick mãi, không biết bị chặn
 				if (isDm && await friends.IsBlockedEitherWayAsync(Me, m.UserID))
 					continue;
 
@@ -265,8 +267,11 @@ namespace SecureChat.Controllers
 				});
 			}
 
+			await tx.CommitAsync();
+
 			var loaded = await messages.GetByIdAsync(msg.MessageID);
 			return CreatedAtAction(nameof(GetMessage), new { conversationID, messageID = msg.MessageID }, MessageResponse.From(loaded!));
+		});
 		}
 
 		[HttpPatch("{messageID}")]
@@ -286,8 +291,15 @@ namespace SecureChat.Controllers
 
 			var updated = await messages.EditAsync(messageID, req.Content, req.ContentIV);
 			var loaded  = await messages.GetByIdAsync(updated.MessageID);
+			var resp = MessageResponse.From(loaded!);
 
-			return Ok(MessageResponse.From(loaded!));
+			try
+			{
+				await hub.Clients.Group(conversationID).SendAsync("MessageEdited", conversationID, resp);
+			}
+			catch { /* best-effort broadcast */ }
+
+			return Ok(resp);
 		}
 
 		[HttpPost("{messageID}/recall")]
@@ -309,8 +321,15 @@ namespace SecureChat.Controllers
 
 			await messages.RecallAsync(messageID);
 			var loaded = await messages.GetByIdAsync(messageID);
+			var resp = MessageResponse.From(loaded!);
 
-			return Ok(MessageResponse.From(loaded!));
+			try
+			{
+				await hub.Clients.Group(conversationID).SendAsync("MessageRecalled", resp);
+			}
+			catch { /* best-effort broadcast */ }
+
+			return Ok(resp);
 		}
 
 		[HttpDelete("{messageID}")]
@@ -329,6 +348,13 @@ namespace SecureChat.Controllers
 				return Forbid();
 
 			await messages.SoftDeleteAsync(messageID);
+
+			try
+			{
+				await hub.Clients.Group(conversationID).SendAsync("MessageDeleted", conversationID, messageID);
+			}
+			catch { /* best-effort broadcast */ }
+
 			return NoContent();
 		}
 

@@ -8,7 +8,7 @@ namespace SecureChat.Client.Services.RealTime
 {
     public sealed class SignalRClient : IAsyncDisposable
     {
-        private const string DefaultBaseUrl = "http://localhost:5097";
+        private const string DefaultBaseUrl = "https://nt106-doan-nhom06-production.up.railway.app";
         private readonly HubConnection _connection;
 
 		public event Func<MessageResponse, Task>? MessageReceived;
@@ -28,8 +28,10 @@ namespace SecureChat.Client.Services.RealTime
         public event Func<string, Task>? ConversationDeleted;
 		public event Func<string, int, Task>? ConversationUpdated;
         public event Func<string, Task>? MessagesCleared;
-        public event Func<string, string, string, string, Task>? MessagePinned;
-        public event Func<string, string, Task>? MessageUnpinned;
+public event Func<string, string, string, string, Task>? MessagePinned;
+public event Func<string, string, Task>? MessageUnpinned;
+public event Func<string, MessageResponse, Task>? MessageEdited;
+public event Func<string, string, Task>? MessageDeleted;
 public event Func<string, string, Task>? MemberAdded;
 public event Func<string, string, Task>? MemberRemoved;
 		public event Func<string, string, DateTime?, Task>? UserStatusChanged;
@@ -79,6 +81,18 @@ public event Func<string, string, Task>? MemberRemoved;
             {
                 if (MessageRecalled is not null)
                     await MessageRecalled.Invoke(message);
+            });
+
+            _connection.On<string, MessageResponse>("MessageEdited", async (conversationId, message) =>
+            {
+                if (MessageEdited is not null)
+                    await MessageEdited.Invoke(conversationId, message);
+            });
+
+            _connection.On<string, string>("MessageDeleted", async (conversationId, messageId) =>
+            {
+                if (MessageDeleted is not null)
+                    await MessageDeleted.Invoke(conversationId, messageId);
             });
 
             _connection.On<string, string>("CallSignalReceived", async (callId, signal) =>
@@ -194,6 +208,45 @@ public event Func<string, string, Task>? MemberRemoved;
                 if (MessageStatusUpdated is not null)
                     await MessageStatusUpdated.Invoke(messageId, status);
             });
+
+            _connection.On<string>("ForceDisconnect", async reason =>
+            {
+                // Server is forcing this client to disconnect (logout, session revoke, etc.)
+                await _connection.StopAsync();
+                if (Closed is not null)
+                    await Closed.Invoke(new Exception(reason));
+            });
+        }
+
+        /// <summary>Null all event delegates so the SignalRClient can be safely disposed.</summary>
+        public void ClearHandlers()
+        {
+            MessageReceived = null;
+            MessageRecalled = null;
+            MessageEdited = null;
+            MessageDeleted = null;
+            CallSignalReceived = null;
+            CallIncoming = null;
+            VideoFrameReceived = null;
+            AudioDataReceived = null;
+            UserTyping = null;
+            UserStoppedTyping = null;
+            MessageStatusUpdated = null;
+            Closed = null;
+            Reconnecting = null;
+            Reconnected = null;
+            ConversationCreated = null;
+            ProfileUpdated = null;
+            ConversationDeleted = null;
+            ConversationUpdated = null;
+            MessagesCleared = null;
+            MessagePinned = null;
+            MessageUnpinned = null;
+            MemberAdded = null;
+            MemberRemoved = null;
+            UserStatusChanged = null;
+            CallMissed = null;
+            GroupSettingsUpdated = null;
         }
 
         public Task StartAsync() => _connection.StartAsync();
@@ -333,6 +386,8 @@ public event Func<string, string, Task>? MemberRemoved;
 
         public async ValueTask DisposeAsync()
         {
+            try { await _connection.StopAsync(); } catch { }
+            ClearHandlers();
             await _connection.DisposeAsync();
         }
 

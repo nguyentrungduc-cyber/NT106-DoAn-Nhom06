@@ -35,6 +35,8 @@ namespace SecureChat.Client.Forms.Profile
         public frmProfileInfo(ProfileModel profile)
         {
             _profile = profile ?? throw new ArgumentNullException(nameof(profile));
+            AvatarService.CurrentUserChanged += OnExternalAvatarChanged;
+            FormClosed += (_, __) => AvatarService.CurrentUserChanged -= OnExternalAvatarChanged;
             InitializeComponent();
             BuildUI();
             ThemeRefreshHelper.Hook(this);
@@ -42,6 +44,26 @@ namespace SecureChat.Client.Forms.Profile
             Resize += (_, __) => LayoutDynamic();
             LayoutDynamic();
             UiLocalization.ApplyToForm(this);
+        }
+
+        private void OnExternalAvatarChanged()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(OnExternalAvatarChanged));
+                return;
+            }
+            _profile.FullName = AvatarService.CurrentDisplayName;
+            _profile.Username = AvatarService.CurrentUsername;
+            _profile.Email = AvatarService.CurrentEmail;
+            _profile.AvatarUrl = AvatarService.CurrentAvatarUrl;
+            _lblName.Text = _profile.FullName;
+            _txtName.Text = _profile.FullName;
+            _txtEmail.Text = _profile.Email;
+            _txtUsername.Text = _profile.Username;
+            _lblInitial.Text = GetInitials(_profile.FullName);
+            _avatar.BackColor = TG.GetAvatarColor(_profile.FullName);
+            ApplyAvatarImage();
         }
 
         private void BuildUI()
@@ -315,6 +337,7 @@ namespace SecureChat.Client.Forms.Profile
                     throw new InvalidOperationException($"Lỗi lưu hồ sơ: {err}");
                 }
 
+                string oldAvatarUrl = _profile.AvatarUrl;
                 _profile.FullName = name;
                 _profile.Email = email;
                 _profile.Username = username;
@@ -322,8 +345,19 @@ namespace SecureChat.Client.Forms.Profile
                 if (avatarUrl != null)
                 {
                     _profile.AvatarUrl = avatarUrl;
-                    _profile.AvatarPath = DownloadAndCacheAvatar(avatarUrl) ?? avatarUrl;
+                    var cached = await AvatarCacheService.DownloadAsync(avatarUrl);
+                    _profile.AvatarPath = cached ?? avatarUrl;
+                    AvatarService.UpdateAvatar(avatarUrl);
                 }
+
+                // Immediately propagate all profile changes locally so every open form
+                // gets updated without waiting for the SignalR round-trip.
+                AvatarService.UpdateProfile(name, username, email);
+                frmMainChat.GlobalProfileUpdated?.Invoke(
+                    AvatarService.CurrentUserId,
+                    name,
+                    username,
+                    avatarUrl ?? AvatarService.CurrentAvatarUrl);
 
                 _lblInitial.Text = GetInitials(name);
                 _avatar.BackColor = TG.GetAvatarColor(name);
@@ -391,11 +425,22 @@ namespace SecureChat.Client.Forms.Profile
                 _avatar.Image?.Dispose();
                 _avatar.Image = null;
 
+                Image? img = null;
+
                 if (!string.IsNullOrWhiteSpace(_profile.AvatarPath) && File.Exists(_profile.AvatarPath))
                 {
                     using var fs = new FileStream(_profile.AvatarPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    using var img = Image.FromStream(fs);
-                    _avatar.Image = new Bitmap(img);
+                    using var src = Image.FromStream(fs);
+                    img = new Bitmap(src);
+                }
+                else if (!string.IsNullOrWhiteSpace(_profile.AvatarUrl))
+                {
+                    img = AvatarCacheService.LoadImage(_profile.AvatarUrl);
+                }
+
+                if (img != null)
+                {
+                    _avatar.Image = img;
                     _lblInitial.Visible = false;
                     return;
                 }
@@ -427,32 +472,6 @@ namespace SecureChat.Client.Forms.Profile
         {
             var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
             return enumerator.MoveNext() ? enumerator.GetTextElement() : string.Empty;
-        }
-
-        private static string? DownloadAndCacheAvatar(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url)) return null;
-            try
-            {
-                var http = Services.ApiClient.Instance.GetHttpClient();
-                var cacheKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)));
-                var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SecureChat", "AvatarCache");
-                Directory.CreateDirectory(cacheDir);
-                var cachePath = Path.Combine(cacheDir, cacheKey + ".png");
-                if (File.Exists(cachePath))
-                    return cachePath;
-
-                using var response = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).Result;
-                if (!response.IsSuccessStatusCode) return null;
-                using var stream = response.Content.ReadAsStreamAsync().Result;
-                using var img = Image.FromStream(stream);
-                img.Save(cachePath, ImageFormat.Png);
-                return cachePath;
-            }
-            catch
-            {
-                return null;
-            }
         }
 
         private static void ClipCircle(PictureBox pb)

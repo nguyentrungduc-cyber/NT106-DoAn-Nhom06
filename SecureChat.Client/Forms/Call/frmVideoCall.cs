@@ -79,6 +79,8 @@ namespace SecureChat.Client.Forms.Call
         private DateTime lastRemoteFrameUtc = DateTime.MinValue;
         private bool isFormActive = true;
         private bool allowCapture = true;
+        private bool _remoteFramePending;
+        private Bitmap? _pendingRemoteFrame;
 
         private string _callId = string.Empty;
         private string _conversationId = string.Empty;
@@ -87,7 +89,17 @@ namespace SecureChat.Client.Forms.Call
         private bool _isGroupCall;
         private bool _cleanupDone;
         private bool _leaveInitiated;
+        private bool _callEndedOrLeftSent;
         private bool _serverCleanupAttempted;
+
+        private string? _remoteUserId;
+        private Image? _remoteAvatar;
+
+        public string? RemoteUserId
+        {
+            get => _remoteUserId;
+            set => _remoteUserId = value;
+        }
 
         // drag state for local preview
         private bool isDragging;
@@ -147,10 +159,14 @@ namespace SecureChat.Client.Forms.Call
 
             Shown += (_, __) =>
             {
-                _ = _videoHandler.StartAsync();
-                int inputDev = DeviceConfig.GetInputDeviceNumber();
-                int outputDev = DeviceConfig.GetOutputDeviceNumber();
-                _ = _audioHandler.StartAsync(inputDev, outputDev);
+                try
+                {
+                    _ = _videoHandler.StartAsync();
+                    int inputDev = DeviceConfig.GetInputDeviceNumber();
+                    int outputDev = DeviceConfig.GetOutputDeviceNumber();
+                    _ = _audioHandler.StartAsync(inputDev, outputDev);
+                }
+                catch { }
             };
             FormClosed += (_, __) => Cleanup();
             ThemeRefreshHelper.Hook(this);
@@ -169,24 +185,17 @@ namespace SecureChat.Client.Forms.Call
             _signalRClient.VideoFrameReceived += OnVideoFrameReceived;
             _signalRClient.AudioDataReceived += OnAudioDataReceived;
             _signalRClient.Reconnected += OnSignalRReconnected;
+            _signalRClient.ProfileUpdated += OnProfileUpdated;
 
             Shown += (_, __) => _ = JoinCallGroupAsync();
-            FormClosing += async (_, __) =>
+            FormClosing += (_, __) =>
             {
-                // Always notify the server on close, regardless of _leaveInitiated.
-                // This fixes the bug where the call stays Ongoing in the DB if
-                // EndCallAsync from the button handler failed silently (catch { }).
-                await CleanupCallOnServerAsync();
-            };
-            FormClosed += (_, __) =>
-            {
-                if (_signalRClient != null)
+                _leaveInitiated = true;
+                if (!_callEndedOrLeftSent)
                 {
-                    _signalRClient.CallSignalReceived -= OnRemoteCallSignal;
-                    _signalRClient.VideoFrameReceived -= OnVideoFrameReceived;
-                    _signalRClient.AudioDataReceived -= OnAudioDataReceived;
-                    _signalRClient.Reconnected -= OnSignalRReconnected;
+                    try { _signalRClient?.SendCallSignalAsync(_callId, "CALL_ENDED").GetAwaiter().GetResult(); } catch { }
                 }
+                Task.Run(() => CleanupCallOnServerAsync()).GetAwaiter().GetResult();
             };
         }
 
@@ -446,20 +455,19 @@ namespace SecureChat.Client.Forms.Call
             {
                 isFormActive = true;
                 allowCapture = isCameraOn && WindowState != FormWindowState.Minimized;
-                if (allowCapture && _videoHandler?.IsRunning == true)
+                if (isFormActive && _videoHandler?.IsRunning == true)
                     frameTimer.Start();
             };
             Deactivate += (_, __) =>
             {
                 isFormActive = false;
-                allowCapture = false;
                 frameTimer.Stop();
             };
             SizeChanged += (_, __) =>
             {
-                allowCapture = isCameraOn && isFormActive && WindowState != FormWindowState.Minimized;
+                allowCapture = isCameraOn && WindowState != FormWindowState.Minimized;
                 if (!allowCapture) frameTimer.Stop();
-                else if (_videoHandler?.IsRunning == true) frameTimer.Start();
+                else if (_videoHandler?.IsRunning == true && isFormActive) frameTimer.Start();
             };
 
             MouseMove += (_, __) => NotifyUserInteraction();
@@ -555,7 +563,19 @@ namespace SecureChat.Client.Forms.Call
         private void PnlAvatar_Paint(object? s, PaintEventArgs e)
         {
             var rect = new Rectangle(0, 0, pnlAvatar.Width, pnlAvatar.Height);
-            TG.DrawCircleAvatar(e.Graphics, rect, null, "", TgBlue, drawInitials: false);
+            if (_remoteAvatar != null)
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using var path = new GraphicsPath();
+                path.AddEllipse(rect);
+                e.Graphics.SetClip(path);
+                e.Graphics.DrawImage(_remoteAvatar, rect);
+                e.Graphics.ResetClip();
+            }
+            else
+            {
+                TG.DrawCircleAvatar(e.Graphics, rect, null, "", TgBlue, drawInitials: false);
+            }
         }
 
         private void PnlLocalWrap_Paint(object? s, PaintEventArgs e)
@@ -577,7 +597,8 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         private void OnVideoHandlerFrame(object? sender, Bitmap frame)
         {
-            if (!isCameraOn || !allowCapture) return;
+            if (IsDisposed || _cleanupDone || !isCameraOn || !allowCapture) return;
+            if (isScreenSharing) { frame.Dispose(); return; }
 
             lock (latestLocalFrameLock)
             {
@@ -591,7 +612,13 @@ namespace SecureChat.Client.Forms.Call
 
             if (_signalRClient == null || string.IsNullOrWhiteSpace(_callId)) return;
 
-            ThreadPool.QueueUserWorkItem(_ => CompressAndSendFrame(frame));
+            // Copy for background send — VideoHandler owns and may dispose the original
+            var sendFrame = new Bitmap(frame);
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try { CompressAndSendFrame(sendFrame); }
+                finally { sendFrame.Dispose(); }
+            });
         }
 
         private void CompressAndSendFrame(Bitmap frame)
@@ -626,7 +653,7 @@ namespace SecureChat.Client.Forms.Call
 
         private void OnVideoHandlerError(object? sender, Exception ex)
         {
-            if (IsDisposed || !IsHandleCreated) return;
+            if (IsDisposed || _cleanupDone || !IsHandleCreated) return;
             try
             {
                 BeginInvoke(new Action(() =>
@@ -664,10 +691,11 @@ namespace SecureChat.Client.Forms.Call
         // ── Public API ────────────────────────────────────────────────────────────
         public void UpdateRemoteFrame(Bitmap bmp)
         {
-            if (bmp == null || IsDisposed) return;
+            if (bmp == null || IsDisposed) { bmp?.Dispose(); return; }
             void Apply()
             {
-                if (IsDisposed) { bmp.Dispose(); return; }
+                _remoteFramePending = false;
+                if (IsDisposed || !IsHandleCreated) { _pendingRemoteFrame?.Dispose(); _pendingRemoteFrame = null; bmp.Dispose(); return; }
                 lock (remoteLock)
                 {
                     var old = picRemoteVideo.Image;
@@ -684,8 +712,21 @@ namespace SecureChat.Client.Forms.Call
                 lastRemoteFrameUtc = DateTime.UtcNow;
                 lblStatus.Text = LocalizationService.Translate("Video call");
             }
-            if (InvokeRequired) BeginInvoke((Action)Apply);
-            else Apply();
+            if (IsHandleCreated && InvokeRequired)
+            {
+                if (_remoteFramePending)
+                {
+                    var stale = _pendingRemoteFrame;
+                    _pendingRemoteFrame = bmp;
+                    stale?.Dispose();
+                    return;
+                }
+                _remoteFramePending = true;
+                _pendingRemoteFrame = null;
+                try { BeginInvoke((Action)Apply); } catch (InvalidOperationException) { _remoteFramePending = false; bmp.Dispose(); }
+            }
+            else if (IsHandleCreated) Apply();
+            else bmp.Dispose();
         }
 
         public void UpdateRemoteFrame(byte[] data)
@@ -724,7 +765,7 @@ namespace SecureChat.Client.Forms.Call
             isCameraOn = !isCameraOn;
             btnCamera.IsActive = !isCameraOn;
             btnCamera.Invalidate();
-            allowCapture = isCameraOn && isFormActive && WindowState != FormWindowState.Minimized;
+            allowCapture = isCameraOn && WindowState != FormWindowState.Minimized;
 
             _ = _signalRClient?.SendCallSignalAsync(_callId, isCameraOn ? "CAM_ON" : "CAM_OFF");
 
@@ -922,7 +963,7 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         private Task OnVideoFrameReceived(string callId, string senderUserId, byte[] frameData)
         {
-            if (callId != _callId || IsDisposed || frameData == null || frameData.Length == 0)
+            if (callId != _callId || IsDisposed || _cleanupDone || frameData == null || frameData.Length == 0)
                 return Task.CompletedTask;
 
             ThreadPool.QueueUserWorkItem(_ =>
@@ -941,7 +982,7 @@ namespace SecureChat.Client.Forms.Call
 
         private Task OnAudioDataReceived(string callId, string senderUserId, byte[] audioData)
         {
-            if (callId != _callId || IsDisposed || audioData == null || audioData.Length == 0)
+            if (callId != _callId || IsDisposed || _cleanupDone || audioData == null || audioData.Length == 0)
                 return Task.CompletedTask;
 
             _audioHandler?.PlayAudio(audioData);
@@ -950,7 +991,7 @@ namespace SecureChat.Client.Forms.Call
 
         private void OnAudioDataAvailable(byte[] audioData, uint sequenceNumber)
         {
-            if (IsDisposed || audioData == null || audioData.Length == 0) return;
+            if (IsDisposed || _cleanupDone || audioData == null || audioData.Length == 0) return;
             _ = _signalRClient?.SendAudioDataAsync(_callId, audioData);
         }
 
@@ -962,15 +1003,16 @@ namespace SecureChat.Client.Forms.Call
 
         private void OnScreenCaptureFrame(Bitmap frame)
         {
-            if (!isScreenSharing || IsDisposed) { frame.Dispose(); return; }
-            CompressAndSendFrame(frame);
+            if (!isScreenSharing || IsDisposed || _cleanupDone) { frame.Dispose(); return; }
+            try { CompressAndSendFrame(frame); }
+            finally { frame.Dispose(); }
         }
 
         private void OnScreenCaptureError(object? sender, Exception ex)
         {
-            if (IsDisposed) return;
+            if (IsDisposed || _cleanupDone) return;
             isScreenSharing = false;
-            BeginInvoke(new Action(() => lblStatus.Text = LocalizationService.Translate("Screen share stopped")));
+            if (IsHandleCreated) BeginInvoke(new Action(() => lblStatus.Text = LocalizationService.Translate("Screen share stopped")));
         }
 
         private void ToggleScreenShare()
@@ -992,19 +1034,25 @@ namespace SecureChat.Client.Forms.Call
         {
             if (IsDisposed) { frame.Dispose(); return; }
 
-            // Show on primary display first
-            UpdateRemoteFrame(frame);
-
-            // Also route to participant panel if exists
+            // Create participant copy BEFORE UpdateRemoteFrame takes ownership of frame
+            // (UpdateRemoteFrame may dispose the frame if the handle is not created)
             if (_participants.TryGetValue(senderUserId, out var rp))
             {
-                BeginInvoke(new Action(() => rp.UpdateFrame(frame)));
+                var copy = new Bitmap(frame);
+                UpdateRemoteFrame(frame);
+                if (IsHandleCreated) BeginInvoke(new Action(() => rp.UpdateFrame(copy)));
+                else copy.Dispose();
+            }
+            else
+            {
+                UpdateRemoteFrame(frame);
             }
         }
 
         private Task OnRemoteCallSignal(string callId, string signal)
         {
-            if (callId != _callId || IsDisposed) return Task.CompletedTask;
+            if (callId != _callId || IsDisposed || _cleanupDone) return Task.CompletedTask;
+            if (!IsHandleCreated) return Task.CompletedTask;
 
             // Signals are prefixed with senderUserId (e.g. "user123|CALL_JOINED")
             string senderId = string.Empty;
@@ -1021,7 +1069,11 @@ namespace SecureChat.Client.Forms.Call
                 _leaveInitiated = true;
                 BeginInvoke(new Action(() =>
                 {
-                    MessageBox.Show(LocalizationService.Translate("Call ended from the other side."), LocalizationService.Translate("Call ended"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    // Only show notification if WE didn't initiate the end
+                    if (!_callEndedOrLeftSent)
+                    {
+                        MessageBox.Show(LocalizationService.Translate("Call ended from the other side."), LocalizationService.Translate("Call ended"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                     Close();
                 }));
             }
@@ -1143,6 +1195,56 @@ namespace SecureChat.Client.Forms.Call
             _ = JoinCallGroupAsync();
         }
 
+        private async Task OnProfileUpdated(string userId, string? displayName, string? username, string? avatarUrl)
+        {
+            if (_isGroupCall)
+            {
+                // Update group participant panel if visible
+                if (_participants.TryGetValue(userId, out var rp))
+                {
+                    string newName = !string.IsNullOrWhiteSpace(displayName) ? displayName : (username ?? rp.UserName.Text);
+                    BeginInvoke(new Action(() =>
+                    {
+                        rp.UserName.Text = newName;
+                    }));
+                }
+            }
+            else if (userId == _remoteUserId)
+            {
+                string newName = !string.IsNullOrWhiteSpace(displayName) ? displayName : (username ?? "Friend");
+                if (!string.IsNullOrWhiteSpace(avatarUrl))
+                {
+                    var img = await Task.Run(() => AvatarCacheService.LoadImage(avatarUrl));
+                    if (img != null)
+                    {
+                        BeginInvoke(new Action(() =>
+                        {
+                            var old = _remoteAvatar;
+                            _remoteAvatar = new Bitmap(img);
+                            old?.Dispose();
+                            img.Dispose();
+                            pnlAvatar.Invalidate();
+                        }));
+                    }
+                }
+                else if (avatarUrl == string.Empty)
+                {
+                    // Avatar was removed
+                    BeginInvoke(new Action(() =>
+                    {
+                        var old = _remoteAvatar;
+                        _remoteAvatar = null;
+                        old?.Dispose();
+                        pnlAvatar.Invalidate();
+                    }));
+                }
+                BeginInvoke(new Action(() =>
+                {
+                    ApplyFriendInfo(newName);
+                }));
+            }
+        }
+
         private async Task CleanupCallOnServerAsync()
         {
             if (_serverCleanupAttempted)
@@ -1184,6 +1286,7 @@ namespace SecureChat.Client.Forms.Call
                 if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
                     await _signalRClient.SendCallSignalAsync(_callId, "CALL_LEFT");
+                    _callEndedOrLeftSent = true;
                 }
             }
             catch { }
@@ -1199,6 +1302,7 @@ namespace SecureChat.Client.Forms.Call
                 if (_signalRClient != null && !string.IsNullOrWhiteSpace(_callId))
                 {
                     await _signalRClient.SendCallSignalAsync(_callId, "CALL_ENDED");
+                    _callEndedOrLeftSent = true;
                 }
             }
             catch { }
@@ -1209,6 +1313,7 @@ namespace SecureChat.Client.Forms.Call
         // ═════════════════════════════════════════════════════════════════════════
         private void OnLanguageChanged()
         {
+            if (IsDisposed || _cleanupDone) return;
             if (InvokeRequired) { BeginInvoke(new Action(OnLanguageChanged)); return; }
             lblStatus.Text = LocalizationService.Translate(lblStatus.Text);
         }
@@ -1217,6 +1322,17 @@ namespace SecureChat.Client.Forms.Call
         {
             if (_cleanupDone) return;
             _cleanupDone = true;
+
+            // Unsubscribe SignalR events BEFORE disposing resources
+            if (_signalRClient != null)
+            {
+                _signalRClient.CallSignalReceived -= OnRemoteCallSignal;
+                _signalRClient.VideoFrameReceived -= OnVideoFrameReceived;
+                _signalRClient.AudioDataReceived -= OnAudioDataReceived;
+                _signalRClient.Reconnected -= OnSignalRReconnected;
+                _signalRClient.ProfileUpdated -= OnProfileUpdated;
+            }
+
             _cts.Cancel();
             frameTimer.Stop();
             clockTimer.Stop();
@@ -1253,10 +1369,14 @@ namespace SecureChat.Client.Forms.Call
                 latestLocalFrame = null;
             }
 
+            _remoteAvatar?.Dispose();
+            _remoteAvatar = null;
             picLocal.Image?.Dispose();
             picLocal.Image = null;
             picRemoteVideo.Image?.Dispose();
             picRemoteVideo.Image = null;
+            _pendingRemoteFrame?.Dispose();
+            _pendingRemoteFrame = null;
 
             // Dispose participant panels
             foreach (var rp in _participants.Values)
