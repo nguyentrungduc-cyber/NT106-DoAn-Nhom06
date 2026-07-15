@@ -290,8 +290,11 @@ public event Func<string, string, Task>? MemberRemoved;
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new ArgumentException("ConversationId is required.", nameof(conversationId));
             ArgumentNullException.ThrowIfNull(message);
+            if (string.IsNullOrWhiteSpace(message.MessageID))
+                throw new ArgumentException("Message must be persisted (have a MessageID) before broadcasting.", nameof(message));
 
-            return _connection.InvokeAsync("SendMessage", conversationId, message);
+            // Hub giờ chỉ nhận messageId, tự fetch lại bản ghi thật từ DB để chống spoofing.
+            return _connection.InvokeAsync("SendMessage", conversationId, message.MessageID);
         }
 
         public Task RecallMessageAsync(string conversationId, string messageId)

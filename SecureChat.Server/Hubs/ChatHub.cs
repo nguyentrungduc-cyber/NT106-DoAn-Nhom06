@@ -158,16 +158,31 @@ namespace SecureChat.Server.Hubs
 
         /// <summary>
         /// Broadcast a message to a conversation group after it has been persisted.
+        /// CHÚ Ý BẢO MẬT: chỉ nhận messageId từ client, KHÔNG nhận nguyên object MessageResponse,
+        /// để tránh client giả mạo SenderID/nội dung rồi tự broadcast qua Hub (message spoofing).
+        /// Server luôn tự fetch lại bản ghi thật từ DB trước khi gửi cho người khác.
         /// </summary>
-        public async Task SendMessage(string conversationId, MessageResponse message)
+        public async Task SendMessage(string conversationId, string messageId)
         {
             if (string.IsNullOrWhiteSpace(conversationId))
                 throw new HubException("ConversationId is required.");
-            ArgumentNullException.ThrowIfNull(message);
+            if (string.IsNullOrWhiteSpace(messageId))
+                throw new HubException("MessageId is required.");
 
             var member = await conversations.GetMemberByConversationAndUserAsync(conversationId, Me);
             if (member is null || member.LeftAt is not null)
                 throw new HubException("You are not a member of this conversation.");
+
+            // Lấy tin nhắn thật từ DB — không tin dữ liệu client tự gửi lên.
+            var msg = await messages.GetByIdAsync(messageId);
+            if (msg is null || msg.ConversationID != conversationId)
+                throw new HubException("Message not found.");
+
+            // Chỉ người gửi thật (theo DB) mới được phép trigger broadcast cho tin nhắn này.
+            if (msg.SenderID != member.MemberID)
+                throw new HubException("You are not the sender of this message.");
+
+            var message = MessageResponse.From(msg);
 
             var conversation = await conversations.GetByIdAsync(conversationId);
             if (conversation?.Type == ConversationType.Direct)
