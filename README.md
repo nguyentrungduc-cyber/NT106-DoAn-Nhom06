@@ -73,12 +73,18 @@ cd SecureChat.Server
 cp appsettings.example.json appsettings.json
 ```
 
-Mở `appsettings.json` vừa tạo, điền:
-- Connection string MySQL (`ConnectionStrings`)
-- JWT secret key
-- Thông tin SendGrid API key (nếu dùng tính năng OTP)
+Mở `appsettings.json` vừa tạo, điền các key sau (đã có sẵn trong file mẫu, chỉ cần thay giá trị thật):
 
-> ⚠️ File `appsettings.json`/`appsettings.Development.json` đã được `.gitignore`, **không commit** thông tin nhạy cảm lên Git.
+| Key | Mô tả |
+| :--- | :--- |
+| `ConnectionStrings:Default` | Connection string MySQL, dạng `server=...;port=3306;database=...;user=...;password=...` |
+| `Jwt:Key` | Chuỗi bí mật ký JWT, tối thiểu 32 ký tự ngẫu nhiên |
+| `Jwt:Issuer` / `Jwt:Audience` | Định danh issuer/audience cho JWT (giữ mặc định là được) |
+| `Jwt:AccessTokenMinutes` / `Jwt:RefreshTokenDays` | Thời gian sống của Access Token / Refresh Token |
+| `SendGrid:ApiKey` / `FromEmail` / `FromName` | Dùng để gửi email OTP (2FA, quên mật khẩu) qua SendGrid |
+| `CorsOrigins` | Origin được phép gọi API (VD: `http://localhost:3000` nếu test client web) |
+
+> ⚠️ File `appsettings.json`/`appsettings.Development.json` đã được `.gitignore`, **không commit** thông tin nhạy cảm lên Git. Chỉ `appsettings.example.json` (không chứa secret thật) được phép commit.
 
 ### 3. Chạy migration để tạo database
 
