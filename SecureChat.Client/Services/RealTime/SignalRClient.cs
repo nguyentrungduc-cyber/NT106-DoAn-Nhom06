@@ -8,7 +8,7 @@ namespace SecureChat.Client.Services.RealTime
 {
     public sealed class SignalRClient : IAsyncDisposable
     {
-        private const string DefaultBaseUrl = "https://nt106-doan-nhom06-production.up.railway.app";
+        private const string DefaultBaseUrl = "http://localhost:5000";
         private readonly HubConnection _connection;
 
 		public event Func<MessageResponse, Task>? MessageReceived;
