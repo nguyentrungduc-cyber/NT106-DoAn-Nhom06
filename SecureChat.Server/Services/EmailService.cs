@@ -1,4 +1,6 @@
 using System;
+using System.Net;
+using System.Net.Mail;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -15,24 +17,49 @@ namespace SecureChat.Services
         private readonly string _senderEmail;
         private readonly string _senderName;
 
+        // Cấu hình SMTP thật (VD: Gmail) — dùng khi không cấu hình SendGrid.
+        // Đây là cách gửi email hồi trước khi deploy cloud (chạy MariaDB local).
+        private readonly string? _smtpHost;
+        private readonly int _smtpPort;
+        private readonly bool _smtpEnableSsl;
+        private readonly string? _smtpPassword;
+        private readonly bool _useSmtp;
+
         public EmailService(IConfiguration config, ILogger<EmailService> logger)
         {
             _config = config;
             _logger = logger;
-            _apiKey = _config["SendGrid:ApiKey"] ?? _config["EmailSettings:SenderPassword"] ?? string.Empty;
+
+            var sendGridApiKey = _config["SendGrid:ApiKey"];
+            _smtpHost = _config["EmailSettings:SmtpHost"];
+            _smtpPort = int.TryParse(_config["EmailSettings:SmtpPort"], out var p) ? p : 587;
+            _smtpEnableSsl = !bool.TryParse(_config["EmailSettings:EnableSsl"], out var ssl) || ssl;
+            _smtpPassword = _config["EmailSettings:SenderPassword"];
+
+            // Ưu tiên SendGrid nếu có API key thật (luôn bắt đầu bằng "SG."). Nếu không, và có
+            // cấu hình SmtpHost, chuyển sang gửi qua SMTP thật (Gmail...) — tránh trường hợp lỡ
+            // dùng App Password Gmail làm SendGrid API key (2 định dạng khác nhau, sẽ luôn lỗi 401).
+            var hasValidSendGridKey = !string.IsNullOrWhiteSpace(sendGridApiKey)
+                && sendGridApiKey.StartsWith("SG.", StringComparison.OrdinalIgnoreCase);
+
+            _useSmtp = !hasValidSendGridKey && !string.IsNullOrWhiteSpace(_smtpHost);
+
+            _apiKey = sendGridApiKey ?? string.Empty;
             _senderEmail = _config["SendGrid:FromEmail"] ?? _config["EmailSettings:SenderEmail"] ?? string.Empty;
             _senderName = _config["SendGrid:FromName"] ?? _config["EmailSettings:SenderName"] ?? "SecureChat";
+
+            if (!hasValidSendGridKey && !string.IsNullOrWhiteSpace(sendGridApiKey))
+            {
+                _logger.LogWarning(
+                    "SendGrid:ApiKey không đúng định dạng (phải bắt đầu bằng 'SG.'). " +
+                    "Sẽ {Mode}.", _useSmtp ? "chuyển sang gửi qua SMTP" : "bỏ qua và có thể gửi email thất bại");
+            }
         }
 
-        public async Task<bool> SendOtpEmailAsync(string toEmail, string otp)
-        {
-            try
-            {
-                var client = new SendGridClient(_apiKey);
-                var from = new EmailAddress(_senderEmail, _senderName);
-                var to = new EmailAddress(toEmail);
-                var subject = "SecureChat - Your OTP code";
-                var htmlContent = $@"
+        public Task<bool> SendOtpEmailAsync(string toEmail, string otp)
+            => _useSmtp ? SendOtpViaSmtpAsync(toEmail, otp) : SendOtpViaSendGridAsync(toEmail, otp);
+
+        private static string BuildOtpHtml(string otp) => $@"
 <!DOCTYPE html>
 <html>
 <head><meta charset=""utf-8""></head>
@@ -60,6 +87,16 @@ namespace SecureChat.Services
 </body>
 </html>";
 
+        private async Task<bool> SendOtpViaSendGridAsync(string toEmail, string otp)
+        {
+            try
+            {
+                var client = new SendGridClient(_apiKey);
+                var from = new EmailAddress(_senderEmail, _senderName);
+                var to = new EmailAddress(toEmail);
+                var subject = "SecureChat - Your OTP code";
+                var htmlContent = BuildOtpHtml(otp);
+
                 var msg = MailHelper.CreateSingleEmail(from, to, subject, null, htmlContent);
 
                 _logger.LogInformation("SendGrid send starting. Sender={Sender} Recipient={Recipient}", _senderEmail, toEmail);
@@ -82,6 +119,41 @@ namespace SecureChat.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "SendGrid exception for {Email}", toEmail);
+                try { _logger.LogWarning("OTP fallback for {Email}: code is {Otp}", toEmail, otp); } catch { }
+                return false;
+            }
+        }
+
+        private async Task<bool> SendOtpViaSmtpAsync(string toEmail, string otp)
+        {
+            try
+            {
+                using var client = new SmtpClient(_smtpHost, _smtpPort)
+                {
+                    EnableSsl = _smtpEnableSsl,
+                    Credentials = new NetworkCredential(_senderEmail, _smtpPassword)
+                };
+
+                using var mail = new MailMessage
+                {
+                    From = new MailAddress(_senderEmail, _senderName),
+                    Subject = "SecureChat - Your OTP code",
+                    Body = BuildOtpHtml(otp),
+                    IsBodyHtml = true
+                };
+                mail.To.Add(toEmail);
+
+                _logger.LogInformation("SMTP send starting. Host={Host}:{Port} Sender={Sender} Recipient={Recipient}",
+                    _smtpHost, _smtpPort, _senderEmail, toEmail);
+
+                await client.SendMailAsync(mail);
+
+                _logger.LogInformation("SMTP email sent to {Recipient}", toEmail);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "SMTP exception for {Email}", toEmail);
                 try { _logger.LogWarning("OTP fallback for {Email}: code is {Otp}", toEmail, otp); } catch { }
                 return false;
             }
